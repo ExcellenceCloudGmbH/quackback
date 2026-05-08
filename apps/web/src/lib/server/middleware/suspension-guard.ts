@@ -58,6 +58,10 @@ export const SUSPENSION_EXEMPT_PATHS = [
   '/oauth/',
   '/.well-known/',
   '/complete-signup/',
+  // Magic-link landing — without this, a suspended workspace's owner
+  // can't click their billing email back into the portal to clear the
+  // overdue invoice.
+  '/verify-magic-link',
 ] as const
 
 export function isSuspensionExempt(p: string): boolean {

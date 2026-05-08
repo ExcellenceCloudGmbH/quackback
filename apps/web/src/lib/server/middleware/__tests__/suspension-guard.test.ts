@@ -46,4 +46,9 @@ describe('isSuspensionExempt', () => {
     expect(isSuspensionExempt('/admin/dashboard')).toBe(false)
     expect(isSuspensionExempt('/api/v1/boards')).toBe(false)
   })
+
+  it('exempts /verify-magic-link so suspended users can sign in via email link', () => {
+    expect(isSuspensionExempt('/verify-magic-link')).toBe(true)
+    expect(isSuspensionExempt('/verify-magic-link?token=abc')).toBe(true)
+  })
 })
