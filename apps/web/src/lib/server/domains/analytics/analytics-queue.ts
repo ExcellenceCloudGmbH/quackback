@@ -3,7 +3,7 @@
  */
 
 import { Queue, Worker } from 'bullmq'
-import { getRedisConnectionOpts, REDIS_READY_TIMEOUT_MS } from '@/lib/server/queue/redis-config'
+import { getQueueRedis, REDIS_READY_TIMEOUT_MS } from '@/lib/server/queue/redis-config'
 import { refreshAnalytics } from './analytics.service'
 
 const QUEUE_NAME = '{analytics}'
@@ -23,10 +23,10 @@ interface AnalyticsJob {
 let initPromise: Promise<{ queue: Queue<AnalyticsJob>; worker: Worker<AnalyticsJob> }> | null = null
 
 async function initializeQueue() {
-  const connOpts = getRedisConnectionOpts()
+  const connection = getQueueRedis()
 
   const queue = new Queue<AnalyticsJob>(QUEUE_NAME, {
-    connection: connOpts,
+    connection,
     defaultJobOptions: DEFAULT_JOB_OPTS,
   })
 
@@ -37,7 +37,7 @@ async function initializeQueue() {
         await refreshAnalytics()
       }
     },
-    { connection: connOpts, concurrency: CONCURRENCY }
+    { connection, concurrency: CONCURRENCY }
   )
 
   // Register hourly refresh as a repeatable job

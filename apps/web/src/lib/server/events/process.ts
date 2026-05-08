@@ -6,7 +6,7 @@
  */
 
 import { Queue, Worker, UnrecoverableError, type JobsOptions } from 'bullmq'
-import { getRedisConnectionOpts, REDIS_READY_TIMEOUT_MS } from '@/lib/server/queue/redis-config'
+import { getQueueRedis, REDIS_READY_TIMEOUT_MS } from '@/lib/server/queue/redis-config'
 import { getHook } from './registry'
 import { getHookTargets } from './targets'
 import { isRetryableError } from './hook-utils'
@@ -58,12 +58,13 @@ function ensureQueue(): Promise<Queue<HookJobData>> {
 }
 
 async function initializeQueue() {
-  const connOpts = getRedisConnectionOpts()
+  const connection = getQueueRedis()
 
-  // Separate connections: BullMQ Workers use blocking commands (BLMOVE)
-  // that conflict with Queue commands on a shared connection.
+  // BullMQ duplicates this client internally for the Worker's blocking
+  // commands (BLMOVE), so a single shared connection is safe and avoids
+  // opening N TCP sockets per queue.
   const queue = new Queue<HookJobData>(QUEUE_NAME, {
-    connection: connOpts,
+    connection,
     defaultJobOptions: DEFAULT_JOB_OPTS,
   })
 
@@ -109,7 +110,7 @@ async function initializeQueue() {
       }
       throw new UnrecoverableError(result.error ?? 'Hook failed (non-retryable)')
     },
-    { connection: connOpts, concurrency: CONCURRENCY }
+    { connection, concurrency: CONCURRENCY }
   )
 
   // Verify Redis is reachable before returning. Without this, a missing

@@ -5,7 +5,7 @@
  */
 
 import { Queue, Worker, UnrecoverableError } from 'bullmq'
-import { getRedisConnectionOpts, REDIS_READY_TIMEOUT_MS } from '@/lib/server/queue/redis-config'
+import { getQueueRedis, REDIS_READY_TIMEOUT_MS } from '@/lib/server/queue/redis-config'
 import type { FeedbackAiJob } from '../types'
 import type { RawFeedbackItemId, FeedbackSignalId } from '@quackback/ids'
 
@@ -35,10 +35,10 @@ function ensureQueue(): Promise<Queue<FeedbackAiJob>> {
 }
 
 async function initializeQueue() {
-  const connOpts = getRedisConnectionOpts()
+  const connection = getQueueRedis()
 
   const queue = new Queue<FeedbackAiJob>(QUEUE_NAME, {
-    connection: connOpts,
+    connection,
     defaultJobOptions: DEFAULT_JOB_OPTS,
   })
 
@@ -70,7 +70,7 @@ async function initializeQueue() {
           throw new UnrecoverableError(`Unknown AI job type: ${(data as { type: string }).type}`)
       }
     },
-    { connection: connOpts, concurrency: CONCURRENCY }
+    { connection, concurrency: CONCURRENCY }
   )
 
   // Register daily retention cleanup as a repeatable job

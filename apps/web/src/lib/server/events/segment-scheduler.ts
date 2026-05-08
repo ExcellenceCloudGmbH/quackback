@@ -11,7 +11,7 @@
  */
 
 import { Queue, Worker, UnrecoverableError } from 'bullmq'
-import { getRedisConnectionOpts, REDIS_READY_TIMEOUT_MS } from '@/lib/server/queue/redis-config'
+import { getQueueRedis, REDIS_READY_TIMEOUT_MS } from '@/lib/server/queue/redis-config'
 import type { SegmentId } from '@quackback/ids'
 import type { EvaluationSchedule } from '@/lib/server/db'
 
@@ -61,10 +61,10 @@ function ensureQueue(): Promise<Queue<SegmentEvalJobData>> {
 }
 
 async function initializeQueue() {
-  const connOpts = getRedisConnectionOpts()
+  const connection = getQueueRedis()
 
   const queue = new Queue<SegmentEvalJobData>(QUEUE_NAME, {
-    connection: connOpts,
+    connection,
     defaultJobOptions: DEFAULT_JOB_OPTS,
   })
 
@@ -94,7 +94,7 @@ async function initializeQueue() {
         throw error
       }
     },
-    { connection: connOpts, concurrency: CONCURRENCY }
+    { connection, concurrency: CONCURRENCY }
   )
 
   // Verify Redis is reachable
