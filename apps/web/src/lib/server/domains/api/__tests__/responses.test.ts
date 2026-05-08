@@ -312,7 +312,7 @@ describe('API Responses', () => {
       expect(response.status).toBe(402)
       const body = (await response.json()) as { code: string; message: string }
       expect(body.code).toBe('WORKSPACE_SUSPENDED')
-      expect(body.message).toMatch(/suspended/i)
+      expect(body.message).toMatch(/unavailable/i)
     })
 
     it('should map DeletingError to 410 with code/message JSON', async () => {
