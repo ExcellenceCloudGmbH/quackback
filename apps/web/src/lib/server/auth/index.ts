@@ -54,6 +54,27 @@ export const getOTP = (email: string) => otpStash.take(email)
 type AuthInstance = Awaited<ReturnType<typeof createAuth>>
 let _auth: AuthInstance | null = null
 
+import {
+  scheduleSsoSecretRetry as scheduleSsoSecretRetryHelper,
+  _cancelSsoSecretRetry,
+} from './sso-secret-retry'
+
+const ssoRetryDeps = {
+  getSecret: () => process.env.SSO_OIDC_CLIENT_SECRET,
+  resetAuth: () => resetAuth(),
+  schedule: (fn: () => void, ms: number) => setTimeout(fn, ms),
+  cancel: (h: unknown) => clearTimeout(h as ReturnType<typeof setTimeout>),
+  log: (msg: string) => console.log(msg),
+}
+function scheduleSsoSecretRetry(): void {
+  scheduleSsoSecretRetryHelper(ssoRetryDeps)
+}
+
+/** Test-only: cancel any pending retry so vitest can exit cleanly. */
+export function _cancelSsoSecretRetryForTests(): void {
+  _cancelSsoSecretRetry(ssoRetryDeps)
+}
+
 async function createAuth() {
   // Dynamic imports to prevent client bundling
   const {
@@ -129,6 +150,14 @@ async function createAuth() {
       // the rest of Better-Auth functional and lets the password /
       // magic-link / other-OAuth fallbacks carry the sign-in load.
       console.error('[auth] ssoOidc enabled but SSO_OIDC_CLIENT_SECRET not set')
+      // Schedule a one-shot re-init in 60s. Without this, the cached
+      // _auth instance is missing the SSO provider until pod restart —
+      // a hard outage for tenants whose admins only have OIDC login.
+      // Idempotent under multiple ticks: any later createAuth() call
+      // re-reads env, so resetAuth() is the only side effect needed
+      // here. If the secret never arrives, the timer fires once, sees
+      // the env still empty, and quietly no-ops.
+      scheduleSsoSecretRetry()
     } else {
       genericOAuthConfigs.push({
         providerId: 'sso',
