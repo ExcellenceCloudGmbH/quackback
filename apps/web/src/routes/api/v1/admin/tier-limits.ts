@@ -6,6 +6,8 @@ import { resetAuth } from '@/lib/server/auth/index'
 // Admin endpoints auth directly against the per-tenant ADMIN_API_TOKEN
 // env var (CP-projected via OpenBao+ESO). Env unset → 404.
 import { authenticateAdminToken } from '@/lib/server/domains/api-keys/admin-token-auth'
+import { assertNotManaged } from '@/lib/server/config-file/managed-guard'
+import { ForbiddenError } from '@/lib/shared/errors'
 
 /**
  * POST /api/v1/admin/tier-limits
@@ -28,6 +30,22 @@ export const Route = createFileRoute('/api/v1/admin/tier-limits')({
       POST: async ({ request }) => {
         const auth = await authenticateAdminToken(request)
         if (auth) return auth
+
+        // Refuse writes when the declarative config-file owns this
+        // field — the file is the sole authority for tier-limits when
+        // present, so any HTTP write would be silently overwritten on
+        // the next reconcile.
+        try {
+          await assertNotManaged('tierLimits')
+        } catch (err) {
+          if (err instanceof ForbiddenError) {
+            return new Response(JSON.stringify({ error: err.code, message: err.message }), {
+              status: 403,
+              headers: { 'content-type': 'application/json' },
+            })
+          }
+          throw err
+        }
 
         let payload: unknown
         try {
