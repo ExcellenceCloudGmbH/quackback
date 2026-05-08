@@ -11,6 +11,9 @@ import type { QuackbackConfigSpec } from './schema'
  * - `auth.oauth.<providerId>` — per-key (each OAuth provider locks
  *   independently; openSignup stays UI-editable unless declared)
  * - `auth.openSignup` — leaf
+ * - `auth.ssoOidc.<key>` — per-key (each ssoOidc field locks
+ *   independently; clientSecret never appears here because the file
+ *   never holds secrets)
  *
  * The order matters only for snapshot-style equality in tests; runtime
  * checks via `isPathManaged` are order-insensitive.
@@ -34,6 +37,11 @@ export function computeManagedPaths(spec: QuackbackConfigSpec): string[] {
       }
     }
     if (spec.auth.openSignup !== undefined) paths.push('auth.openSignup')
+    if (spec.auth.ssoOidc) {
+      for (const key of Object.keys(spec.auth.ssoOidc)) {
+        paths.push(`auth.ssoOidc.${key}`)
+      }
+    }
   }
   return paths
 }

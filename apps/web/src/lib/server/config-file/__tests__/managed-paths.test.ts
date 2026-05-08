@@ -51,6 +51,30 @@ describe('computeManagedPaths', () => {
       'auth.oauth.google',
     ])
   })
+
+  it('emits per-key paths under auth.ssoOidc', () => {
+    expect(
+      computeManagedPaths({
+        auth: {
+          ssoOidc: {
+            enabled: true,
+            providerName: 'Quackback Cloud',
+            discoveryUrl: 'https://cp.quackback.io/api/auth/.well-known/openid-configuration',
+            clientId: 'tenant-x',
+            isDefault: true,
+            autoCreateUsers: true,
+          },
+        },
+      })
+    ).toEqual([
+      'auth.ssoOidc.enabled',
+      'auth.ssoOidc.providerName',
+      'auth.ssoOidc.discoveryUrl',
+      'auth.ssoOidc.clientId',
+      'auth.ssoOidc.isDefault',
+      'auth.ssoOidc.autoCreateUsers',
+    ])
+  })
 })
 
 describe('isPathManaged', () => {

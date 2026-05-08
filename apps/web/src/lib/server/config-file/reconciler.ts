@@ -99,11 +99,22 @@ export async function reconcileFileIntoDb(
   if (spec.auth !== undefined) {
     // Per-key merge of OAuth providers so the file can lock one
     // provider at a time without nuking others. openSignup falls back
-    // to existing → false in that order.
+    // to existing → false in that order. ssoOidc is merged per-key on
+    // top of the existing block — the file declares only what it wants
+    // to lock; absent fields keep their stored value.
     const existing = safeAuthExisting(current.authConfig ? safeJsonParse(current.authConfig) : null)
-    const merged = {
+    const merged: Record<string, unknown> = {
       oauth: { ...existing.oauth, ...(spec.auth.oauth ?? {}) },
       openSignup: spec.auth.openSignup ?? existing.openSignup,
+    }
+    if (existing.ssoOidc) {
+      merged.ssoOidc = existing.ssoOidc
+    }
+    if (spec.auth.ssoOidc !== undefined) {
+      merged.ssoOidc = {
+        ...(existing.ssoOidc ?? {}),
+        ...spec.auth.ssoOidc,
+      }
     }
     const serialized = JSON.stringify(merged)
     if (serialized !== current.authConfig) {
@@ -173,8 +184,9 @@ function mergeSetupState(
 function safeAuthExisting(parsed: Record<string, unknown> | null): {
   oauth: Record<string, boolean>
   openSignup: boolean
+  ssoOidc: Record<string, unknown> | undefined
 } {
-  if (!parsed) return { oauth: {}, openSignup: false }
+  if (!parsed) return { oauth: {}, openSignup: false, ssoOidc: undefined }
   const oauthRaw = parsed.oauth
   const oauth: Record<string, boolean> = {}
   if (oauthRaw && typeof oauthRaw === 'object' && !Array.isArray(oauthRaw)) {
@@ -183,7 +195,12 @@ function safeAuthExisting(parsed: Record<string, unknown> | null): {
     }
   }
   const openSignup = typeof parsed.openSignup === 'boolean' ? parsed.openSignup : false
-  return { oauth, openSignup }
+  const ssoOidcRaw = parsed.ssoOidc
+  const ssoOidc =
+    ssoOidcRaw && typeof ssoOidcRaw === 'object' && !Array.isArray(ssoOidcRaw)
+      ? (ssoOidcRaw as Record<string, unknown>)
+      : undefined
+  return { oauth, openSignup, ssoOidc }
 }
 
 function safeJsonParse(s: string): Record<string, unknown> | null {

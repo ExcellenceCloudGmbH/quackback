@@ -26,6 +26,22 @@ export interface AuthConfig {
   oauth: OAuthProviders
   /** Allow public signup vs invitation-only */
   openSignup: boolean
+  /**
+   * Cloud-OIDC default admin sign-in (Phase P). Populated from the
+   * declarative config file via the reconciler. Self-hosters without a
+   * file leave this undefined, in which case the env-driven path
+   * (SSO_OIDC_* env vars) provides the same Better-Auth wiring as a
+   * fallback. The client *secret* is never in DB — it always rides on
+   * SSO_OIDC_CLIENT_SECRET so a DB dump can't leak it.
+   */
+  ssoOidc?: {
+    enabled: boolean
+    providerName: string
+    discoveryUrl: string
+    clientId: string
+    isDefault: boolean
+    autoCreateUsers: boolean
+  }
 }
 
 /**

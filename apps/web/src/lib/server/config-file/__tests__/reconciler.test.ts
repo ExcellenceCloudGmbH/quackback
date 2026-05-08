@@ -197,6 +197,91 @@ describe('reconcileFileIntoDb', () => {
     expect(deps.resetAuth).not.toHaveBeenCalled()
   })
 
+  it('writes ssoOidc into settings.authConfig + triggers resetAuth', async () => {
+    const deps = baseDeps()
+    await reconcileFileIntoDb(
+      {
+        auth: {
+          ssoOidc: {
+            enabled: true,
+            providerName: 'Quackback Cloud',
+            discoveryUrl: 'https://cp.quackback.io/api/auth/.well-known/openid-configuration',
+            clientId: 'tenant-x',
+            isDefault: true,
+            autoCreateUsers: true,
+          },
+        },
+      },
+      deps
+    )
+    const arg = (deps.updateSettings as ReturnType<typeof vi.fn>).mock.calls[0]![0]
+    const merged = JSON.parse(arg.authConfig as string)
+    expect(merged.ssoOidc.clientId).toBe('tenant-x')
+    expect(merged.ssoOidc.enabled).toBe(true)
+    expect(merged.ssoOidc.isDefault).toBe(true)
+    expect(arg.managedFieldPaths).toEqual([
+      'auth.ssoOidc.enabled',
+      'auth.ssoOidc.providerName',
+      'auth.ssoOidc.discoveryUrl',
+      'auth.ssoOidc.clientId',
+      'auth.ssoOidc.isDefault',
+      'auth.ssoOidc.autoCreateUsers',
+    ])
+    expect(deps.resetAuth).toHaveBeenCalled()
+  })
+
+  it('per-key merges ssoOidc over the existing block', async () => {
+    const deps = baseDeps()
+    deps.readSettings = vi.fn(async () => ({
+      id: 'ws_1',
+      name: 'X',
+      slug: 'x',
+      setupState: null,
+      tierLimits: null,
+      featureFlags: null,
+      authConfig: JSON.stringify({
+        oauth: { google: true },
+        openSignup: false,
+        ssoOidc: {
+          enabled: false,
+          providerName: 'Old Name',
+          discoveryUrl: 'https://old.example.com/.well-known/openid-configuration',
+          clientId: 'old-id',
+          isDefault: false,
+          autoCreateUsers: false,
+        },
+      }),
+      managedFieldPaths: [],
+      state: 'active' as const,
+    }))
+    // File only flips enabled=true and bumps the clientId; the rest of
+    // the existing block (providerName, discoveryUrl, isDefault, ...)
+    // stays put — partial merges let the file lock individual fields
+    // without nuking siblings.
+    await reconcileFileIntoDb(
+      {
+        auth: {
+          ssoOidc: {
+            enabled: true,
+            providerName: 'Old Name',
+            discoveryUrl: 'https://old.example.com/.well-known/openid-configuration',
+            clientId: 'new-id',
+            isDefault: false,
+            autoCreateUsers: false,
+          },
+        },
+      },
+      deps
+    )
+    const arg = (deps.updateSettings as ReturnType<typeof vi.fn>).mock.calls[0]![0]
+    const merged = JSON.parse(arg.authConfig as string)
+    expect(merged.ssoOidc.enabled).toBe(true)
+    expect(merged.ssoOidc.clientId).toBe('new-id')
+    expect(merged.ssoOidc.providerName).toBe('Old Name')
+    // oauth block stays intact when only ssoOidc is in the spec
+    expect(merged.oauth).toEqual({ google: true })
+  })
+
   it('sanitizes malformed authConfig JSON instead of propagating it', async () => {
     const deps = baseDeps()
     deps.readSettings = vi.fn(async () => ({
