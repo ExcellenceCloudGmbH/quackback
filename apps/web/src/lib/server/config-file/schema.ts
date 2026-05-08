@@ -73,6 +73,26 @@ const featuresSchema = z.record(z.string(), z.boolean())
 // of 'active'.
 const stateSchema = z.enum(['active', 'suspended', 'deleting'])
 
+// v1 auth surface: OAuth provider toggles + openSignup. Mirrors the OSS
+// `AuthConfig` shape (settings.types.ts). Provider secrets stay in their
+// existing channels (env + platform_credentials); the file only declares
+// which providers are toggled on and whether signup is open. Custom OIDC
+// (SSO_OIDC_*) is intentionally NOT declarative in v1 — that requires a
+// Secret-reference resolver, which is a separate moving part.
+const oauthProvidersSchema = z
+  .object({
+    google: z.boolean().optional(),
+    github: z.boolean().optional(),
+  })
+  .strict()
+
+const authSchema = z
+  .object({
+    oauth: oauthProvidersSchema.optional(),
+    openSignup: z.boolean().optional(),
+  })
+  .strict()
+
 export const quackbackConfigSchema = z
   .object({
     apiVersion: z.literal('quackback.io/v1'),
@@ -84,6 +104,7 @@ export const quackbackConfigSchema = z
         tierLimits: tierLimitsSchema.optional(),
         features: featuresSchema.optional(),
         state: stateSchema.optional(),
+        auth: authSchema.optional(),
       })
       .strict(),
   })

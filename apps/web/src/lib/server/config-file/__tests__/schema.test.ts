@@ -67,4 +67,26 @@ describe('parseQuackbackConfig', () => {
     })
     expect(result.success).toBe(false)
   })
+
+  it('accepts an auth block', () => {
+    const result = parseQuackbackConfig({
+      apiVersion: 'quackback.io/v1',
+      kind: 'QuackbackConfig',
+      spec: { auth: { oauth: { google: true }, openSignup: false } },
+    })
+    expect(result.success).toBe(true)
+    if (result.success) {
+      expect(result.data.spec.auth?.oauth?.google).toBe(true)
+      expect(result.data.spec.auth?.openSignup).toBe(false)
+    }
+  })
+
+  it('rejects unknown OAuth provider keys in auth.oauth (v1 is google+github only)', () => {
+    const result = parseQuackbackConfig({
+      apiVersion: 'quackback.io/v1',
+      kind: 'QuackbackConfig',
+      spec: { auth: { oauth: { discord: true } } },
+    })
+    expect(result.success).toBe(false)
+  })
 })
