@@ -33,7 +33,12 @@ const CONCURRENCY = 5
 const DEFAULT_JOB_OPTS = {
   attempts: 3,
   backoff: { type: 'exponential' as const, delay: 1000 },
-  removeOnComplete: true, // no dashboard yet — remove immediately
+  // Keep last 1000 completed jobs (or 24h, whichever first) for
+  // operational visibility. `true` (immediate purge) makes Bull Board
+  // / `redis-cli LRANGE` useless for diagnosing "did this webhook
+  // actually fire?" questions and gives us nothing on disk to inspect
+  // when a customer reports a missed delivery.
+  removeOnComplete: { count: 1000, age: 86400 },
   removeOnFail: { age: 30 * 86400 }, // keep failed jobs 30 days
 }
 
@@ -265,8 +270,11 @@ export async function addDelayedJob(
   const queue = await ensureQueue()
   await queue.add(name, data, {
     ...opts,
-    removeOnComplete: true,
-    removeOnFail: true,
+    // Bounded retention rather than immediate purge, matching the
+    // queue's defaultJobOptions. Delayed jobs are rare but worth
+    // surfacing in `redis-cli LRANGE` when one mis-fires.
+    removeOnComplete: { count: 1000, age: 86400 },
+    removeOnFail: { age: 30 * 86400 },
   })
 }
 

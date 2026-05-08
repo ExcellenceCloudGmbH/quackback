@@ -12,7 +12,8 @@ const CONCURRENCY = 1
 const DEFAULT_JOB_OPTS = {
   attempts: 3,
   backoff: { type: 'exponential' as const, delay: 2000 },
-  removeOnComplete: true,
+  // Last 1000 completed (or 24h) — see process.ts for the rationale.
+  removeOnComplete: { count: 1000, age: 86400 },
   removeOnFail: { age: 7 * 86400 },
 }
 
@@ -40,13 +41,16 @@ async function initializeQueue() {
     { connection, concurrency: CONCURRENCY }
   )
 
-  // Register hourly refresh as a repeatable job
+  // Register hourly refresh as a repeatable job. Stable jobId so
+  // worker reboots dedupe on the same key instead of scheduling
+  // duplicate cron entries.
   await queue.add(
     'analytics:refresh',
     { type: 'refresh-analytics' },
     {
+      jobId: 'analytics:hourly-refresh',
       repeat: { pattern: '0 * * * *' }, // Top of every hour
-      removeOnComplete: true,
+      removeOnComplete: { count: 100 },
       removeOnFail: { age: 7 * 86400 },
     }
   )
