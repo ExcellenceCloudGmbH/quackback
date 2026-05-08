@@ -17,6 +17,12 @@ export interface BootstrapData {
   /** Suspension state. 'active' for self-hosters; cloud may flip to
    *  'suspended' (past-due) or 'deleting' via spec.config.state. */
   state: 'active' | 'suspended' | 'deleting'
+  /** Provider IDs that Better-Auth would register at boot — used by
+   *  the admin login UI (Phase P) to gate CTAs on actually-usable
+   *  providers, not just DB intent. A stale `ssoOidc.enabled=true`
+   *  with no SSO_OIDC_CLIENT_SECRET will NOT include 'sso' here, so
+   *  the UI never renders an SSO button that would 404 on click. */
+  registeredAuthProviders: string[]
 }
 
 // Returns both the session (with principalType) AND the user role in
@@ -103,17 +109,20 @@ async function getSessionAndRole(): Promise<{
 let _initialized = false
 
 const getBootstrapDataInternal = createServerOnlyFn(async (): Promise<BootstrapData> => {
-  const [{ getTenantSettings }, { config }, { getRequestHeaders }] = await Promise.all([
-    import('@/lib/server/domains/settings/settings.service'),
-    import('@/lib/server/config'),
-    import('@tanstack/react-start/server'),
-  ])
+  const [{ getTenantSettings }, { getRegisteredAuthProviders }, { config }, { getRequestHeaders }] =
+    await Promise.all([
+      import('@/lib/server/domains/settings/settings.service'),
+      import('@/lib/server/auth/registered-providers'),
+      import('@/lib/server/config'),
+      import('@tanstack/react-start/server'),
+    ])
 
   // Single principal read returns both session.principalType + userRole;
   // run in parallel with the settings fetch.
-  const [{ session, role: userRole }, settings] = await Promise.all([
+  const [{ session, role: userRole }, settings, registeredAuthProviders] = await Promise.all([
     getSessionAndRole(),
     getTenantSettings(),
+    getRegisteredAuthProviders(),
   ])
 
   // One-time initialization on first request
@@ -142,6 +151,7 @@ const getBootstrapDataInternal = createServerOnlyFn(async (): Promise<BootstrapD
     themeCookie,
     managedFieldPaths: settings?.managedFieldPaths ?? [],
     state: settings?.state ?? 'active',
+    registeredAuthProviders,
   }
 })
 
