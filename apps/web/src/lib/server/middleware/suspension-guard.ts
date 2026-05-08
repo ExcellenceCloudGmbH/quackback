@@ -24,7 +24,7 @@ import { DomainException } from '@/lib/shared/errors'
 export class SuspendedError extends DomainException {
   readonly statusCode = 402
   constructor() {
-    super('WORKSPACE_SUSPENDED', 'Workspace is suspended for non-payment.')
+    super('WORKSPACE_SUSPENDED', 'Workspace is currently unavailable.')
   }
 }
 
