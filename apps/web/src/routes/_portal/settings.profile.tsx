@@ -1,9 +1,12 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useRouter } from '@tanstack/react-router'
 import { useIntl } from 'react-intl'
+import { useSuspenseQuery } from '@tanstack/react-query'
+import type { UserId } from '@quackback/ids'
 import { settingsQueries } from '@/lib/client/queries/settings'
 import { UserIcon } from '@heroicons/react/24/solid'
 import { PageHeader } from '@/components/shared/page-header'
 import { ProfileForm } from '@/components/settings/profile-form'
+import { TwoFactorSection } from '@/components/settings/two-factor-section'
 
 export const Route = createFileRoute('/_portal/settings/profile')({
   loader: async ({ context }) => {
@@ -26,7 +29,9 @@ export const Route = createFileRoute('/_portal/settings/profile')({
 
 function ProfilePage() {
   const intl = useIntl()
+  const router = useRouter()
   const { user } = Route.useLoaderData()
+  const { data: userProfile } = useSuspenseQuery(settingsQueries.userProfile(user.id as UserId))
 
   return (
     <div className="space-y-6">
@@ -53,6 +58,16 @@ function ProfilePage() {
             name: user.name,
             email: user.email,
           }}
+        />
+      </div>
+
+      <div
+        className="animate-in fade-in duration-200 fill-mode-backwards rounded-xl border border-border/50 bg-card p-6 shadow-sm"
+        style={{ animationDelay: '100ms' }}
+      >
+        <TwoFactorSection
+          enrolled={userProfile?.twoFactorEnabled === true}
+          onChanged={() => router.invalidate()}
         />
       </div>
     </div>

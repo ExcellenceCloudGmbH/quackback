@@ -189,7 +189,7 @@ export const fetchUserProfile = createServerFn({ method: 'GET' })
 
       const userRecord = await db.query.user.findFirst({
         where: eq(user.id, userId),
-        columns: { imageKey: true, image: true },
+        columns: { imageKey: true, image: true, twoFactorEnabled: true },
       })
 
       const hasCustomAvatar = !!userRecord?.imageKey
@@ -199,7 +199,12 @@ export const fetchUserProfile = createServerFn({ method: 'GET' })
         avatarUrl: oauthAvatarUrl,
       })
 
-      return { avatarUrl, oauthAvatarUrl, hasCustomAvatar }
+      return {
+        avatarUrl,
+        oauthAvatarUrl,
+        hasCustomAvatar,
+        twoFactorEnabled: userRecord?.twoFactorEnabled === true,
+      }
     } catch (error) {
       console.error(`[fn:settings] fetchUserProfile failed:`, error)
       throw error
