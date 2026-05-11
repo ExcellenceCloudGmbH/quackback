@@ -2,7 +2,12 @@ import { useEffect, useMemo, useState, useTransition } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { ArrowPathIcon, KeyIcon, ArrowTopRightOnSquareIcon } from '@heroicons/react/24/solid'
+import {
+  ArrowPathIcon,
+  KeyIcon,
+  ArrowTopRightOnSquareIcon,
+  ShieldCheckIcon,
+} from '@heroicons/react/24/solid'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
@@ -131,6 +136,15 @@ export function AdminAuthSettings({
     void save({ oauth: { password: checked } })
   }
 
+  const twoFactorRequired = authConfig.twoFactor?.required === true
+  const toggleTwoFactorRequired = (checked: boolean) => {
+    setAuthConfig((prev: AuthConfig) => ({
+      ...prev,
+      twoFactor: { ...(prev.twoFactor ?? { required: false }), required: checked },
+    }))
+    void save({ twoFactor: { required: checked } })
+  }
+
   return (
     <div className="space-y-6">
       <SettingsCard
@@ -151,6 +165,15 @@ export function AdminAuthSettings({
             (passwordEnabled && enabledMethodCount === 1)
           }
           badge={isManaged('auth.oauth.password') ? 'Managed' : undefined}
+        />
+        <MethodRow
+          icon={ShieldCheckIcon}
+          label="Require 2FA for team members"
+          description="Block password sign-in for admins and members until they enroll an authenticator. Magic-link stays open as the recovery path."
+          checked={twoFactorRequired}
+          onCheckedChange={toggleTwoFactorRequired}
+          disabled={saving || isPending || isManaged('auth.twoFactor.required')}
+          badge={isManaged('auth.twoFactor.required') ? 'Managed' : undefined}
         />
       </SettingsCard>
 

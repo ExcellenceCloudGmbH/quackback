@@ -294,6 +294,12 @@ const updateAuthConfigSchema = z.object({
     })
     .strict()
     .optional(),
+  twoFactor: z
+    .object({
+      required: z.boolean().optional(),
+    })
+    .strict()
+    .optional(),
 })
 
 export type UpdateAuthConfigActionInput = z.infer<typeof updateAuthConfigSchema>

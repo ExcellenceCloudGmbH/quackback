@@ -181,11 +181,36 @@ export const hooksBefore = createAuthMiddleware(async (ctx) => {
     principalRow.role as 'admin' | 'member' | 'user',
     tenant
   )
-  if (result.allowed) return
+  if (!result.allowed) {
+    const isTeamRole = principalRow.role === 'admin' || principalRow.role === 'member'
+    const target = isTeamRole ? '/admin/login' : '/auth/login'
+    throw ctx.redirect(`${target}?error=${result.error ?? 'auth_method_blocked'}`)
+  }
 
-  const isTeamRole = principalRow.role === 'admin' || principalRow.role === 'member'
-  const target = isTeamRole ? '/admin/login' : '/auth/login'
-  throw ctx.redirect(`${target}?error=${result.error ?? 'auth_method_blocked'}`)
+  // Workspace-wide Require 2FA gate. Only fires for password sign-in
+  // — magic-link stays open as the break-glass so an admin who lost
+  // their authenticator can still get back in and re-enroll. SSO is
+  // governed by the IdP's own MFA attestations, so we don't second-
+  // guess it here.
+  if (provider === 'credential') {
+    const workspaceRequired = tenant?.authConfig?.twoFactor?.required === true
+    if (workspaceRequired) {
+      const { shouldRequire2FA } = await import('./two-factor-policy')
+      const userFull = await db.query.user.findFirst({
+        where: eq(userTable.id, userRow.id as UserId),
+        columns: { twoFactorEnabled: true },
+      })
+      if (
+        shouldRequire2FA({
+          role: principalRow.role as 'admin' | 'member' | 'user',
+          userHas2FA: userFull?.twoFactorEnabled === true,
+          workspaceRequired,
+        })
+      ) {
+        throw ctx.redirect('/auth/two-factor-setup-required')
+      }
+    }
+  }
 })
 
 /**
