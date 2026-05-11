@@ -14,6 +14,7 @@
  *    diagnostic payload or null if not ready.
  */
 
+import { randomBytes } from 'node:crypto'
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import { requireAuth } from './auth-helpers'
@@ -42,17 +43,6 @@ type TestSession = {
 export type StartSsoTestResult =
   | { testId: string; authorizeUrl: string }
   | { error: 'sso-not-configured' | 'no-secret' | 'discovery-unreachable' }
-
-/** 32-byte → ~43-char base64url string. Used for state/nonce. */
-function randomBase64Url(byteCount: number): string {
-  const bytes = new Uint8Array(byteCount)
-  crypto.getRandomValues(bytes)
-  return Buffer.from(bytes)
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '')
-}
 
 export const startSsoTestFn = createServerFn({ method: 'POST' })
   .inputValidator(z.object({}))
@@ -90,9 +80,9 @@ export const startSsoTestFn = createServerFn({ method: 'POST' })
 
     const { config } = await import('@/lib/server/config')
     const redirectUri = `${config.baseUrl.replace(/\/$/, '')}/admin/sso/test/callback`
-    const testId = `ssotest_${randomBase64Url(15)}`
-    const state = randomBase64Url(32)
-    const nonce = randomBase64Url(32)
+    const testId = `ssotest_${randomBytes(15).toString('base64url')}`
+    const state = randomBytes(32).toString('base64url')
+    const nonce = randomBytes(32).toString('base64url')
 
     const session: TestSession = {
       testId,
