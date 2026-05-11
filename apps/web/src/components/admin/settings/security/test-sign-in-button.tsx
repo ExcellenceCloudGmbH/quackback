@@ -54,7 +54,6 @@ export function TestSignInButton({ disabled }: { disabled?: boolean }) {
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<WireResult | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const popupRef = useRef<Window | null>(null)
 
   const clearPoll = () => {
     if (pollRef.current !== null) {
@@ -109,7 +108,9 @@ export function TestSignInButton({ disabled }: { disabled?: boolean }) {
       setTesting(false)
       return
     }
-    popupRef.current = popup
+    // We don't keep a ref to `popup` — postMessage origin + source
+    // checks are the only auth on result delivery and we never call
+    // methods on the popup window.
     // Polling fallback: if the popup lands on an off-origin error page
     // the postMessage will never fire, but the callback route may still
     // have written a diagnostic to Redis. Cleared the moment a result
