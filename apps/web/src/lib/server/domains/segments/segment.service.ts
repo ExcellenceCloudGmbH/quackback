@@ -12,6 +12,7 @@ import { db, eq, and, inArray, isNull, sql, asc, segments, userSegments } from '
 import type { SegmentId, PrincipalId } from '@quackback/ids'
 import { createId } from '@quackback/ids'
 import { NotFoundError, ValidationError, ForbiddenError } from '@/lib/shared/errors'
+import { slugify } from '@/lib/shared/utils/string'
 import type {
   Segment,
   SegmentWithCount,
@@ -28,6 +29,7 @@ import type { EvaluationSchedule, SegmentRules, SegmentWeightConfig } from '@/li
 function rowToSegment(row: {
   id: string
   name: string
+  slug: string
   description: string | null
   type: string
   color: string
@@ -40,6 +42,7 @@ function rowToSegment(row: {
   return {
     id: row.id as SegmentId,
     name: row.name,
+    slug: row.slug,
     description: row.description,
     type: row.type as 'manual' | 'dynamic',
     color: row.color,
@@ -48,6 +51,25 @@ function rowToSegment(row: {
     weightConfig: (row.weightConfig as SegmentWeightConfig) ?? null,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+  }
+}
+
+/**
+ * Build a unique segment slug from a display name. Probes the DB for
+ * collisions and appends a numeric suffix until a free slug is found.
+ */
+async function uniqueSegmentSlug(name: string): Promise<string> {
+  const base = slugify(name) || 'segment'
+  let candidate = base
+  let counter = 2
+  while (true) {
+    const collision = await db.query.segments.findFirst({
+      where: and(eq(segments.slug, candidate), isNull(segments.deletedAt)),
+      columns: { id: true },
+    })
+    if (!collision) return candidate
+    candidate = `${base}-${counter}`
+    counter++
   }
 }
 
@@ -72,6 +94,7 @@ export async function listSegments(): Promise<SegmentWithCount[]> {
     .select({
       id: segments.id,
       name: segments.name,
+      slug: segments.slug,
       description: segments.description,
       type: segments.type,
       color: segments.color,
@@ -119,12 +142,14 @@ export async function createSegment(input: CreateSegmentInput): Promise<Segment>
   }
 
   const id = createId('segment') as SegmentId
+  const slug = await uniqueSegmentSlug(input.name.trim())
 
   const [row] = await db
     .insert(segments)
     .values({
       id,
       name: input.name.trim(),
+      slug,
       description: input.description?.trim() || null,
       type: input.type,
       color: input.color ?? '#6b7280',
