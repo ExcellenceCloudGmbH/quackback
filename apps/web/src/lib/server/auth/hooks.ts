@@ -520,14 +520,16 @@ export async function handleCredentialPostSignInGate(
   type UserId = `user_${string}`
   const userIdTyped = userId as UserId
 
-  const userRow = await db.query.user.findFirst({
-    where: eq(userTable.id, userIdTyped),
-    columns: { twoFactorEnabled: true },
-  })
-  const principalRow = await db.query.principal.findFirst({
-    where: eq(principalTable.userId, userIdTyped),
-    columns: { role: true },
-  })
+  const [userRow, principalRow] = await Promise.all([
+    db.query.user.findFirst({
+      where: eq(userTable.id, userIdTyped),
+      columns: { twoFactorEnabled: true },
+    }),
+    db.query.principal.findFirst({
+      where: eq(principalTable.userId, userIdTyped),
+      columns: { role: true },
+    }),
+  ])
   if (!principalRow) return
 
   const { shouldRequire2FA } = await import('./two-factor-policy')
