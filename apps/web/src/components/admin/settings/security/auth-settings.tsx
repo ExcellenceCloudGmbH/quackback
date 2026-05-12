@@ -79,7 +79,11 @@ export function AuthSettings({
       </TabsContent>
 
       <TabsContent value="portal">
-        <PortalAuthTab initialOauth={portalOauth} credentialStatus={credentialStatus} />
+        <PortalAuthTab
+          initialOauth={portalOauth}
+          credentialStatus={credentialStatus}
+          customOidcProviderTier={customOidcProviderTier}
+        />
       </TabsContent>
     </Tabs>
   )
