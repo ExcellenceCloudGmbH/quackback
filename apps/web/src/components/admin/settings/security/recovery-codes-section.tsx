@@ -19,7 +19,13 @@ import {
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
-import { KeyIcon, ArrowDownTrayIcon, ClipboardDocumentIcon } from '@heroicons/react/24/solid'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import {
+  KeyIcon,
+  ArrowDownTrayIcon,
+  ClipboardDocumentIcon,
+  ExclamationTriangleIcon,
+} from '@heroicons/react/24/solid'
 import { adminQueries } from '@/lib/client/queries/admin'
 import { generateRecoveryCodesFn } from '@/lib/server/functions/recovery-codes'
 
@@ -97,6 +103,22 @@ export function RecoveryCodesSection() {
           <span className="text-muted-foreground">No codes generated yet.</span>
         )}
       </div>
+
+      {/* Low-codes warning. Fires when fewer than 3 codes remain so
+       *  the admin sees it before they're down to zero — running out
+       *  on the way into a broken-SSO incident is the worst possible
+       *  time. Matches GitHub's 3-remaining threshold. Hidden when
+       *  no codes exist at all (the empty state speaks for itself). */}
+      {activeCount > 0 && activeCount < 3 ? (
+        <Alert variant="destructive" className="mt-4">
+          <ExclamationTriangleIcon className="size-4" />
+          <AlertDescription>
+            Only {activeCount} recovery {activeCount === 1 ? 'code' : 'codes'} left. Generate a
+            fresh batch before you run out — running out during a broken-SSO incident leaves you
+            locked out.
+          </AlertDescription>
+        </Alert>
+      ) : null}
 
       <Dialog
         open={revealedCodes !== null}

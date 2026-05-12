@@ -63,6 +63,39 @@ vi.mock('@/lib/server/config', () => ({
   config: { baseUrl: 'https://acme.quackback.io' },
 }))
 
+// Stub Redis: the consume fn rate-limits via INCR + EXPIRE. We don't
+// care about the rate-limit branch in these tests — return a stable
+// "allowed" count and the helper's `count > limit` check stays
+// false.
+vi.mock('@/lib/server/redis', () => ({
+  getRedis: () => ({
+    multi: () => ({
+      incr: () => undefined,
+      expire: () => undefined,
+      exec: async () => [
+        [null, 1],
+        [null, 1],
+      ],
+    }),
+    ttl: async () => 300,
+  }),
+  cacheDel: vi.fn(),
+  cacheGet: vi.fn(),
+  cacheSet: vi.fn(),
+  CACHE_KEYS: {},
+}))
+
+// Stub email so the fire-and-forget alert doesn't try to load real
+// SMTP / Resend bindings during the test.
+vi.mock('@quackback/email', () => ({
+  sendRecoveryCodeUsedEmail: vi.fn().mockResolvedValue({ sent: true }),
+  isEmailConfigured: () => false,
+}))
+
+vi.mock('@/lib/server/domains/settings/settings.service', () => ({
+  getTenantSettings: vi.fn().mockResolvedValue(null),
+}))
+
 vi.mock('@/lib/server/db', () => ({
   db: {
     query: {
@@ -191,5 +224,64 @@ describe('consumeRecoveryCodeFn', () => {
     // "fake hash compare" mitigation against email-enumeration timing
     // oracles.
     expect(hoisted.verifyRecoveryCode).toHaveBeenCalled()
+  })
+
+  it('rate-limits and returns invalid_credentials when the per-IP+email window is exhausted', async () => {
+    // Reload the consume module with a redis mock that reports a
+    // count above the 5-per-5-min threshold. The handler then short-
+    // circuits before any DB / scrypt work and returns rate_limited.
+    vi.resetModules()
+    vi.doMock('@/lib/server/redis', () => ({
+      getRedis: () => ({
+        multi: () => ({
+          incr: () => undefined,
+          expire: () => undefined,
+          exec: async () => [
+            [null, 99], // INCR result far above the limit
+            [null, 1],
+          ],
+        }),
+        ttl: async () => 300,
+      }),
+      cacheDel: vi.fn(),
+      cacheGet: vi.fn(),
+      cacheSet: vi.fn(),
+      CACHE_KEYS: {},
+    }))
+
+    // Re-import so the new redis mock is bound on this module's
+    // closure. Other vi.mock() calls at the top of the file remain
+    // in effect across the reset.
+    const reloadedHandlers: AnyHandler[] = []
+    vi.doMock('@tanstack/react-start', () => ({
+      createServerFn: () => {
+        const chain = {
+          inputValidator() {
+            return chain
+          },
+          handler(fn: AnyHandler) {
+            reloadedHandlers.push(fn)
+            return chain
+          },
+        }
+        return chain
+      },
+    }))
+    await import('../recovery-codes-consume')
+    const reloaded = reloadedHandlers[0]
+
+    const result = (await reloaded({
+      data: { email: 'admin@example.com', code: 'ABCD-EFGH-JKMN' },
+    })) as { ok: boolean; error?: string }
+
+    expect(result).toEqual({ ok: false, error: 'rate_limited' })
+    // Audit row records the rate-limit reason for forensic tracing.
+    expect(hoisted.recordAuditEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'auth.method.blocked',
+        outcome: 'failure',
+        metadata: expect.objectContaining({ method: 'recovery_code', reason: 'rate_limited' }),
+      })
+    )
   })
 })
