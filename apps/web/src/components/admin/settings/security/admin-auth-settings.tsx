@@ -26,6 +26,7 @@ import { CopyButton } from '@/components/shared/copy-button'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { SettingsCard } from '@/components/admin/settings/settings-card'
 import { VerifiedDomainBlock } from './verified-domain-block'
+import { SsoEnforcementMode } from './sso-enforcement-mode'
 import { TimeAgo } from '@/components/ui/time-ago'
 import {
   OktaIcon,
@@ -620,6 +621,12 @@ function SsoConfiguredForm({
       <div className="pt-6 border-t border-border/40">
         <VerifiedDomainBlock />
       </div>
+
+      {/* Section 3 — Workspace-wide enforcement mode. */}
+      <SsoEnforcementMode
+        authConfig={{ ssoOidc: config } as AuthConfig}
+        hasEnforcedDomain={false}
+      />
     </div>
   )
 }
