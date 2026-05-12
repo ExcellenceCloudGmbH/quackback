@@ -177,10 +177,17 @@ function ConfirmRequiredDialog({
   // parent gates on `confirmOpen`). Wrapping in Suspense at the parent
   // would also work, but mount-gating keeps the section's
   // initial-render path Suspense-free.
+  //
+  // `refetchOnMount: 'always'` so re-opening the dialog after the
+  // admin generated recovery codes (or anything else that changes
+  // the preview's inputs) sees the fresh state — invalidation from
+  // the generator covers the open-dialog case, this covers the
+  // close-and-reopen case.
   const { data: impact } = useSuspenseQuery({
     queryKey: ['admin', 'ssoRequiredPreview'],
     queryFn: () => previewSsoRequiredImpactFn({ data: {} }),
     staleTime: 30 * 1000,
+    refetchOnMount: 'always',
   })
 
   return (

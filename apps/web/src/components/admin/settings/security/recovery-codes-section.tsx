@@ -55,7 +55,13 @@ export function RecoveryCodesSection() {
     onSuccess: (result) => {
       setRevealedCodes(result.codes)
       setAcknowledged(false)
+      // Invalidate every admin query that depends on whether codes
+      // exist. ssoRequiredPreview is the most important — without
+      // this, the Require-SSO confirmation modal would show "Not
+      // generated" until the next 30s staleTime tick or a full page
+      // reload, gating the enable button behind a stale read.
       void queryClient.invalidateQueries({ queryKey: ['admin', 'recoveryCodes'] })
+      void queryClient.invalidateQueries({ queryKey: ['admin', 'ssoRequiredPreview'] })
     },
   })
 
