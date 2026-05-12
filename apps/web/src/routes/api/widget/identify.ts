@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
 import { generateId } from '@quackback/ids'
 import type { UserId, PrincipalId } from '@quackback/ids'
-import { db, user, session, principal, eq, and, gt } from '@/lib/server/db'
+import { db, user, session, principal, segments, eq, and, gt, isNull } from '@/lib/server/db'
 import { getWidgetConfig, getWidgetSecret } from '@/lib/server/domains/settings/settings.widget'
 import { getAllUserVotedPostIds } from '@/lib/server/domains/posts/post.public'
 import { getPublicUrlOrNull } from '@/lib/server/storage/s3'
@@ -12,6 +12,7 @@ import {
   validateAndCoerceAttributes,
   mergeMetadata,
 } from '@/lib/server/domains/users/user.attributes'
+import { addMember } from '@/lib/server/domains/segments/segment-membership.service'
 
 const identifySchema = z
   .object({
@@ -37,6 +38,7 @@ export const RESERVED_JWT_CLAIMS = new Set([
   'name',
   'avatarURL',
   'avatarUrl',
+  'segments',
   'iat',
   'exp',
   'nbf',
@@ -236,6 +238,28 @@ export const Route = createFileRoute('/api/widget/identify')({
         }
 
         const principalId = principalRecord.id as PrincipalId
+
+        // Segments claim — the customer can tag the identified user with one
+        // or more segment slugs in the signed JWT. Unknown slugs are silently
+        // skipped (admin must pre-create the segment). Lookup by slug, not
+        // name — slug is unique, name is not.
+        const rawSegments = claims.segments
+        if (Array.isArray(rawSegments)) {
+          for (const slug of rawSegments) {
+            if (typeof slug !== 'string') continue
+            const segment = await db.query.segments.findFirst({
+              where: and(eq(segments.slug, slug), isNull(segments.deletedAt)),
+              columns: { id: true },
+            })
+            if (!segment) continue
+            await addMember({
+              principalId,
+              segmentId: segment.id,
+              source: 'widget',
+              actor: null,
+            })
+          }
+        }
 
         // If the widget had a previous anonymous session, merge its activity.
         // Ownership check: the caller must send the previousToken as both a body
