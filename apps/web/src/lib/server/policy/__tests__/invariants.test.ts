@@ -121,8 +121,9 @@ describe('policy invariants — boards', () => {
 // without hitting Postgres. Uses the pg dialect's own sql-to-query renderer.
 const dialect = new PgDialect()
 function toQueryShape(fragment: SQL): { sql: string; params: unknown[] } {
-  const query = dialect.sqlToQuery(fragment)
-  return { sql: query.sql, params: query.params as unknown[] }
+  // PgDialect.sqlToQuery returns `Query` with `params: unknown[]` typed
+  // by drizzle. Pass through directly.
+  return dialect.sqlToQuery(fragment)
 }
 
 describe('boardViewFilter — SQL shape', () => {

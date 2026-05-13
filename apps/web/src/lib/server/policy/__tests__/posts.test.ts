@@ -43,7 +43,7 @@ const trustedPortal: Actor = {
   principalId: 'p_trusted' as PrincipalId,
   role: 'user',
   principalType: 'user',
-  segmentIds: new Set(['seg_trusted' as SegmentId]),
+  segmentIds: new Set(['segment_trusted' as SegmentId]),
 }
 const anon = ANONYMOUS_ACTOR
 const service: Actor = {
@@ -72,7 +72,7 @@ const publicBoard = { audience: { kind: 'public' } as BoardAudience }
 const teamBoard = { audience: { kind: 'team' } as BoardAudience }
 const authBoard = { audience: { kind: 'authenticated' } as BoardAudience }
 const segBoard = {
-  audience: { kind: 'segments', segmentIds: ['seg_trusted'] } as BoardAudience,
+  audience: { kind: 'segments', segmentIds: ['segment_trusted'] } as BoardAudience,
 }
 
 // ----------------------------------------------------------------------
@@ -305,7 +305,7 @@ describe('canCreatePost — trusted-segment bypass', () => {
       expect(
         canCreatePost(trustedPortal, {
           audience: { kind: 'public' },
-          moderation: moderation(ra, ['seg_trusted']),
+          moderation: moderation(ra, ['segment_trusted']),
         })
       ).toEqual({ allowed: true, requiresApproval: false })
     }
@@ -314,7 +314,7 @@ describe('canCreatePost — trusted-segment bypass', () => {
   it('non-trusted-segment user is NOT bypassed by an unrelated trusted segment', () => {
     const decision = canCreatePost(portal, {
       audience: { kind: 'public' },
-      moderation: moderation('all', ['seg_other']),
+      moderation: moderation('all', ['segment_other']),
     })
     expect(decision).toEqual({ allowed: true, requiresApproval: true })
   })
@@ -322,22 +322,22 @@ describe('canCreatePost — trusted-segment bypass', () => {
   it('trusted bypass only requires ANY listed segment to match', () => {
     const actor: Actor = {
       ...portal,
-      segmentIds: new Set(['seg_a', 'seg_trusted'] as SegmentId[]),
+      segmentIds: new Set(['segment_a', 'segment_trusted'] as SegmentId[]),
     }
     expect(
       canCreatePost(actor, {
         audience: { kind: 'public' },
-        moderation: moderation('all', ['seg_unrelated', 'seg_trusted']),
+        moderation: moderation('all', ['segment_unrelated', 'segment_trusted']),
       })
     ).toEqual({ allowed: true, requiresApproval: false })
   })
 
   it('trusted-segment bypass works even when actor cannot otherwise view the board', () => {
-    // segments-audience board: actor is in 'seg_trusted' so they CAN view AND bypass.
+    // segments-audience board: actor is in 'segment_trusted' so they CAN view AND bypass.
     expect(
       canCreatePost(trustedPortal, {
-        audience: { kind: 'segments', segmentIds: ['seg_trusted'] },
-        moderation: moderation('all', ['seg_trusted']),
+        audience: { kind: 'segments', segmentIds: ['segment_trusted'] },
+        moderation: moderation('all', ['segment_trusted']),
       })
     ).toEqual({ allowed: true, requiresApproval: false })
   })
@@ -362,7 +362,7 @@ describe('canCreatePost — board view denied → create denied', () => {
 
   it('portal user cannot post on segments-only board if they are not a member', () => {
     const decision = canCreatePost(portal, {
-      audience: { kind: 'segments', segmentIds: ['seg_other'] },
+      audience: { kind: 'segments', segmentIds: ['segment_other'] },
       moderation: moderation('none'),
     })
     expect(decision.allowed).toBe(false)

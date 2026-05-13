@@ -284,13 +284,22 @@ describe('canViewBoard — idempotence + freshness', () => {
     expect(a).toEqual(b) // structurally equal
   })
 
-  it('audience is the only field consulted on the board record', () => {
-    // Adding noise fields must not change the answer.
-    const decision = canViewBoard(portalUserInAlpha, {
+  it('a board with extra fields beyond audience still works (structural typing)', () => {
+    // canViewBoard's input type is `{ audience: BoardAudience }`. By
+    // structural typing, a richer board record (with moderation, settings,
+    // timestamps, …) is accepted without casts. This guards against any
+    // future refactor that tightens the input shape and breaks list-query
+    // callers that pass the full row.
+    interface FatBoard {
+      audience: BoardAudience
+      moderation: { requireApproval: string; trustedSegmentIds: string[] }
+      label: string
+    }
+    const board: FatBoard = {
       audience: { kind: 'public' },
       moderation: { requireApproval: 'all', trustedSegmentIds: [] },
-      randomNoise: 'should be ignored',
-    } as unknown as { audience: BoardAudience })
-    expect(decision).toEqual({ allowed: true })
+      label: 'noise',
+    }
+    expect(canViewBoard(portalUserInAlpha, board)).toEqual({ allowed: true })
   })
 })
