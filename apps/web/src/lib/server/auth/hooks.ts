@@ -133,7 +133,18 @@ const NO_EMAIL_BEFORE_PATHS = new Set<string>([
  * here — their enforcement happens in Layer A (registration filter)
  * and Layer C (compensating cleanup in hooks.after).
  */
-export const hooksBefore = createAuthMiddleware(async (ctx) => {
+/**
+ * Body of the Layer B pre-session gate, exported separately from the
+ * Better-Auth middleware wrapper so it can be unit-tested without
+ * spinning up the full auth instance. `hooksBefore` is just a thin
+ * createAuthMiddleware around this.
+ */
+export async function handleSignInPreCheck(ctx: {
+  path?: string
+  params?: Record<string, unknown>
+  body?: Record<string, unknown>
+  redirect: (url: string) => Error
+}): Promise<void> {
   const provider = inferProvider(ctx as Parameters<typeof inferProvider>[0])
   if (!provider) return
 
@@ -204,6 +215,10 @@ export const hooksBefore = createAuthMiddleware(async (ctx) => {
   // attacker can probe the redirect to enumerate team-role users
   // without 2FA. The check now runs in `handleCredentialPostSignInGate`
   // below (Layer C), after Better-Auth has verified the password.
+}
+
+export const hooksBefore = createAuthMiddleware(async (ctx) => {
+  await handleSignInPreCheck(ctx as Parameters<typeof handleSignInPreCheck>[0])
 })
 
 /**
@@ -227,7 +242,7 @@ export const hooksBefore = createAuthMiddleware(async (ctx) => {
  *    newSession and are correctly skipped — explicit account-link
  *    isn't an SSO sign-in.
  */
-async function handleSsoCallbackAfter(ctx: {
+export async function handleSsoCallbackAfter(ctx: {
   path?: string
   params?: Record<string, unknown>
   context?: {
@@ -434,7 +449,7 @@ async function revokeSession(ctx: SessionCtx, token: string): Promise<void> {
   deleteSessionCookie(ctx)
 }
 
-async function handleCallbackPolicyCleanup(
+export async function handleCallbackPolicyCleanup(
   ctx: {
     path?: string
     params?: Record<string, unknown>
@@ -485,31 +500,36 @@ async function handleCallbackPolicyCleanup(
   const blockedRedirect = (errorCode: string) =>
     ctx.redirect(`${isTeamRole ? '/admin/login' : '/auth/login'}?error=${errorCode}`)
 
+  // Drop the user/account/principal rows iff the user record is brand-
+  // new (created within the last 60s). Both blocking branches below
+  // call this so a first-time blocked sign-up doesn't leak orphan rows
+  // into the workspace. Existing users keep their rows — they have
+  // history elsewhere (posts, votes, audit) that we don't want to break.
+  const wipeBrandNewShellsIfFresh = async () => {
+    const userRow = await db.query.user.findFirst({
+      where: eq(userTable.id, userId as UserId),
+      columns: { createdAt: true },
+    })
+    const justCreated = userRow?.createdAt && Date.now() - userRow.createdAt.getTime() < 60_000
+    if (!justCreated) return
+    await db.delete(accountTable).where(eq(accountTable.userId, userId as UserId))
+    await db.delete(principalTable).where(eq(principalTable.userId, userId as UserId))
+    await db.delete(userTable).where(eq(userTable.id, userId as UserId))
+  }
+
   // Hard-binding for non-SSO callbacks: handles both branches via
   // isHardBound — per-domain (verified-domain row with enforced=true)
   // and workspace-wide (authConfig.ssoOidc.required=true for any
-  // admin/member, regardless of email domain). Either match revokes
-  // the just-created session and wipes the user/account/principal
-  // shells for brand-new sign-ups so blocked first-time sign-ups
-  // don't leave dangling rows.
+  // admin/member, regardless of email domain). HARD_BOUND_PROVIDERS is
+  // narrow ({credential, magic-link}) so in practice this rarely fires
+  // for callback paths, but we keep the branch as defence-in-depth.
   if (
     provider !== 'sso' &&
     typeof userEmail === 'string' &&
     isHardBound(provider, userEmail, role, tenant?.authConfig, verifiedDomains)
   ) {
     await revokeSession(ctx as SessionCtx, token)
-
-    // Wipe brand-new shells; existing users keep their rows.
-    const userRow = await db.query.user.findFirst({
-      where: eq(userTable.id, userId as UserId),
-      columns: { createdAt: true },
-    })
-    const justCreated = userRow?.createdAt && Date.now() - userRow.createdAt.getTime() < 60_000
-    if (justCreated) {
-      await db.delete(accountTable).where(eq(accountTable.userId, userId as UserId))
-      await db.delete(principalTable).where(eq(principalTable.userId, userId as UserId))
-      await db.delete(userTable).where(eq(userTable.id, userId as UserId))
-    }
+    await wipeBrandNewShellsIfFresh()
 
     // Per-domain hits use the existing `verified_domain_requires_sso`
     // copy; workspace-wide hits get the new `sso_required` code.
@@ -525,6 +545,7 @@ async function handleCallbackPolicyCleanup(
   if (result.allowed) return
 
   await revokeSession(ctx as SessionCtx, token)
+  await wipeBrandNewShellsIfFresh()
   throw blockedRedirect(result.error ?? 'auth_method_blocked')
 }
 
@@ -669,17 +690,25 @@ export async function handleSignInSuccessAudit(ctx: {
 
   const { recordAuditEvent } = await import('@/lib/server/audit/log')
   const { getRequestHeaders } = await import('@tanstack/react-start/server')
-  await recordAuditEvent({
-    event: 'auth.signin.success',
-    outcome: 'success',
-    actor: {
-      userId: userId as `user_${string}`,
-      email: userEmail,
-      role,
-    },
-    headers: getRequestHeaders(),
-    metadata: { method: provider },
-  })
+  try {
+    await recordAuditEvent({
+      event: 'auth.signin.success',
+      outcome: 'success',
+      actor: {
+        userId: userId as `user_${string}`,
+        email: userEmail,
+        role,
+      },
+      headers: getRequestHeaders(),
+      metadata: { method: provider },
+    })
+  } catch (error) {
+    // The session row + cookie were already written upstream. Letting
+    // an audit write fail bubble up to Better-Auth would return 500 to a
+    // user who is actually signed in. Log and swallow — sign-in audits
+    // are observability, not policy.
+    console.error('[auth-hooks.after] handleSignInSuccessAudit: audit emit failed:', error)
+  }
 }
 
 /**
