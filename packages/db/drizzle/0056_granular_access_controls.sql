@@ -80,10 +80,14 @@ ALTER TABLE "user_segments"
 -- ---------------------------------------------------------------
 -- 4. audit_log table
 -- ---------------------------------------------------------------
+-- `id` is text because TypeIDs serialize as their prefixed-string form.
+-- `actor_user_id` must be uuid to match user.id (which is uuid) — Postgres
+-- rejects a text→uuid FK as incompatible types. The drizzle-generated form
+-- of typeIdColumnNullable('user') in this project lands as uuid in SQL.
 CREATE TABLE IF NOT EXISTS "audit_log" (
   "id"              text PRIMARY KEY NOT NULL,
   "occurred_at"     timestamp with time zone DEFAULT now() NOT NULL,
-  "actor_user_id"   text REFERENCES "user"("id") ON DELETE SET NULL,
+  "actor_user_id"   uuid REFERENCES "user"("id") ON DELETE SET NULL,
   "actor_email"     text,
   "actor_role"      text,
   "actor_ip"        text,
