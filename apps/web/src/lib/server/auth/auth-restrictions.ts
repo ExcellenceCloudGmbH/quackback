@@ -205,6 +205,10 @@ export function isSsoConfigured(
  * Recovery codes remain available as the documented break-glass either
  * way; the fail-open here covers the case where the admin doesn't know
  * about recovery codes yet.
+ *
+ * @param authConfig - Reserved; kept for callsite stability. Currently
+ *   unused — enforcement is per-verified-domain only.
+ * @param role - Reserved; kept for callsite stability. Currently unused.
  */
 export function isHardBound(
   provider: AuthProvider,

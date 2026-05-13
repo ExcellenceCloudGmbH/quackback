@@ -27,6 +27,11 @@ const baseSso = {
   autoCreateUsers: false,
 } as const
 
+// `as never` rather than `as AuthConfig['ssoOidc']` because some regression
+// tests pass legacy fields (e.g. `required`) that may be removed from the
+// AuthConfig type in a follow-up. The cast keeps the assertion alive even
+// after the type narrows; the predicate's behaviour is what we're testing,
+// not the type shape.
 const configWithSso = (overrides: Record<string, unknown> = {}): AuthConfig => ({
   ...baseConfig,
   ssoOidc: { ...baseSso, ...overrides } as never,
