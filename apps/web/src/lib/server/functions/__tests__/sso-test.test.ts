@@ -45,7 +45,7 @@ const hoisted = vi.hoisted(() => ({
   requireAuth: vi.fn(),
   getTenantSettings: vi.fn(),
   getSsoClientSecret: vi.fn(),
-  checkUrlSafety: vi.fn(),
+  safeFetch: vi.fn(),
 }))
 
 vi.mock('@/lib/server/redis', () => ({
@@ -68,7 +68,7 @@ vi.mock('@/lib/server/auth/sso-secret', () => ({
 }))
 
 vi.mock('@/lib/server/content/ssrf-guard', () => ({
-  checkUrlSafety: hoisted.checkUrlSafety,
+  safeFetch: hoisted.safeFetch,
 }))
 
 vi.mock('@/lib/server/config', () => ({
@@ -78,7 +78,6 @@ vi.mock('@/lib/server/config', () => ({
 beforeEach(() => {
   vi.clearAllMocks()
   hoisted.requireAuth.mockResolvedValue({ user: { id: 'user_admin' } })
-  hoisted.checkUrlSafety.mockResolvedValue({ safe: true })
 })
 
 // Load the module ONCE — handler order mirrors the export sequence:
@@ -125,7 +124,7 @@ describe('startSsoTestFn', () => {
       },
     })
     hoisted.getSsoClientSecret.mockResolvedValue('secret')
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    hoisted.safeFetch.mockResolvedValue(
       new Response(
         JSON.stringify({
           issuer: 'https://idp',

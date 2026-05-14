@@ -50,6 +50,7 @@ const hoisted = vi.hoisted(() => ({
   mockGetTierLimits: vi.fn(),
   mockIsEmailConfigured: vi.fn().mockReturnValue(true),
   mockCheckUrlSafety: vi.fn().mockResolvedValue({ safe: true }),
+  mockSafeFetch: vi.fn(),
   mockRequireSettings: vi.fn(),
   mockInvalidateSettingsCache: vi.fn(),
   mockBumpAuthConfigVersionInTx: vi.fn(),
@@ -98,9 +99,18 @@ vi.mock('@quackback/email', () => ({
   isEmailConfigured: hoisted.mockIsEmailConfigured,
 }))
 
-vi.mock('@/lib/server/content/ssrf-guard', () => ({
-  checkUrlSafety: hoisted.mockCheckUrlSafety,
-}))
+// Keep the real module (notably `SsrfError`, so the `instanceof`
+// branch in testSsoConnectionFn resolves) and override only the two
+// functions the SSO code calls: the discovery fetch (`safeFetch`) and
+// the per-sub-endpoint check (`checkUrlSafety`).
+vi.mock('@/lib/server/content/ssrf-guard', async (orig) => {
+  const actual = await orig<typeof import('@/lib/server/content/ssrf-guard')>()
+  return {
+    ...actual,
+    checkUrlSafety: hoisted.mockCheckUrlSafety,
+    safeFetch: hoisted.mockSafeFetch,
+  }
+})
 
 vi.mock('@/lib/server/domains/settings/settings.helpers', () => ({
   requireSettings: hoisted.mockRequireSettings,
@@ -401,20 +411,14 @@ describe('testSsoConnectionFn — SSRF-checks discovery endpoints', () => {
       if (url === validDiscovery.token_endpoint) return { safe: false, reason: 'ssrf-rejected' }
       return { safe: true }
     })
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(okFetchResponse(validDiscovery))
+    hoisted.mockSafeFetch.mockResolvedValue(okFetchResponse(validDiscovery))
 
-    try {
-      const result = (await testSsoConnection({
-        data: {
-          discoveryUrl: 'https://acme.idp/.well-known/openid-configuration',
-        },
-      })) as { ok: boolean; error?: string }
-      expect(result).toEqual({ ok: false, error: 'unsafe_endpoint:token_endpoint' })
-    } finally {
-      fetchSpy.mockRestore()
-    }
+    const result = (await testSsoConnection({
+      data: {
+        discoveryUrl: 'https://acme.idp/.well-known/openid-configuration',
+      },
+    })) as { ok: boolean; error?: string }
+    expect(result).toEqual({ ok: false, error: 'unsafe_endpoint:token_endpoint' })
   })
 
   it('rejects when jwks_uri resolves to a private address', async () => {
@@ -422,38 +426,26 @@ describe('testSsoConnectionFn — SSRF-checks discovery endpoints', () => {
       if (url === validDiscovery.jwks_uri) return { safe: false, reason: 'ssrf-rejected' }
       return { safe: true }
     })
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(okFetchResponse(validDiscovery))
+    hoisted.mockSafeFetch.mockResolvedValue(okFetchResponse(validDiscovery))
 
-    try {
-      const result = (await testSsoConnection({
-        data: {
-          discoveryUrl: 'https://acme.idp/.well-known/openid-configuration',
-        },
-      })) as { ok: boolean; error?: string }
-      expect(result).toEqual({ ok: false, error: 'unsafe_endpoint:jwks_uri' })
-    } finally {
-      fetchSpy.mockRestore()
-    }
+    const result = (await testSsoConnection({
+      data: {
+        discoveryUrl: 'https://acme.idp/.well-known/openid-configuration',
+      },
+    })) as { ok: boolean; error?: string }
+    expect(result).toEqual({ ok: false, error: 'unsafe_endpoint:jwks_uri' })
   })
 
   it('passes when all SSRF-checked endpoints are safe', async () => {
     hoisted.mockCheckUrlSafety.mockResolvedValue({ safe: true })
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(okFetchResponse(validDiscovery))
+    hoisted.mockSafeFetch.mockResolvedValue(okFetchResponse(validDiscovery))
 
-    try {
-      const result = (await testSsoConnection({
-        data: {
-          discoveryUrl: 'https://acme.idp/.well-known/openid-configuration',
-        },
-      })) as { ok: boolean; issuer?: string }
-      expect(result).toEqual({ ok: true, issuer: validDiscovery.issuer })
-    } finally {
-      fetchSpy.mockRestore()
-    }
+    const result = (await testSsoConnection({
+      data: {
+        discoveryUrl: 'https://acme.idp/.well-known/openid-configuration',
+      },
+    })) as { ok: boolean; issuer?: string }
+    expect(result).toEqual({ ok: true, issuer: validDiscovery.issuer })
   })
 
   it('does NOT SSRF-check authorization_endpoint (browser redirect only)', async () => {
@@ -467,20 +459,14 @@ describe('testSsoConnectionFn — SSRF-checks discovery endpoints', () => {
       }
       return { safe: true }
     })
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(okFetchResponse(validDiscovery))
+    hoisted.mockSafeFetch.mockResolvedValue(okFetchResponse(validDiscovery))
 
-    try {
-      const result = (await testSsoConnection({
-        data: {
-          discoveryUrl: 'https://acme.idp/.well-known/openid-configuration',
-        },
-      })) as { ok: boolean; issuer?: string }
-      expect(result.ok).toBe(true)
-    } finally {
-      fetchSpy.mockRestore()
-    }
+    const result = (await testSsoConnection({
+      data: {
+        discoveryUrl: 'https://acme.idp/.well-known/openid-configuration',
+      },
+    })) as { ok: boolean; issuer?: string }
+    expect(result.ok).toBe(true)
   })
 })
 

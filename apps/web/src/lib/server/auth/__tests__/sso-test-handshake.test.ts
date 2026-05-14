@@ -1,12 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { runHandshake, type HandshakeInput } from '../sso-test-handshake'
 
-// `checkUrlSafety` does live DNS resolution; in tests we use fake hostnames
-// (idp / idp.example) that won't resolve. Mock it to always return safe so
-// we can exercise the handshake's discovery + token-exchange branches.
-vi.mock('@/lib/server/content/ssrf-guard', () => ({
-  checkUrlSafety: vi.fn(async () => ({ safe: true, address: '203.0.113.1', family: 4 })),
-}))
+// runHandshake fetches discovery / token / JWKS / userinfo through
+// `safeFetch`. Mock only `safeFetch` and keep the rest of the
+// ssrf-guard module real — notably `SsrfError`, so the `instanceof`
+// branches inside the handshake resolve against the real class.
+vi.mock('@/lib/server/content/ssrf-guard', async (orig) => {
+  const actual = await orig<typeof import('@/lib/server/content/ssrf-guard')>()
+  return { ...actual, safeFetch: vi.fn() }
+})
+
+import { safeFetch, SsrfError } from '@/lib/server/content/ssrf-guard'
+const safeFetchMock = vi.mocked(safeFetch)
 
 const baseInput: HandshakeInput = {
   state: 'state123',
@@ -19,16 +24,17 @@ const baseInput: HandshakeInput = {
   expectedState: 'state123',
 }
 
-beforeEach(() => vi.restoreAllMocks())
+beforeEach(() => {
+  safeFetchMock.mockReset()
+})
 
 describe('runHandshake', () => {
   it('rejects on state mismatch before any network call', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
     const result = await runHandshake({ ...baseInput, state: 'wrong' })
     if (result.ok) throw new Error('expected failure')
     expect(result.ok).toBe(false)
     expect(result.stage).toBe('state-validation')
-    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(safeFetchMock).not.toHaveBeenCalled()
   })
 
   it('surfaces IdP error codes from authorize step', async () => {
@@ -44,24 +50,20 @@ describe('runHandshake', () => {
     expect(result.errorCode).toBe('access_denied')
   })
 
-  it('rejects when the discoveryUrl itself fails SSRF check', async () => {
-    // Override the mock for just this test to return unsafe for the discovery URL.
-    const { checkUrlSafety } = await import('@/lib/server/content/ssrf-guard')
-    vi.mocked(checkUrlSafety).mockResolvedValueOnce({ safe: false, reason: 'ssrf-rejected' })
-    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+  it('rejects when the discoveryUrl fails the SSRF check', async () => {
+    // safeFetch validates the URL and throws SsrfError before dialling.
+    safeFetchMock.mockRejectedValueOnce(new SsrfError('ssrf-rejected'))
 
     const result = await runHandshake(baseInput)
 
     if (result.ok) throw new Error('expected failure')
     expect(result.stage).toBe('discovery-fetch')
     expect(result.hint).toMatch(/not safe to fetch/i)
-    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(safeFetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it('returns a structured discovery-fetch failure when fetch throws', async () => {
-    vi.spyOn(globalThis, 'fetch').mockImplementationOnce(() => {
-      throw new TypeError('fetch failed: ECONNRESET')
-    })
+  it('returns a structured discovery-fetch failure when the fetch throws', async () => {
+    safeFetchMock.mockRejectedValueOnce(new TypeError('fetch failed: ECONNRESET'))
 
     const result = await runHandshake(baseInput)
 
@@ -72,7 +74,7 @@ describe('runHandshake', () => {
   })
 
   it('surfaces token-exchange error with human hint', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    safeFetchMock.mockResolvedValueOnce(
       new Response(
         JSON.stringify({
           issuer: 'https://idp',
@@ -82,7 +84,7 @@ describe('runHandshake', () => {
         { status: 200 }
       )
     )
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+    safeFetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ error: 'invalid_grant', error_description: 'Code expired' }), {
         status: 400,
       })

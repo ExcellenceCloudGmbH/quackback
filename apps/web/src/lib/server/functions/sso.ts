@@ -36,46 +36,6 @@ const testSsoConnectionInput = z.object({
   discoveryUrl: httpsUrl,
 })
 
-/**
- * Stream-cap a Response body at `maxBytes`. Used by the test-connection
- * probe so a malicious IdP returning a multi-MB body can't OOM us by
- * having us call `await res.text()` on the whole thing before slicing.
- *
- * Aborts the underlying reader once the cap is hit. Decoding is
- * UTF-8 with `fatal:false` so a malformed multibyte at the boundary
- * doesn't throw — we trim whatever decoded successfully.
- */
-async function readBoundedText(res: Response, maxBytes: number): Promise<string> {
-  if (!res.body) return ''
-  const reader = res.body.getReader()
-  const chunks: Uint8Array[] = []
-  let total = 0
-  try {
-    while (total < maxBytes) {
-      const { value, done } = await reader.read()
-      if (done) break
-      if (!value) continue
-      const remaining = maxBytes - total
-      if (value.byteLength > remaining) {
-        chunks.push(value.subarray(0, remaining))
-        total = maxBytes
-        break
-      }
-      chunks.push(value)
-      total += value.byteLength
-    }
-  } finally {
-    await reader.cancel().catch(() => {})
-  }
-  const buf = new Uint8Array(total)
-  let offset = 0
-  for (const c of chunks) {
-    buf.set(c, offset)
-    offset += c.byteLength
-  }
-  return new TextDecoder('utf-8', { fatal: false }).decode(buf)
-}
-
 export type TestSsoConnectionResult = { ok: true; issuer: string } | { ok: false; error: string }
 
 /**
@@ -88,29 +48,28 @@ export const testSsoConnectionFn = createServerFn({ method: 'POST' })
     await requireAuth({ roles: ['admin'] })
     const { discoveryUrl } = data
 
-    // Reuse the hardened SSRF helper. checkUrlSafety enforces HTTPS
-    // (via isSafeScheme), resolves DNS, and rejects private/loopback/
-    // CGNAT/IPv4-mapped-IPv6 addresses.
-    const { checkUrlSafety } = await import('@/lib/server/content/ssrf-guard')
-    const safety = await checkUrlSafety(discoveryUrl)
-    if (!safety.safe) {
-      const code =
-        safety.reason === 'scheme-rejected'
-          ? 'invalid_url'
-          : safety.reason === 'ssrf-rejected'
-            ? 'private_address'
-            : 'dns_error'
-      return { ok: false, error: code }
-    }
+    // safeFetch validates the URL, connects to the *resolved IP*
+    // (closing the DNS-rebind window a bare checkUrlSafety + fetch
+    // leaves open), never follows redirects, and caps the body size.
+    const { safeFetch, SsrfError, checkUrlSafety } = await import('@/lib/server/content/ssrf-guard')
 
     let res: Response
     try {
-      res = await fetch(discoveryUrl, {
-        redirect: 'manual',
-        signal: AbortSignal.timeout(5000),
+      res = await safeFetch(discoveryUrl, {
         headers: { Accept: 'application/json' },
+        timeoutMs: 5000,
+        maxResponseBytes: 64 * 1024,
       })
     } catch (err) {
+      if (err instanceof SsrfError) {
+        const code =
+          err.reason === 'scheme-rejected'
+            ? 'invalid_url'
+            : err.reason === 'ssrf-rejected'
+              ? 'private_address'
+              : 'dns_error'
+        return { ok: false, error: code }
+      }
       const code = (err as Error).name === 'TimeoutError' ? 'timeout' : 'fetch_error'
       return { ok: false, error: code }
     }
@@ -122,10 +81,8 @@ export const testSsoConnectionFn = createServerFn({ method: 'POST' })
       // self-diagnosable. Microsoft Entra returns JSON with
       // `error_description` (e.g. AADSTS9... "tenant identifier
       // invalid"); Okta uses `errorSummary`; generic OIDC uses
-      // `error_description`. Stream-cap at 4KB — a malicious IdP
-      // returning a multi-MB body would otherwise OOM us before we
-      // reach the slice.
-      const errBody = await readBoundedText(res, 4 * 1024)
+      // `error_description`. safeFetch already capped the body size.
+      const errBody = await res.text()
       let detail = ''
       try {
         const j = JSON.parse(errBody) as Record<string, unknown>
@@ -144,14 +101,9 @@ export const testSsoConnectionFn = createServerFn({ method: 'POST' })
     if (!ct.includes('application/json')) {
       return { ok: false, error: 'wrong_content_type' }
     }
-    // Stream-cap at 64KB. Discovery docs are tiny (~3KB typical) —
-    // anything larger is a malformed response or a hostile IdP.
-    const text = await readBoundedText(res, 64 * 1024)
+    const text = await res.text()
     if (text.length === 0) {
       return { ok: false, error: 'empty_body' }
-    }
-    if (text.length >= 64 * 1024) {
-      return { ok: false, error: 'too_large' }
     }
     let json: Record<string, unknown>
     try {
@@ -351,18 +303,12 @@ export const getSsoStatusFn = createServerFn({ method: 'GET' }).handler(
         discoveryReachable = cached.ok
       } else {
         try {
-          const { checkUrlSafety } = await import('@/lib/server/content/ssrf-guard')
-          const safety = await checkUrlSafety(ssoConfig.discoveryUrl)
-          if (!safety.safe) {
-            discoveryReachable = false
-          } else {
-            const res = await fetch(ssoConfig.discoveryUrl, {
-              redirect: 'manual',
-              signal: AbortSignal.timeout(3000),
-              headers: { Accept: 'application/json' },
-            })
-            discoveryReachable = res.ok
-          }
+          const { safeFetch } = await import('@/lib/server/content/ssrf-guard')
+          const res = await safeFetch(ssoConfig.discoveryUrl, {
+            headers: { Accept: 'application/json' },
+            timeoutMs: 3000,
+          })
+          discoveryReachable = res.ok
         } catch {
           discoveryReachable = false
         }
