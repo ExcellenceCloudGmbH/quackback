@@ -163,22 +163,51 @@ function GenericVerifyPage({
   callbackURL: string | undefined
   errorCallbackURL: string | undefined
 }) {
-  function handleContinue() {
-    const verifyUrl = new URL('/api/auth/magic-link/verify', window.location.origin)
-    verifyUrl.searchParams.set('token', token)
-    if (callbackURL) verifyUrl.searchParams.set('callbackURL', callbackURL)
-    if (errorCallbackURL) verifyUrl.searchParams.set('errorCallbackURL', errorCallbackURL)
-    window.location.href = verifyUrl.toString()
-  }
+  // Build the verify URL once; both the auto-redirect effect and the
+  // fallback button hit it.
+  const verifyHref = (() => {
+    const u = new URL('/api/auth/magic-link/verify', window.location.origin)
+    u.searchParams.set('token', token)
+    if (callbackURL) u.searchParams.set('callbackURL', callbackURL)
+    if (errorCallbackURL) u.searchParams.set('errorCallbackURL', errorCallbackURL)
+    return u.toString()
+  })()
+
+  // Auto-trigger the verify after a short delay. The delay matters
+  // for two things:
+  //   - Email-prefetch defense: Outlook Safe Links / Slack unfurl
+  //     don't execute JS, so a JS-driven redirect still blocks the
+  //     non-browser GETs that would burn the token before the
+  //     human clicks. A purely server-side auto-verify would NOT
+  //     be safe.
+  //   - Reassurance: the customer sees "Signing you in..." for ~600ms
+  //     instead of an unexplained jump, so a slow magic-link redirect
+  //     doesn't feel like a broken page.
+  const [signingIn, setSigningIn] = useState(false)
+  useEffect(() => {
+    setSigningIn(true)
+    const t = window.setTimeout(() => {
+      window.location.href = verifyHref
+    }, 600)
+    return () => window.clearTimeout(t)
+  }, [verifyHref])
 
   return (
     <PageShell>
       <Card>
-        <h1 className="text-2xl font-bold tracking-tight">Confirm sign-in</h1>
-        <p className="mt-2 text-muted-foreground">Click the button below to complete signing in.</p>
-        <Button onClick={handleContinue} className="mt-6 w-full h-11">
-          Continue
-        </Button>
+        <div className="flex items-center justify-center gap-2">
+          <ArrowPathIcon className="h-5 w-5 animate-spin text-primary" aria-hidden />
+          <h1 className="text-2xl font-bold tracking-tight">Signing you in&hellip;</h1>
+        </div>
+        <p className="mt-2 text-muted-foreground">Hang tight, this only takes a moment.</p>
+        {/* Fallback for users who landed here with JS disabled or saw
+            the auto-redirect blocked. Stays visible the whole time
+            so a stalled redirect has a manual way out. */}
+        <a href={verifyHref} className="mt-6 inline-block">
+          <Button variant="outline" className="h-11" disabled={signingIn === undefined}>
+            Continue
+          </Button>
+        </a>
       </Card>
     </PageShell>
   )
