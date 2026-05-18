@@ -5,7 +5,19 @@
  * Summaries include a prose overview, urgency level, key quotes, and next steps.
  */
 
-import { db, posts, comments, eq, and, or, isNull, ne, desc, sql } from '@/lib/server/db'
+import {
+  db,
+  posts,
+  comments,
+  eq,
+  and,
+  or,
+  isNull,
+  ne,
+  desc,
+  sql,
+  notInArray,
+} from '@/lib/server/db'
 import { getOpenAI, stripCodeFences } from '@/lib/server/domains/ai/config'
 import { withRetry } from '@/lib/server/domains/ai/retry'
 import { enforceAiTokenBudget } from '@/lib/server/domains/settings/tier-enforce'
@@ -197,11 +209,14 @@ async function _doSweep(): Promise<void> {
     .groupBy(comments.postId)
     .as('live_cc')
 
-  // Failed rows stay stale (summaryJson NULL) and would re-enter every batch
-  // query forever; remember what we've already tried this run.
+  // Failed rows stay stale (summaryJson NULL); without skipping them we'd
+  // re-hit the same top-of-order rows every iteration. Excluding at the DB
+  // level (not client-side after LIMIT) is what lets the sweep peel past a
+  // block of permanent failures and reach healthy rows below them.
   const attempted = new Set<PostId>()
   let totalProcessed = 0
   let totalFailed = 0
+  let consecutiveEmptyBatches = 0
 
   while (true) {
     const stalePosts = await db
@@ -214,21 +229,21 @@ async function _doSweep(): Promise<void> {
           or(
             isNull(posts.summaryJson),
             ne(posts.summaryCommentCount, sql`coalesce(${liveCommentCountSq.count}, 0)`)
-          )
+          ),
+          attempted.size > 0 ? notInArray(posts.id, [...attempted]) : undefined
         )
       )
       .orderBy(desc(posts.updatedAt))
       .limit(SWEEP_BATCH_SIZE)
 
-    const batch = stalePosts.filter(({ id }) => !attempted.has(id))
-    if (batch.length === 0) break
+    if (stalePosts.length === 0) break
 
     if (totalProcessed === 0 && totalFailed === 0) {
       console.log(`[Summary] Found stale posts, processing...`)
     }
 
     let batchSucceeded = 0
-    for (const { id } of batch) {
+    for (const { id } of stalePosts) {
       attempted.add(id)
       try {
         await generateAndSavePostSummary(id)
@@ -240,17 +255,23 @@ async function _doSweep(): Promise<void> {
       }
     }
 
-    // Whole batch failed — almost always systemic (bad model id, revoked key,
-    // upstream down). Bail out instead of burning the next 30 minutes hitting
-    // the same wall; the next scheduled sweep will retry from a fresh slate.
+    // Two consecutive zero-success batches almost always means a systemic
+    // problem (bad model id, revoked key, upstream down). One zero-success
+    // batch alone isn't enough — it can just be a block of permanent failures
+    // at the top of the order that we need to skip past to reach healthy rows.
     if (batchSucceeded === 0) {
-      console.error(
-        `[Summary] Aborting sweep: 0/${batch.length} succeeded in batch (${totalProcessed} processed, ${totalFailed} failed total). Next sweep will retry.`
-      )
-      break
+      consecutiveEmptyBatches++
+      if (consecutiveEmptyBatches >= 2) {
+        console.error(
+          `[Summary] Aborting sweep: ${consecutiveEmptyBatches} consecutive batches with 0 successes (${totalProcessed} processed, ${totalFailed} failed total). Next sweep will retry.`
+        )
+        break
+      }
+    } else {
+      consecutiveEmptyBatches = 0
+      console.log(`[Summary] Progress: ${totalProcessed} processed, ${totalFailed} failed`)
     }
 
-    console.log(`[Summary] Progress: ${totalProcessed} processed, ${totalFailed} failed`)
     await new Promise((resolve) => setTimeout(resolve, SWEEP_BATCH_DELAY_MS))
   }
 
