@@ -8,6 +8,7 @@ import {
   twoFactorClient,
 } from 'better-auth/client/plugins'
 import { isSafeCallbackUrl } from '@/lib/shared/routing'
+import { detectAuthBlockRedirect } from './redirect-errors'
 
 /**
  * sessionStorage key for the post-2FA destination URL.
@@ -95,6 +96,19 @@ export function resolveTwoFactorDest(
  * Note: No baseURL needed - Better Auth client defaults to current origin
  */
 export const authClient = createAuthClient({
+  fetchOptions: {
+    // `handleSignInPreCheck` blocks denied methods with a 302 to
+    // /admin/login or /auth/login carrying `?error=<code>`. fetch
+    // follows the redirect and the HTML body parses as null JSON,
+    // so without this hook the awaiting form sees no error and
+    // closes its popover silently. Surfacing the redirect as a
+    // thrown error lets the form's existing try/catch show the
+    // pre-check's reason to the user.
+    onResponse: async (ctx) => {
+      const blocked = detectAuthBlockRedirect(ctx.response)
+      if (blocked) throw blocked
+    },
+  },
   plugins: [
     anonymousClient(),
     emailOTPClient(),
