@@ -2297,13 +2297,14 @@ export function generateContentHTML(content: JSONContent): string {
       }
 
       case 'emoji': {
-        // Emoji is a leaf node — the Unicode char lives on attrs.emoji.
-        // Sanitize-tiptap caps the field at 16 chars and the picker only
-        // inserts items from the bundled Unicode set, but we still HTML-
-        // escape here for defence-in-depth.
-        const ch = String(node.attrs?.emoji ?? '')
+        // @tiptap/extension-emoji persists `{ name }` only — the Unicode char
+        // is re-derived at render time from the bundled set. Sanitize-tiptap
+        // keeps `emoji` if it was supplied, so we still prefer attrs.emoji
+        // when present and HTML-escape for defence-in-depth.
+        const rawName = String(node.attrs?.name ?? '')
+        const ch = String(node.attrs?.emoji ?? lookupEmoji(rawName)?.emoji ?? '')
         const escaped = ch.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        const name = escapeHtmlAttr(String(node.attrs?.name ?? ''))
+        const name = escapeHtmlAttr(rawName)
         const dataNameAttr = name ? ` data-name="${name}"` : ''
         return `<span data-type="emoji"${dataNameAttr}>${escaped}</span>`
       }
