@@ -214,8 +214,11 @@ export async function verifyApiKey(key: string, scope?: string): Promise<ApiKey 
   return toApiKey(apiKey)
 }
 
-function hasScope(scopesRaw: string | null, scope: string): boolean {
+function hasScope(scopesRaw: string | string[] | null, scope: string): boolean {
   if (!scopesRaw) return false
+  // Native text[] array from PostgreSQL
+  if (Array.isArray(scopesRaw)) return scopesRaw.includes(scope)
+  // Fallback: JSON-encoded string (legacy compat)
   try {
     const parsed = JSON.parse(scopesRaw)
     return Array.isArray(parsed) && parsed.includes(scope)

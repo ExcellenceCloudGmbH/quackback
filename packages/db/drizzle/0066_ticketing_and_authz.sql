@@ -1153,6 +1153,16 @@ ON CONFLICT ("role_id", "permission_id") DO NOTHING;
 -- continue to work; admins can opt in to scoping per key.
 
 -- ---------------------------------------------------------------------------
+-- api_keys: upgrade scopes column from text (added by 0050) to text[]
+-- ---------------------------------------------------------------------------
+
+-- Main's migration 0050_api_keys_scopes added "scopes" as plain text.
+-- The ticketing RBAC model requires a native text[] array for GIN indexing
+-- and direct array operations. Drop the text column and re-add as text[].
+ALTER TABLE "api_keys" DROP COLUMN IF EXISTS "scopes";
+--> statement-breakpoint
+
+-- ---------------------------------------------------------------------------
 -- api_keys: new columns
 -- ---------------------------------------------------------------------------
 
