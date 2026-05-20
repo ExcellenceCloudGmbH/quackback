@@ -8,6 +8,8 @@ import { AdminSidebar } from '@/components/admin/admin-sidebar'
 import { PostModal } from '@/components/admin/feedback/post-modal'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { UpdateBanner } from '@/components/admin/update-banner'
+import { authzKeys } from '@/lib/client/hooks/use-authz-queries'
+import { getMyPermissionsFn } from '@/lib/server/functions/authz'
 
 export const Route = createFileRoute('/admin')({
   beforeLoad: async ({ location }) => {
@@ -48,6 +50,15 @@ export const Route = createFileRoute('/admin')({
         data: { userId: user.id, fallbackImageUrl: user.image },
       }),
       getLatestVersion(),
+      // Prefetch permissions so sidebar nav items and ticket controls
+      // render correctly on first paint (no disabled-controls flash).
+      // Use prefetchQuery (not ensureQueryData) so transient errors don't
+      // crash the loader — the hook will retry on the client side.
+      context.queryClient.prefetchQuery({
+        queryKey: authzKeys.me(),
+        queryFn: () => getMyPermissionsFn(),
+        staleTime: 60_000,
+      }),
     ])
 
     const latestVersion =

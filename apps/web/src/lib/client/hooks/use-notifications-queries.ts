@@ -27,11 +27,26 @@ export const notificationsKeys = {
 export interface SerializedNotification {
   id: NotificationId
   principalId: string
-  type: 'post_status_changed' | 'comment_created' | 'post_mentioned'
+  type:
+    | 'post_status_changed'
+    | 'comment_created'
+    | 'post_mentioned'
+    | 'changelog_published'
+    | 'ticket_thread_added'
+    | 'ticket_status_changed'
+    | 'ticket_assigned'
+    | 'ticket_unassigned'
+    | 'ticket_participant_added'
+    | 'ticket_participant_removed'
+    | 'ticket_shared'
+    | 'ticket_unshared'
+    | 'ticket_sla_warning'
+    | 'ticket_sla_breach'
   title: string
   body: string | null
   postId: string | null
   commentId: string | null
+  ticketId: string | null
   readAt: string | null
   archivedAt: string | null
   createdAt: string

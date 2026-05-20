@@ -5,12 +5,14 @@ import {
   db,
   integrations,
   integrationEventMappings,
+  integrationUserMappings,
+  integrationSyncLog,
   slackChannelMonitors,
   eq,
   and,
   sql,
 } from '@/lib/server/db'
-import type { IntegrationId, BoardId } from '@quackback/ids'
+import type { IntegrationId, BoardId, PrincipalId } from '@quackback/ids'
 // cacheDel/CACHE_KEYS are imported dynamically inside handlers to keep ioredis out of the client bundle
 
 // ============================================
@@ -456,4 +458,146 @@ export const removeMonitoredChannelFn = createServerFn({ method: 'POST' })
 
     console.log(`[fn:integrations] removeMonitoredChannelFn: removed`)
     return { success: true }
+  })
+
+// ============================================
+// Integration User Mapping CRUD
+// ============================================
+
+const fetchUserMappingsSchema = z.object({
+  integrationId: z.string(),
+})
+
+const upsertUserMappingSchema = z.object({
+  integrationId: z.string(),
+  externalUsername: z.string().min(1),
+  externalDisplayName: z.string().optional(),
+  principalId: z.string(),
+})
+
+const deleteUserMappingSchema = z.object({
+  integrationId: z.string(),
+  externalUsername: z.string(),
+})
+
+export type UpsertUserMappingInput = z.infer<typeof upsertUserMappingSchema>
+export type DeleteUserMappingInput = z.infer<typeof deleteUserMappingSchema>
+
+/**
+ * Fetch user mappings for an integration
+ */
+export const fetchUserMappingsFn = createServerFn({ method: 'GET' })
+  .inputValidator(fetchUserMappingsSchema)
+  .handler(async ({ data }) => {
+    await requireAuth({ roles: ['admin'] })
+
+    return db.query.integrationUserMappings.findMany({
+      where: eq(integrationUserMappings.integrationId, data.integrationId as IntegrationId),
+      orderBy: (m, { asc }) => [asc(m.externalUsername)],
+    })
+  })
+
+/**
+ * Create or update a user mapping
+ */
+export const upsertUserMappingFn = createServerFn({ method: 'POST' })
+  .inputValidator(upsertUserMappingSchema)
+  .handler(async ({ data }) => {
+    await requireAuth({ roles: ['admin'] })
+
+    await db
+      .insert(integrationUserMappings)
+      .values({
+        integrationId: data.integrationId as IntegrationId,
+        externalUsername: data.externalUsername,
+        externalDisplayName: data.externalDisplayName ?? null,
+        principalId: data.principalId as PrincipalId,
+      })
+      .onConflictDoUpdate({
+        target: [integrationUserMappings.integrationId, integrationUserMappings.externalUsername],
+        set: {
+          principalId: data.principalId as PrincipalId,
+          externalDisplayName: data.externalDisplayName ?? null,
+          updatedAt: new Date(),
+        },
+      })
+
+    return { success: true }
+  })
+
+/**
+ * Delete a user mapping
+ */
+export const deleteUserMappingFn = createServerFn({ method: 'POST' })
+  .inputValidator(deleteUserMappingSchema)
+  .handler(async ({ data }) => {
+    await requireAuth({ roles: ['admin'] })
+
+    await db
+      .delete(integrationUserMappings)
+      .where(
+        and(
+          eq(integrationUserMappings.integrationId, data.integrationId as IntegrationId),
+          eq(integrationUserMappings.externalUsername, data.externalUsername)
+        )
+      )
+
+    return { success: true }
+  })
+
+// ============================================
+// Integration Sync Log
+// ============================================
+
+const fetchSyncLogSchema = z.object({
+  integrationId: z.string(),
+  limit: z.number().optional(),
+  cursor: z.string().optional(),
+  statusFilter: z.enum(['all', 'failed']).optional(),
+})
+
+/**
+ * Fetch paginated sync log entries for an integration (most recent first).
+ */
+export const fetchSyncLogFn = createServerFn({ method: 'GET' })
+  .inputValidator(fetchSyncLogSchema)
+  .handler(async ({ data }) => {
+    await requireAuth({ roles: ['admin'] })
+    const { desc, lt, tickets } = await import('@/lib/server/db')
+
+    const limit = Math.min(data.limit ?? 25, 100)
+    const conditions = [eq(integrationSyncLog.integrationId, data.integrationId as IntegrationId)]
+
+    if (data.statusFilter === 'failed') {
+      conditions.push(eq(integrationSyncLog.status, 'failed'))
+    }
+
+    if (data.cursor) {
+      conditions.push(lt(integrationSyncLog.createdAt, new Date(data.cursor)))
+    }
+
+    const rows = await db
+      .select({
+        id: integrationSyncLog.id,
+        ticketId: integrationSyncLog.ticketId,
+        externalId: integrationSyncLog.externalId,
+        eventType: integrationSyncLog.eventType,
+        direction: integrationSyncLog.direction,
+        status: integrationSyncLog.status,
+        errorMessage: integrationSyncLog.errorMessage,
+        durationMs: integrationSyncLog.durationMs,
+        createdAt: integrationSyncLog.createdAt,
+        ticketSubject: tickets.subject,
+      })
+      .from(integrationSyncLog)
+      .leftJoin(tickets, eq(integrationSyncLog.ticketId, tickets.id))
+      .where(and(...conditions))
+      .orderBy(desc(integrationSyncLog.createdAt))
+      .limit(limit + 1)
+
+    const hasMore = rows.length > limit
+    const items = rows.slice(0, limit)
+    const nextCursor = hasMore ? items[items.length - 1].createdAt.toISOString() : null
+
+    return { items, nextCursor }
   })

@@ -137,6 +137,21 @@ Example: \`post_01h455vb4pex5vsknk084sn02q\`
       { name: 'Members', description: 'Manage workspace members' },
       { name: 'Roadmaps', description: 'Manage roadmaps' },
       { name: 'Changelog', description: 'Manage changelog entries' },
+      {
+        name: 'Tickets',
+        description: 'Customer-support tickets, threads, participants, shares, bulk ops',
+      },
+      { name: 'Support Config', description: 'Inboxes, channels, memberships' },
+      { name: 'Routing', description: 'Routing rules + dry-run preview' },
+      {
+        name: 'SLA',
+        description: 'Business hours, SLA policies, escalation rules, internal cron tick',
+      },
+      { name: 'Organizations', description: 'Customer organizations (B2B context)' },
+      { name: 'Contacts', description: 'Customer contacts + portal-user links' },
+      { name: 'Audit', description: 'Workspace audit log' },
+      { name: 'API Keys', description: 'Scoped API keys (legacy compat + per-key scopes)' },
+      { name: 'Webhooks', description: 'Webhook delivery audit log' },
     ],
     paths: registeredPaths,
     components: {

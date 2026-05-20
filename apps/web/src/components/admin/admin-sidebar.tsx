@@ -12,6 +12,8 @@ import {
   BookOpenIcon,
   ChartBarIcon,
   QuestionMarkCircleIcon,
+  TicketIcon,
+  BuildingOffice2Icon,
 } from '@heroicons/react/24/solid'
 import { Button } from '@/components/ui/button'
 import { Avatar } from '@/components/ui/avatar'
@@ -30,6 +32,8 @@ import { NotificationBell } from '@/components/notifications'
 import { cn } from '@/lib/shared/utils'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { LatestVersionResult } from '@/lib/server/functions/version'
+import { useMyPermissions } from '@/lib/client/hooks/use-authz-queries'
+import { PERMISSIONS, type PermissionKey } from '@/lib/server/domains/authz'
 
 interface AdminSidebarProps {
   initialUserData?: {
@@ -40,8 +44,28 @@ interface AdminSidebarProps {
   latestVersion?: LatestVersionResult | null
 }
 
-const navItems = [
+interface NavItemDef {
+  label: string
+  href: string
+  icon: typeof ChatBubbleLeftIcon
+  /** Optional permission gate; nav entry is hidden when actor lacks the permission. */
+  requiresPermission?: PermissionKey
+}
+
+const navItems: NavItemDef[] = [
   { label: 'Feedback', href: '/admin/feedback', icon: ChatBubbleLeftIcon },
+  {
+    label: 'Tickets',
+    href: '/admin/tickets',
+    icon: TicketIcon,
+    requiresPermission: PERMISSIONS.TICKET_VIEW_ALL,
+  },
+  {
+    label: 'Contacts',
+    href: '/admin/contacts',
+    icon: BuildingOffice2Icon,
+    requiresPermission: PERMISSIONS.ORG_VIEW,
+  },
   { label: 'Roadmap', href: '/admin/roadmap', icon: MapIcon },
   { label: 'Changelog', href: '/admin/changelog', icon: DocumentTextIcon },
   { label: 'Help Center', href: '/admin/help-center', icon: BookOpenIcon },
@@ -94,10 +118,19 @@ export function AdminSidebar({ initialUserData, latestVersion }: AdminSidebarPro
   const { session, settings } = useRouteContext({ from: '__root__' })
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const flags = settings?.featureFlags as { analytics?: boolean; helpCenter?: boolean } | undefined
+  const { data: myPerms } = useMyPermissions()
 
   const filteredNavItems = navItems.filter((item) => {
     if (item.href === '/admin/analytics') return flags?.analytics ?? false
     if (item.href === '/admin/help-center') return flags?.helpCenter ?? false
+    if (item.requiresPermission) {
+      if (!myPerms) return false
+      const ws = myPerms.workspacePermissions.includes(item.requiresPermission)
+      const team = myPerms.teamPermissions.some((t) =>
+        t.permissions.includes(item.requiresPermission!)
+      )
+      return ws || team
+    }
     return true
   })
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)

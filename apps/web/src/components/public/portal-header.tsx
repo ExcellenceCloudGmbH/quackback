@@ -61,7 +61,7 @@ export function PortalHeader({
   const helpCenterEnabled =
     !!settings?.featureFlags?.helpCenter && !!settings?.helpCenterConfig?.enabled
   const onHelpPages = pathname === '/hc' || pathname.startsWith('/hc/')
-  const navItems = buildNavItems({ helpCenterEnabled })
+  const navItems = buildNavItems({ helpCenterEnabled, isSignedIn: !!session?.user })
 
   const authPopover = useAuthPopoverSafe()
   const openAuthPopover = authPopover?.openAuthPopover

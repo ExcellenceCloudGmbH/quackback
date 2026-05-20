@@ -45,6 +45,7 @@ export type OpenOptions =
   | { view: 'new-post'; title?: string; body?: string; board?: string }
   | { view: 'changelog'; entryId?: string }
   | { view: 'help'; query?: string }
+  | { view: 'support'; ticketId?: string }
   | { postId: string }
   | { articleId: string }
 
@@ -62,10 +63,11 @@ export interface WidgetUser {
 export interface EventMap {
   ready: Record<string, never>
   open: {
-    view?: 'home' | 'new-post' | 'changelog' | 'help'
+    view?: 'home' | 'new-post' | 'changelog' | 'help' | 'support'
     postId?: string
     articleId?: string
     entryId?: string
+    ticketId?: string
   }
   close: Record<string, never>
   'post:created': {
@@ -84,6 +86,32 @@ export interface EventMap {
   }
   /** Fires when an anonymous user supplies an email inline. */
   'email-submitted': { email: string }
+  /** Fires when the user successfully creates a support ticket from the widget. */
+  'ticket:created': {
+    id: string
+    subject: string
+    statusId: string
+    statusCategory: 'open' | 'pending' | 'on_hold' | 'solved' | 'closed'
+  }
+  /** Fires when the user posts a reply on one of their tickets. */
+  'ticket:replied': {
+    ticketId: string
+    threadId: string
+  }
+  /** Fires when the user marks one of their tickets as resolved. */
+  'ticket:resolved': {
+    ticketId: string
+    statusId: string
+    /** True when the ticket was already in a solved/closed status; no transition occurred. */
+    alreadyResolved: boolean
+  }
+  /** Fires when the user reopens one of their previously-solved tickets. */
+  'ticket:reopened': {
+    ticketId: string
+    statusId: string
+    /** True when the ticket was already in an open category; no transition occurred. */
+    alreadyOpen: boolean
+  }
 }
 
 export type EventName = keyof EventMap

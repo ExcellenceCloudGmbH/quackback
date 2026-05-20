@@ -13,6 +13,10 @@ import { WidgetChangelogDetail } from '@/components/widget/widget-changelog-deta
 import { WidgetHelp } from '@/components/widget/widget-help'
 import { WidgetHelpCategory } from '@/components/widget/widget-help-category'
 import { WidgetHelpDetail } from '@/components/widget/widget-help-detail'
+import { WidgetSupportCard } from '@/components/widget/widget-support-card'
+import { WidgetSupportList } from '@/components/widget/widget-support-list'
+import { WidgetSupportNew } from '@/components/widget/widget-support-new'
+import { WidgetSupportDetail } from '@/components/widget/widget-support-detail'
 import { useWidgetAuth } from '@/components/widget/widget-auth-provider'
 import { portalQueries } from '@/lib/client/queries/portal'
 import { widgetQueryKeys, INITIAL_SESSION_VERSION } from '@/lib/client/hooks/use-widget-vote'
@@ -78,6 +82,7 @@ export const Route = createFileRoute('/widget/')({
       },
       imageUploadsInWidget: settings?.publicWidgetConfig?.imageUploadsInWidget ?? true,
       defaultBoard: settings?.publicWidgetConfig?.defaultBoard,
+      ticketingEnabled: settings?.publicWidgetConfig?.ticketing?.enabled ?? false,
     }
   },
   component: WidgetPage,
@@ -92,6 +97,9 @@ type WidgetView =
   | 'help'
   | 'help-category'
   | 'help-detail'
+  | 'support-list'
+  | 'support-new'
+  | 'support-detail'
 
 interface SuccessPost {
   id: string
@@ -112,6 +120,7 @@ function WidgetPage() {
     tabs,
     imageUploadsInWidget,
     defaultBoard,
+    ticketingEnabled,
   } = Route.useLoaderData()
   const { isIdentified, ensureSession } = useWidgetAuth()
   const canVote = isIdentified || features.anonymousVoting
@@ -130,6 +139,7 @@ function WidgetPage() {
     name: string
     icon: string | null
   } | null>(null)
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
   const [createdPosts, setCreatedPosts] = useState<typeof posts>([])
 
   const allPosts = useMemo(() => {
@@ -144,18 +154,27 @@ function WidgetPage() {
       const msg = event.data
       if (!msg || typeof msg !== 'object' || msg.type !== 'quackback:open' || !msg.data) return
 
-      const opts = msg.data as { view?: string }
+      const opts = msg.data as { view?: string; ticketId?: string }
       if (opts.view === 'changelog' && tabs.changelog) {
         setActiveTab('changelog')
         setView('changelog')
       } else if (opts.view === 'help' && tabs.help) {
         setActiveTab('help')
         setView('help')
+      } else if (opts.view === 'support') {
+        if (!ticketingEnabled) return
+        setActiveTab('feedback')
+        if (opts.ticketId) {
+          setSelectedTicketId(opts.ticketId)
+          setView('support-detail')
+        } else {
+          setView('support-list')
+        }
       }
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [tabs.changelog, tabs.help])
+  }, [tabs.changelog, tabs.help, ticketingEnabled])
 
   const handlePostCreated = useCallback((post: SuccessPost) => {
     setCreatedPosts((prev) => [
@@ -198,6 +217,16 @@ function WidgetPage() {
       setView('help')
       return
     }
+    if (view === 'support-detail') {
+      setSelectedTicketId(null)
+      setView('support-list')
+      return
+    }
+    if (view === 'support-new' || view === 'support-list') {
+      setSelectedTicketId(null)
+      setView('home')
+      return
+    }
     setSelectedPostId(null)
     setView('home')
   }, [view, selectedCategory])
@@ -238,6 +267,27 @@ function WidgetPage() {
   const handleHelpCategoryArticleSelect = useCallback((articleSlug: string) => {
     setSelectedHelpSlug(articleSlug)
     setView('help-detail')
+  }, [])
+
+  const handleSupportOpen = useCallback(() => {
+    if (!ticketingEnabled) return
+    setActiveTab('feedback')
+    setSelectedTicketId(null)
+    setView('support-list')
+  }, [ticketingEnabled])
+
+  const handleSupportNewTicket = useCallback(() => {
+    setView('support-new')
+  }, [])
+
+  const handleSupportTicketSelect = useCallback((ticketId: string) => {
+    setSelectedTicketId(ticketId)
+    setView('support-detail')
+  }, [])
+
+  const handleSupportTicketCreated = useCallback((ticket: { id: string }) => {
+    setSelectedTicketId(ticket.id)
+    setView('support-detail')
   }, [])
 
   const shellOnBack =
@@ -298,8 +348,24 @@ function WidgetPage() {
           anonymousVotingEnabled={features.anonymousVoting}
           anonymousPostingEnabled={features.anonymousPosting}
           imageUploadsInWidget={imageUploadsInWidget}
+          supportSlot={
+            ticketingEnabled ? <WidgetSupportCard onOpen={handleSupportOpen} /> : undefined
+          }
         />
       </div>
+
+      {view === 'support-list' && (
+        <WidgetSupportList
+          onNewTicket={handleSupportNewTicket}
+          onTicketSelect={handleSupportTicketSelect}
+        />
+      )}
+
+      {view === 'support-new' && <WidgetSupportNew onCreated={handleSupportTicketCreated} />}
+
+      {view === 'support-detail' && selectedTicketId && (
+        <WidgetSupportDetail ticketId={selectedTicketId} />
+      )}
 
       {view === 'post-detail' && selectedPostId && (
         <WidgetPostDetail

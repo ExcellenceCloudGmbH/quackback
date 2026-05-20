@@ -5,76 +5,76 @@ import { adminQueries } from '@/lib/client/queries/admin'
 import { IntegrationHeader } from '@/components/admin/settings/integrations/integration-header'
 import { IntegrationSetupCard } from '@/components/admin/settings/integrations/integration-setup-card'
 import { PlatformCredentialsDialog } from '@/components/admin/settings/integrations/platform-credentials-dialog'
-import { GitHubConnectionActions } from '@/components/admin/settings/integrations/github/github-connection-actions'
-import { GitHubConfig } from '@/components/admin/settings/integrations/github/github-config'
+import { GitHubConnectionCard } from '@/components/admin/settings/integrations/github/github-connection-card'
+import { GitHubAddRepoDialog } from '@/components/admin/settings/integrations/github/github-add-repo-dialog'
 import { Button } from '@/components/ui/button'
+import { PlusIcon } from '@heroicons/react/24/solid'
 import { GitHubIcon } from '@/components/icons/integration-icons'
 import { githubCatalog } from '@/lib/shared/integration-catalog'
 
 export const Route = createFileRoute('/admin/settings/integrations/github')({
   loader: async ({ context }) => {
     const { queryClient } = context
-    await queryClient.ensureQueryData(adminQueries.integrationByType('github'))
+    await queryClient.ensureQueryData(adminQueries.githubIntegrations())
     return {}
   },
   component: GitHubIntegrationPage,
 })
 
 function GitHubIntegrationPage() {
-  const integrationQuery = useSuspenseQuery(adminQueries.integrationByType('github'))
-  const { integration, platformCredentialFields, platformCredentialsConfigured } =
-    integrationQuery.data
+  const githubQuery = useSuspenseQuery(adminQueries.githubIntegrations())
+  const { connections, platformCredentialFields, platformCredentialsConfigured } = githubQuery.data
   const [credentialsOpen, setCredentialsOpen] = useState(false)
+  const [addRepoOpen, setAddRepoOpen] = useState(false)
 
-  const isConnected = integration?.status === 'active'
-  const isPaused = integration?.status === 'paused'
+  const hasConnections = connections.length > 0
+  const anyActive = connections.some((c) => c.status === 'active')
 
   return (
     <div className="space-y-6">
       <IntegrationHeader
         catalog={githubCatalog}
-        status={integration?.status as 'active' | 'paused' | 'pending' | null}
-        workspaceName={integration?.workspaceName}
+        status={anyActive ? 'active' : hasConnections ? 'paused' : null}
         icon={<GitHubIcon className="h-6 w-6 text-white" />}
         actions={
-          isConnected || isPaused ? (
+          hasConnections ? (
             <div className="flex items-center gap-2">
               {platformCredentialFields.length > 0 && (
                 <Button variant="outline" size="sm" onClick={() => setCredentialsOpen(true)}>
                   Configure credentials
                 </Button>
               )}
-              <GitHubConnectionActions integrationId={integration?.id} isConnected={true} />
+              {platformCredentialsConfigured && (
+                <Button size="sm" onClick={() => setAddRepoOpen(true)}>
+                  <PlusIcon className="mr-1.5 h-4 w-4" />
+                  Add repository
+                </Button>
+              )}
             </div>
           ) : undefined
         }
       />
 
-      {integration && (isConnected || isPaused) && (
-        <div className="rounded-xl border border-border/50 bg-card p-6 shadow-sm">
-          <GitHubConfig
-            integrationId={integration.id}
-            initialConfig={integration.config}
-            initialEventMappings={integration.eventMappings}
-            enabled={isConnected}
-          />
+      {hasConnections && (
+        <div className="space-y-4">
+          {connections.map((connection) => (
+            <GitHubConnectionCard key={connection.id} connection={connection} />
+          ))}
         </div>
       )}
 
-      {!integration && (
+      {!hasConnections && (
         <IntegrationSetupCard
           icon={<GitHubIcon className="h-6 w-6 text-muted-foreground" />}
-          title="Connect your GitHub account"
-          description="Connect GitHub to automatically create issues from user feedback and sync statuses when issues are closed or reopened."
+          title="Connect your GitHub repositories"
+          description="Connect GitHub to sync tickets with issues bidirectionally. You can add multiple repositories, each with its own sync settings."
           steps={[
             <p key="1">
-              Click <span className="font-medium text-foreground">Connect</span> to authorize
-              Quackback to create issues in your GitHub repositories.
+              Click <span className="font-medium text-foreground">Add repository</span> to authorize
+              Quackback and select a repository.
             </p>,
-            <p key="2">Select which repository new feedback issues should be created in.</p>,
-            <p key="3">
-              Choose which events trigger issue creation. You can change these settings at any time.
-            </p>,
+            <p key="2">Configure sync direction, status mappings, and which events to sync.</p>,
+            <p key="3">Add more repositories at any time — each with independent settings.</p>,
           ]}
           connectionForm={
             <div className="flex flex-col items-end gap-2">
@@ -86,7 +86,10 @@ function GitHubIntegrationPage() {
                   <Button variant="outline" size="sm" onClick={() => setCredentialsOpen(true)}>
                     Configure credentials
                   </Button>
-                  <GitHubConnectionActions integrationId={undefined} isConnected={false} />
+                  <Button onClick={() => setAddRepoOpen(true)}>
+                    <PlusIcon className="mr-1.5 h-4 w-4" />
+                    Add repository
+                  </Button>
                 </div>
               )}
             </div>
@@ -103,6 +106,8 @@ function GitHubIntegrationPage() {
           onOpenChange={setCredentialsOpen}
         />
       )}
+
+      <GitHubAddRepoDialog open={addRepoOpen} onOpenChange={setAddRepoOpen} />
     </div>
   )
 }

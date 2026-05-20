@@ -245,6 +245,10 @@ export interface WidgetConfig {
   }
   /** Whether authenticated widget users can upload images in feedback submissions */
   imageUploadsInWidget?: boolean
+  /** Support ticketing surface (entry card on home + ticket endpoints) */
+  ticketing?: {
+    enabled?: boolean
+  }
 }
 
 /**
@@ -253,7 +257,7 @@ export interface WidgetConfig {
  */
 export type PublicWidgetConfig = Pick<
   WidgetConfig,
-  'enabled' | 'defaultBoard' | 'position' | 'tabs' | 'imageUploadsInWidget'
+  'enabled' | 'defaultBoard' | 'position' | 'tabs' | 'imageUploadsInWidget' | 'ticketing'
 > & {
   /** Whether verified identity is required (derived from identifyVerification) */
   hmacRequired?: boolean
@@ -265,6 +269,9 @@ export const DEFAULT_WIDGET_CONFIG: WidgetConfig = {
   tabs: {
     feedback: true,
     changelog: false,
+  },
+  ticketing: {
+    enabled: false,
   },
 }
 
@@ -282,6 +289,9 @@ export interface UpdateWidgetConfigInput {
     help?: boolean
   }
   imageUploadsInWidget?: boolean
+  ticketing?: {
+    enabled?: boolean
+  }
 }
 
 // =============================================================================
@@ -430,12 +440,15 @@ export interface FeatureFlags {
   helpCenter: boolean
   /** AI-powered feedback extraction from external sources */
   aiFeedbackExtraction: boolean
+  /** Customer-support ticketing module (inboxes, routing, queues) */
+  tickets: boolean
 }
 
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   analytics: false,
   helpCenter: false,
   aiFeedbackExtraction: false,
+  tickets: false,
 }
 
 /**
@@ -457,5 +470,10 @@ export const FEATURE_FLAG_REGISTRY: Record<
     label: 'AI Feedback Extraction',
     description:
       'Automatically extract and categorize feedback from connected sources using large language models.',
+  },
+  tickets: {
+    label: 'Ticketing',
+    description:
+      'Enable the customer-support ticketing module: inboxes, routing rules, agent queues, and bulk actions.',
   },
 }

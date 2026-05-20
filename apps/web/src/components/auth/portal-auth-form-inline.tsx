@@ -39,6 +39,15 @@ interface PortalAuthFormInlineProps {
   invitationId?: string | null
   /** Called to switch between login/signup modes */
   onModeSwitch?: (mode: 'login' | 'signup') => void
+  /**
+   * Called immediately when authentication completes in this window.
+   *
+   * Same-window auth still posts to the BroadcastChannel for any other tabs,
+   * but BroadcastChannel delivery within a single window is racy (especially
+   * with browser extensions like password managers in the mix), so we also
+   * notify our hosting dialog directly to guarantee it closes.
+   */
+  onSuccess?: () => void
 }
 
 type Step = 'credentials' | 'email' | 'code' | 'forgot' | 'reset'
@@ -89,6 +98,7 @@ export function PortalAuthFormInline({
   authConfig,
   invitationId,
   onModeSwitch,
+  onSuccess,
 }: PortalAuthFormInlineProps) {
   const passwordEnabled = authConfig?.oauth?.password ?? true
   const emailOtpEnabled = authConfig?.oauth?.email !== false
@@ -206,6 +216,7 @@ export function PortalAuthFormInline({
       }
       const { postAuthSuccess } = await import('@/lib/client/hooks/use-auth-broadcast')
       postAuthSuccess()
+      onSuccess?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Authentication failed')
       setLoadingAction(null)
@@ -252,6 +263,7 @@ export function PortalAuthFormInline({
 
       const { postAuthSuccess } = await import('@/lib/client/hooks/use-auth-broadcast')
       postAuthSuccess()
+      onSuccess?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to verify code')
       setLoadingAction(null)

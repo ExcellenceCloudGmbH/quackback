@@ -89,7 +89,14 @@ async function initializeQueue() {
 
       let result: HookResult
       try {
-        result = await hook.run(event, target, hookConfig)
+        // Phase 7: thread the BullMQ attempt counter into hook config so
+        // delivery handlers (e.g. webhook) can record the attempt number
+        // on each audit-log row.
+        const configWithAttempt = {
+          ...hookConfig,
+          attemptNumber: (job.attemptsMade ?? 0) + 1,
+        }
+        result = await hook.run(event, target, configWithAttempt)
       } catch (error) {
         if (isRetryableError(error)) throw error
         throw new UnrecoverableError(error instanceof Error ? error.message : 'Unknown error')
@@ -178,7 +185,29 @@ async function updateWebhookFailureCount(data: HookJobData, errorMessage: string
  * Non-fatal — errors are logged but don't fail the hook job.
  */
 async function persistExternalLink(data: HookJobData, result: HookResult): Promise<void> {
-  // Extract postId from event data
+  // Ticket external links — use integrationId from config (set by targets.ts)
+  const ticketId = (data.event.data as { ticket?: { id?: string } }).ticket?.id
+  if (ticketId) {
+    const integrationId = data.config.integrationId as string | undefined
+    if (!integrationId) return
+
+    const { db, ticketExternalLinks } = await import('@/lib/server/db')
+    await db
+      .insert(ticketExternalLinks)
+      .values({
+        ticketId: ticketId as import('@quackback/ids').TicketId,
+        integrationId: integrationId as import('@quackback/ids').IntegrationId,
+        integrationType: data.hookType,
+        externalId: result.externalId!,
+        externalDisplayId: result.externalDisplayId ?? null,
+        externalUrl: result.externalUrl ?? null,
+        syncDirection: 'outbound',
+      })
+      .onConflictDoNothing()
+    return
+  }
+
+  // Post external links — legacy lookup by integration type
   const postId = (data.event.data as { post?: { id?: string } }).post?.id
   if (!postId) return
 

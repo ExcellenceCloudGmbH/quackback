@@ -31,6 +31,28 @@ export interface WidgetEventMap {
     anonymous: boolean
     error?: string
   }
+  'ticket:created': {
+    id: string
+    subject: string
+    statusId: string
+    statusCategory: 'open' | 'pending' | 'on_hold' | 'solved' | 'closed'
+  }
+  'ticket:replied': {
+    ticketId: string
+    threadId: string
+  }
+  'ticket:resolved': {
+    ticketId: string
+    statusId: string
+    alreadyResolved: boolean
+  }
+  /** Fires when the user reopens one of their previously-solved tickets. */
+  'ticket:reopened': {
+    ticketId: string
+    statusId: string
+    /** True when the ticket was already in an open category; no transition occurred. */
+    alreadyOpen: boolean
+  }
 }
 
 export type WidgetEventName = keyof WidgetEventMap
@@ -43,9 +65,10 @@ export interface WidgetInboundMessages {
   'quackback:locale': string
   'quackback:open':
     | {
-        view?: 'home' | 'new-post'
+        view?: 'home' | 'new-post' | 'support'
         title?: string
         board?: string
+        ticketId?: string
       }
     | undefined
 }

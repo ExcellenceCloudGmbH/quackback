@@ -14,6 +14,7 @@ interface ServerConfig {
   tabs?: { feedback?: boolean; changelog?: boolean; help?: boolean }
   imageUploadsInWidget?: boolean
   hmacRequired?: boolean
+  ticketing?: { enabled: boolean }
 }
 
 function jsonResponse(body: unknown, maxAge: number): Response {
@@ -119,6 +120,7 @@ export const Route = createFileRoute('/api/widget/config.json')({
           tabs: widgetConfig.tabs,
           imageUploadsInWidget: widgetConfig.imageUploadsInWidget,
           hmacRequired: widgetConfig.identifyVerification ?? false,
+          ticketing: { enabled: widgetConfig.ticketing?.enabled ?? false },
         }
 
         return jsonResponse(config, 3600)

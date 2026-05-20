@@ -6,6 +6,14 @@ import {
   fetchMergeSuggestionCountsForPostsFn,
 } from '@/lib/server/functions/merge-suggestions'
 
+/** Guard against server function RPC resolving with undefined on 500 errors. */
+function ensureData<T>(data: T, label: string): NonNullable<T> {
+  if (data === undefined || data === null) {
+    throw new Error(`Server returned no data for ${label}`)
+  }
+  return data as NonNullable<T>
+}
+
 /**
  * Query options factory for merge suggestions.
  *
@@ -19,7 +27,8 @@ export const mergeSuggestionQueries = {
   summary: () =>
     queryOptions({
       queryKey: ['merge-suggestions', 'summary'],
-      queryFn: () => fetchMergeSuggestionSummaryFn(),
+      queryFn: async () =>
+        ensureData(await fetchMergeSuggestionSummaryFn(), 'mergeSuggestionSummary'),
       staleTime: 30 * 1000,
     }),
 

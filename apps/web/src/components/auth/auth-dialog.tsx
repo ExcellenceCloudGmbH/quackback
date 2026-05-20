@@ -48,7 +48,12 @@ export function AuthDialog({ authConfig }: AuthDialogProps) {
               : 'Sign up to vote and comment on feedback'}
           </DialogDescription>
         </DialogHeader>
-        <PortalAuthFormInline mode={mode} authConfig={authConfig} onModeSwitch={setMode} />
+        <PortalAuthFormInline
+          mode={mode}
+          authConfig={authConfig}
+          onModeSwitch={setMode}
+          onSuccess={onAuthSuccess}
+        />
       </DialogContent>
     </Dialog>
   )

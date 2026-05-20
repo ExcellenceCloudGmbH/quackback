@@ -8,7 +8,7 @@
 
 import type { BoardId, ChangelogId, CommentId, PostId, PrincipalId, UserId } from '@quackback/ids'
 
-import type { EventActor, EventData, EventPostRef } from './types.js'
+import type { EventActor, EventData, EventPostRef, EventTicketRef } from './types.js'
 
 // Re-export EventActor for API routes that need to construct actor objects
 export type { EventActor } from './types.js'
@@ -241,5 +241,176 @@ export async function dispatchChangelogPublished(
         linkedPostCount: changelog.linkedPostCount,
       },
     },
+  })
+}
+
+// ============================================================================
+// Ticket dispatchers (Phase 7.5)
+// ============================================================================
+
+/**
+ * Build an `EventTicketRef` from a Drizzle ticket row.
+ *
+ * Accepts the raw ticket as `Record<string, unknown>` to avoid pulling the
+ * Ticket type into this file (which would create a circular import path
+ * through @/lib/server/db). Callers pass the ticket they already have.
+ */
+function ticketRef(t: Record<string, unknown>): EventTicketRef {
+  return {
+    id: String(t.id),
+    subject: (t.subject as string | null) ?? null,
+    statusId: (t.statusId as string | null) ?? null,
+    statusCategory: (t.statusCategory as string | null) ?? null,
+    priority: (t.priority as string | null) ?? null,
+    channel: (t.channel as string | null) ?? null,
+    visibility: (t.visibilityScope as string | null) ?? (t.visibility as string | null) ?? null,
+    inboxId: (t.inboxId as string | null) ?? null,
+    primaryTeamId: (t.primaryTeamId as string | null) ?? null,
+    assigneePrincipalId: (t.assigneePrincipalId as string | null) ?? null,
+    assigneeTeamId: (t.assigneeTeamId as string | null) ?? null,
+    requesterPrincipalId: (t.requesterPrincipalId as string | null) ?? null,
+    requesterContactId: (t.requesterContactId as string | null) ?? null,
+  }
+}
+
+export async function dispatchTicketCreated(
+  actor: EventActor,
+  ticket: Record<string, unknown>
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.created',
+    data: { ticket: ticketRef(ticket) },
+  })
+}
+
+export async function dispatchTicketAssigned(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  previousAssigneePrincipalId: string | null,
+  newAssigneePrincipalId: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.assigned',
+    data: {
+      ticket: ticketRef(ticket),
+      previousAssigneePrincipalId,
+      newAssigneePrincipalId,
+    },
+  })
+}
+
+export async function dispatchTicketUnassigned(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  previousAssigneePrincipalId: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.unassigned',
+    data: { ticket: ticketRef(ticket), previousAssigneePrincipalId },
+  })
+}
+
+export async function dispatchTicketStatusChanged(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  previousStatusCategory: string | null,
+  newStatusCategory: string
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.status_changed',
+    data: { ticket: ticketRef(ticket), previousStatusCategory, newStatusCategory },
+  })
+}
+
+export async function dispatchTicketThreadAdded(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  threadId: string,
+  audience: 'public' | 'internal' | 'shared_team',
+  sharedWithTeamId: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.thread_added',
+    data: { ticket: ticketRef(ticket), threadId, audience, sharedWithTeamId },
+  })
+}
+
+export async function dispatchTicketParticipantAdded(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  addedPrincipalId: string | null,
+  role: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.participant_added',
+    data: { ticket: ticketRef(ticket), addedPrincipalId, role },
+  })
+}
+
+export async function dispatchTicketParticipantRemoved(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  removedPrincipalId: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.participant_removed',
+    data: { ticket: ticketRef(ticket), removedPrincipalId },
+  })
+}
+
+export async function dispatchTicketShared(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  teamId: string,
+  accessLevel: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.shared',
+    data: { ticket: ticketRef(ticket), teamId, accessLevel },
+  })
+}
+
+export async function dispatchTicketUnshared(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  teamId: string
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.unshared',
+    data: { ticket: ticketRef(ticket), teamId },
+  })
+}
+
+export async function dispatchTicketSlaWarning(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  kind: string,
+  ruleName: string
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.sla_warning',
+    data: { ticket: ticketRef(ticket), kind, ruleName },
+  })
+}
+
+export async function dispatchTicketSlaBreach(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  kind: string
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.sla_breach',
+    data: { ticket: ticketRef(ticket), kind },
   })
 }

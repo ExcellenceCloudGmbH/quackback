@@ -14,6 +14,10 @@ export interface SaveIntegrationParams {
   refreshToken?: string
   expiresIn?: number
   config?: Record<string, unknown>
+  /** Force create a new integration row (for multi-instance types like GitHub). */
+  forceCreate?: boolean
+  /** Specific integration ID to update (for reconnecting a specific connection). */
+  integrationId?: IntegrationId
 }
 
 /**
@@ -24,7 +28,15 @@ export async function saveIntegration(
   integrationType: string,
   params: SaveIntegrationParams
 ): Promise<IntegrationId> {
-  const { principalId, accessToken, refreshToken, expiresIn, config: oauthConfig } = params
+  const {
+    principalId,
+    accessToken,
+    refreshToken,
+    expiresIn,
+    config: oauthConfig,
+    forceCreate,
+    integrationId: targetIntegrationId,
+  } = params
 
   const secrets: Record<string, unknown> = { accessToken }
   if (refreshToken) secrets.refreshToken = refreshToken
@@ -39,13 +51,29 @@ export async function saveIntegration(
   }
 
   // Check if integration already exists (for reconnect — keep existing service principal)
-  const existing = await db.query.integrations.findFirst({
-    where: eq(integrations.integrationType, integrationType),
-    columns: { principalId: true },
-  })
+  // NOTE: unique constraint on integration_type was dropped in migration 0057 to allow
+  // multiple integrations per type, so we use manual find-then-update/insert instead of
+  // onConflictDoUpdate.
+  let existing: { id: string; principalId: string | null } | undefined
+  if (targetIntegrationId) {
+    // Reconnect a specific integration by ID
+    existing =
+      (await db.query.integrations.findFirst({
+        where: eq(integrations.id, targetIntegrationId),
+        columns: { id: true, principalId: true },
+      })) ?? undefined
+  } else if (!forceCreate) {
+    // Default: find first integration by type (legacy single-instance behavior)
+    existing =
+      (await db.query.integrations.findFirst({
+        where: eq(integrations.integrationType, integrationType),
+        columns: { id: true, principalId: true },
+      })) ?? undefined
+  }
+  // When forceCreate=true and no targetIntegrationId, skip lookup → always INSERT
 
   // Create service principal if this is a new integration or missing one
-  let integrationPrincipalId = existing?.principalId ?? null
+  let integrationPrincipalId = (existing?.principalId as PrincipalId | null) ?? null
   if (!integrationPrincipalId) {
     const displayName = `${integrationType.charAt(0).toUpperCase()}${integrationType.slice(1)} Integration`
     const servicePrincipal = await createServicePrincipal({
@@ -56,20 +84,12 @@ export async function saveIntegration(
     integrationPrincipalId = servicePrincipal.id
   }
 
-  const [row] = await db
-    .insert(integrations)
-    .values({
-      integrationType,
-      status: 'active',
-      secrets: encryptedSecrets,
-      connectedByPrincipalId: principalId,
-      principalId: integrationPrincipalId,
-      connectedAt: now,
-      config,
-    })
-    .onConflictDoUpdate({
-      target: [integrations.integrationType],
-      set: {
+  let integrationId: IntegrationId
+
+  if (existing) {
+    await db
+      .update(integrations)
+      .set({
         status: 'active',
         secrets: encryptedSecrets,
         connectedByPrincipalId: principalId,
@@ -80,11 +100,24 @@ export async function saveIntegration(
         lastErrorAt: null,
         errorCount: 0,
         updatedAt: now,
-      },
-    })
-    .returning({ id: integrations.id })
-
-  const integrationId = row.id as IntegrationId
+      })
+      .where(eq(integrations.id, existing.id as IntegrationId))
+    integrationId = existing.id as IntegrationId
+  } else {
+    const [row] = await db
+      .insert(integrations)
+      .values({
+        integrationType,
+        status: 'active',
+        secrets: encryptedSecrets,
+        connectedByPrincipalId: principalId,
+        principalId: integrationPrincipalId,
+        connectedAt: now,
+        config,
+      })
+      .returning({ id: integrations.id })
+    integrationId = row.id as IntegrationId
+  }
 
   // Run integration-specific post-connect hook (e.g. provision feedback source)
   const definition = getIntegration(integrationType)

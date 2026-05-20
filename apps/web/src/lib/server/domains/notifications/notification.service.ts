@@ -55,6 +55,7 @@ export async function createNotificationsBatch(
         body: input.body ?? null,
         postId: input.postId ?? null,
         commentId: input.commentId ?? null,
+        ticketId: input.ticketId ?? null,
         metadata: input.metadata ?? null,
       }))
     )
@@ -104,6 +105,7 @@ export async function getNotificationsForMember(
       body: inAppNotifications.body,
       postId: inAppNotifications.postId,
       commentId: inAppNotifications.commentId,
+      ticketId: inAppNotifications.ticketId,
       metadata: inAppNotifications.metadata,
       readAt: inAppNotifications.readAt,
       archivedAt: inAppNotifications.archivedAt,
@@ -141,6 +143,7 @@ export async function getNotificationsForMember(
     body: row.body,
     postId: row.postId,
     commentId: row.commentId,
+    ticketId: row.ticketId,
     metadata: row.metadata as Record<string, unknown> | null,
     readAt: row.readAt,
     archivedAt: row.archivedAt,

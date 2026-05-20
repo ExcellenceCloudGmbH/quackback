@@ -44,7 +44,10 @@ import type {
 import { Route } from '../categories/index'
 import { Route as CategoryDetailRoute } from '../categories/$categoryId'
 
-type MockedHandler = (ctx: { request: Request; params?: Record<string, string> }) => Promise<Response>
+type MockedHandler = (ctx: {
+  request: Request
+  params?: Record<string, string>
+}) => Promise<Response>
 type MockedRouteShape = { options: { server: { handlers: Record<string, MockedHandler> } } }
 
 // Access handlers
@@ -75,10 +78,29 @@ const mockAuthContext: ApiAuthContext = {
     expiresAt: null,
     createdAt: new Date('2026-01-01'),
     revokedAt: null,
+    scopes: [],
+    allowedTeamIds: [],
+    allowedInboxIds: [],
+    lastIp: null,
+    lastUserAgent: null,
+    rotatedAt: null,
+    compatLegacyFullAccess: true,
+    compatAcknowledgedAt: null,
   },
   principalId: 'principal_1' as PrincipalId,
   role: 'admin',
   importMode: false,
+  ipAddress: null,
+  userAgent: null,
+  source: 'api',
+  key: {
+    id: 'api_key_test' as ApiKeyId,
+    name: 'test',
+    scopes: [],
+    allowedTeamIds: [],
+    allowedInboxIds: [],
+    compatLegacyFullAccess: true,
+  },
 }
 
 const mockTeamAuthContext: ApiAuthContext = {
@@ -92,10 +114,29 @@ const mockTeamAuthContext: ApiAuthContext = {
     expiresAt: null,
     createdAt: new Date('2026-01-01'),
     revokedAt: null,
+    scopes: [],
+    allowedTeamIds: [],
+    allowedInboxIds: [],
+    lastIp: null,
+    lastUserAgent: null,
+    rotatedAt: null,
+    compatLegacyFullAccess: true,
+    compatAcknowledgedAt: null,
   },
   principalId: 'principal_1' as PrincipalId,
   role: 'member',
   importMode: false,
+  ipAddress: null,
+  userAgent: null,
+  source: 'api',
+  key: {
+    id: 'api_key_test' as ApiKeyId,
+    name: 'test',
+    scopes: [],
+    allowedTeamIds: [],
+    allowedInboxIds: [],
+    compatLegacyFullAccess: true,
+  },
 }
 
 beforeEach(() => {
@@ -259,9 +300,7 @@ describe('POST /api/v1/help-center/categories', () => {
 
   it('returns 403 when auth fails (non-admin)', async () => {
     vi.mocked(isFeatureEnabled).mockResolvedValue(true)
-    vi.mocked(withApiKeyAuth).mockRejectedValue(
-      new ForbiddenError('FORBIDDEN', 'Admin required')
-    )
+    vi.mocked(withApiKeyAuth).mockRejectedValue(new ForbiddenError('FORBIDDEN', 'Admin required'))
 
     const request = createRequest('POST', 'http://localhost/api/v1/help-center/categories', {
       name: 'Test',
@@ -461,9 +500,7 @@ describe('PATCH /api/v1/help-center/categories/:categoryId', () => {
 
   it('returns 403 when auth fails (non-admin)', async () => {
     vi.mocked(isFeatureEnabled).mockResolvedValue(true)
-    vi.mocked(withApiKeyAuth).mockRejectedValue(
-      new ForbiddenError('FORBIDDEN', 'Admin required')
-    )
+    vi.mocked(withApiKeyAuth).mockRejectedValue(new ForbiddenError('FORBIDDEN', 'Admin required'))
 
     const request = createRequest(
       'PATCH',
@@ -500,9 +537,7 @@ describe('DELETE /api/v1/help-center/categories/:categoryId', () => {
 
   it('returns 403 when auth fails (non-admin)', async () => {
     vi.mocked(isFeatureEnabled).mockResolvedValue(true)
-    vi.mocked(withApiKeyAuth).mockRejectedValue(
-      new ForbiddenError('FORBIDDEN', 'Admin required')
-    )
+    vi.mocked(withApiKeyAuth).mockRejectedValue(new ForbiddenError('FORBIDDEN', 'Admin required'))
 
     const request = createRequest(
       'DELETE',

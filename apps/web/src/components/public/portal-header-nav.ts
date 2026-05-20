@@ -9,26 +9,38 @@ const NAV_ITEMS_BASE = [
   { to: '/changelog', messageId: 'portal.header.nav.changelog', defaultMessage: 'Changelog' },
 ] as const
 
+const NAV_ITEM_TICKETS = {
+  to: '/tickets',
+  messageId: 'portal.header.nav.tickets',
+  defaultMessage: 'My tickets',
+} as const
+
 const NAV_ITEM_HELP = {
   to: '/hc',
   messageId: 'portal.header.nav.help',
   defaultMessage: 'Help Center',
 } as const
 
-export type PortalNavItem = (typeof NAV_ITEMS_BASE)[number] | typeof NAV_ITEM_HELP
+export type PortalNavItem =
+  | (typeof NAV_ITEMS_BASE)[number]
+  | typeof NAV_ITEM_TICKETS
+  | typeof NAV_ITEM_HELP
 
 /**
  * Returns the nav items shown in the portal header.
- * Feedback/roadmap/changelog are always shown; a Help tab is appended when
- * the help center feature is enabled.
+ * - Feedback / Roadmap / Changelog are always shown.
+ * - "My tickets" is appended for signed-in users (between base + help).
+ * - Help Center is appended last when the workspace has the feature on.
  */
 export function buildNavItems({
   helpCenterEnabled,
+  isSignedIn = false,
 }: {
   helpCenterEnabled: boolean
+  isSignedIn?: boolean
 }): readonly PortalNavItem[] {
-  if (helpCenterEnabled) {
-    return [...NAV_ITEMS_BASE, NAV_ITEM_HELP]
-  }
-  return NAV_ITEMS_BASE
+  const items: PortalNavItem[] = [...NAV_ITEMS_BASE]
+  if (isSignedIn) items.push(NAV_ITEM_TICKETS)
+  if (helpCenterEnabled) items.push(NAV_ITEM_HELP)
+  return items
 }

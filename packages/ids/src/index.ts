@@ -118,6 +118,41 @@ export type {
   // Billing
   SubscriptionId,
   InvoiceId,
+  // Ticketing — Phase 1
+  TeamId,
+  TeamMembershipId,
+  RoleId,
+  PermissionId,
+  RolePermissionId,
+  RoleAssignmentId,
+  AuditEventId,
+  // Ticketing — Phase 2
+  OrganizationId,
+  ContactId,
+  ContactUserLinkId,
+  // Ticketing — Phase 3
+  TicketId,
+  TicketStatusId,
+  TicketThreadId,
+  TicketAttachmentId,
+  TicketParticipantId,
+  TicketShareId,
+  TicketActivityId,
+  // Ticketing — Phase 4
+  InboxId,
+  InboxChannelId,
+  InboxMembershipId,
+  RoutingRuleId,
+  // Ticketing — Phase 5
+  BusinessHoursId,
+  SlaPolicyId,
+  SlaTargetId,
+  TicketSlaClockId,
+  EscalationRuleId,
+  SlaEscalationLogId,
+  // Ticketing — Phase 7
+  TicketSubscriptionId,
+  WebhookDeliveryId,
   // Utilities
   ExtractPrefix,
   EntityIdMap,

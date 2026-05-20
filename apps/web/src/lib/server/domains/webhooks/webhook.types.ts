@@ -5,6 +5,7 @@ export interface Webhook {
   url: string
   events: string[]
   boardIds: string[] | null
+  inboxIds: string[] | null
   status: 'active' | 'disabled'
   failureCount: number
   lastError: string | null
@@ -18,6 +19,7 @@ export interface CreateWebhookInput {
   url: string
   events: string[]
   boardIds?: string[]
+  inboxIds?: string[]
 }
 
 export interface CreateWebhookResult {
@@ -30,5 +32,6 @@ export interface UpdateWebhookInput {
   url?: string
   events?: string[]
   boardIds?: string[] | null
+  inboxIds?: string[] | null
   status?: 'active' | 'disabled'
 }

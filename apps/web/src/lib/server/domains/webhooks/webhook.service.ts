@@ -81,6 +81,7 @@ export async function createWebhook(
       secret: secretEncrypted,
       events: input.events,
       boardIds: input.boardIds ?? null,
+      inboxIds: input.inboxIds ?? null,
     })
     .returning()
 
@@ -150,6 +151,7 @@ export async function updateWebhook(id: WebhookId, input: UpdateWebhookInput): P
   if (input.url !== undefined) updateData.url = input.url
   if (input.events !== undefined) updateData.events = input.events
   if (input.boardIds !== undefined) updateData.boardIds = input.boardIds
+  if (input.inboxIds !== undefined) updateData.inboxIds = input.inboxIds
   if (input.status !== undefined) {
     updateData.status = input.status
     // Reset failure count when re-enabling
@@ -232,6 +234,7 @@ function mapWebhook(w: typeof webhooks.$inferSelect): Webhook {
     url: w.url,
     events: w.events,
     boardIds: w.boardIds,
+    inboxIds: w.inboxIds,
     status: w.status as 'active' | 'disabled',
     failureCount: w.failureCount,
     lastError: w.lastError,

@@ -18,6 +18,12 @@ import {
   BeakerIcon,
   BookOpenIcon,
   TagIcon,
+  InboxStackIcon,
+  ArrowsRightLeftIcon,
+  ClockIcon,
+  ShieldExclamationIcon,
+  UserGroupIcon,
+  ClipboardDocumentListIcon,
 } from '@heroicons/react/24/solid'
 import { cn } from '@/lib/shared/utils'
 import type { FeatureFlags } from '@/lib/shared/types'
@@ -40,6 +46,36 @@ export function buildNavSections(flags?: { helpCenter?: boolean }): NavSection[]
       items: [
         { label: 'Team Members', to: '/admin/settings/team', icon: UsersIcon },
         { label: 'Integrations', to: '/admin/settings/integrations', icon: PuzzlePieceIcon },
+      ],
+    },
+    {
+      label: 'Workspace',
+      items: [
+        { label: 'Inboxes', to: '/admin/settings/inboxes', icon: InboxStackIcon },
+        { label: 'Teams', to: '/admin/settings/teams', icon: UserGroupIcon },
+        {
+          label: 'Routing rules',
+          to: '/admin/settings/routing-rules',
+          icon: ArrowsRightLeftIcon,
+        },
+      ],
+    },
+    {
+      label: 'SLA',
+      items: [
+        {
+          label: 'Business hours',
+          to: '/admin/settings/business-hours',
+          icon: ClockIcon,
+        },
+        { label: 'SLA policies', to: '/admin/settings/sla', icon: ShieldExclamationIcon },
+      ],
+    },
+    {
+      label: 'Security',
+      items: [
+        { label: 'Roles & permissions', to: '/admin/settings/roles', icon: ShieldCheckIcon },
+        { label: 'Audit log', to: '/admin/settings/audit', icon: ClipboardDocumentListIcon },
       ],
     },
     {

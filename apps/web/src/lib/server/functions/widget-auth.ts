@@ -1,9 +1,9 @@
-import type { PrincipalId, UserId, WorkspaceId } from '@quackback/ids'
+import type { ContactId, PrincipalId, UserId, WorkspaceId } from '@quackback/ids'
 import { generateId } from '@quackback/ids'
 import { getRequestHeaders } from '@tanstack/react-start/server'
 import type { Role } from '@/lib/server/auth'
 import { auth } from '@/lib/server/auth'
-import { db, session, principal, eq, and, gt } from '@/lib/server/db'
+import { db, session, principal, contactUserLinks, eq, and, gt } from '@/lib/server/db'
 
 export interface WidgetAuthContext {
   settings: {
@@ -22,18 +22,38 @@ export interface WidgetAuthContext {
     role: Role
     type: string
   }
+  /**
+   * The CRM contact this widget user is linked to via `contact_user_links`,
+   * if any. Populated by `linkContactForWidgetUser` during a verified
+   * `POST /api/widget/identify`. Required for ticket list/detail/reply
+   * authorisation; null for anonymous or unverified-identify sessions.
+   */
+  contactId: ContactId | null
 }
 
-/** Returns widget auth context from `Authorization: Bearer <token>`, or null if invalid/expired. */
-export async function getWidgetSession(): Promise<WidgetAuthContext | null> {
-  console.log(`[fn:widget-auth] getWidgetSession`)
+/**
+ * Returns widget auth context from `Authorization: Bearer <token>`, or null if invalid/expired.
+ *
+ * When called from an extracted API-route handler function, pass the `request`
+ * object so headers are read directly instead of relying on TanStack Start's
+ * `getRequestHeaders()` async-context (which may not be available in extracted
+ * handler references).
+ */
+export async function getWidgetSession(request?: Request): Promise<WidgetAuthContext | null> {
   try {
-    const headers = getRequestHeaders()
+    const headers = request ? request.headers : getRequestHeaders()
     const authHeader = headers.get('authorization')
     if (!authHeader?.startsWith('Bearer ')) return null
 
-    const token = authHeader.slice(7)
-    if (!token) return null
+    const rawToken = authHeader.slice(7)
+    if (!rawToken) return null
+
+    // better-auth session cookies are formatted as `{token}.{hmac}`. The DB
+    // stores only the bare token part. When the widget reuses a portal session
+    // cookie (same-origin SSR path) the Bearer value includes the HMAC suffix,
+    // so we strip it before querying. Tokens from the identify flow are already
+    // bare, so splitting on '.' and taking the first segment is safe for both.
+    const token = rawToken.split('.')[0]
 
     const sessionRecord = await db.query.session.findFirst({
       where: and(eq(session.token, token), gt(session.expiresAt, new Date())),
@@ -67,6 +87,14 @@ export async function getWidgetSession(): Promise<WidgetAuthContext | null> {
       principalRecord = created
     }
 
+    // Resolve linked CRM contact (if any) so callers can authorise on
+    // requesterContactId without a second round-trip. A user can in theory
+    // have multiple links (rare); the first match is sufficient for
+    // ownership predicates that pivot on contactId.
+    const contactLink = await db.query.contactUserLinks.findFirst({
+      where: eq(contactUserLinks.userId, userId),
+    })
+
     return {
       settings: {
         id: appSettings.id as WorkspaceId,
@@ -84,6 +112,7 @@ export async function getWidgetSession(): Promise<WidgetAuthContext | null> {
         role: principalRecord.role as Role,
         type: principalRecord.type ?? 'user',
       },
+      contactId: (contactLink?.contactId as ContactId | undefined) ?? null,
     }
   } catch (error) {
     console.error(`[fn:widget-auth] getWidgetSession failed:`, error)

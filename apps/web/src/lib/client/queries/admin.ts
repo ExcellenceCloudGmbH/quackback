@@ -1,5 +1,16 @@
 import { queryOptions } from '@tanstack/react-query'
 import type { BoardId, TagId, PrincipalId, PostId, RoadmapId } from '@quackback/ids'
+
+/**
+ * Guard against TanStack Start server function RPC resolving with `undefined`
+ * on 500 errors. Converts to a thrown error so React Query can retry.
+ */
+function ensureData<T>(data: T, label: string): NonNullable<T> {
+  if (data === undefined || data === null) {
+    throw new Error(`Server returned no data for ${label}`)
+  }
+  return data as NonNullable<T>
+}
 import {
   fetchInboxPosts,
   fetchBoardsList,
@@ -21,6 +32,7 @@ import {
   fetchAuthProviderStatusFn,
   fetchAuthProviderCredentialsMaskedFn,
 } from '@/lib/server/functions/auth-provider-credentials'
+import { fetchGitHubIntegrationsFn } from '@/lib/server/integrations/github/functions'
 import { fetchApiKeys } from '@/lib/server/functions/api-keys'
 import { fetchWebhooks } from '@/lib/server/functions/webhooks'
 import { fetchRoadmaps } from '@/lib/server/functions/roadmaps'
@@ -67,7 +79,7 @@ export const adminQueries = {
     queryOptions({
       queryKey: ['admin', 'inbox', 'posts', filters],
       queryFn: async () => {
-        const data = await fetchInboxPosts({ data: filters })
+        const data = ensureData(await fetchInboxPosts({ data: filters }), 'inboxPosts')
         // Deserialize date strings from server response
         return {
           ...data,
@@ -89,7 +101,7 @@ export const adminQueries = {
     queryOptions({
       queryKey: ['admin', 'boards'],
       queryFn: async () => {
-        const data = await fetchBoardsList()
+        const data = ensureData(await fetchBoardsList(), 'boards')
         return data.map((b) => ({
           ...b,
           createdAt: new Date(b.createdAt),
@@ -105,7 +117,7 @@ export const adminQueries = {
   boardsForSettings: () =>
     queryOptions({
       queryKey: ['admin', 'settings', 'boards'],
-      queryFn: () => fetchBoardsForSettings(),
+      queryFn: async () => ensureData(await fetchBoardsForSettings(), 'boardsForSettings'),
       staleTime: 5 * 60 * 1000, // 5min - reference data
     }),
 
@@ -115,7 +127,7 @@ export const adminQueries = {
   tags: () =>
     queryOptions({
       queryKey: ['admin', 'tags'],
-      queryFn: () => fetchTagsList(),
+      queryFn: async () => ensureData(await fetchTagsList(), 'tags'),
       staleTime: 5 * 60 * 1000, // 5min - reference data, rarely changes during session
     }),
 
@@ -125,7 +137,7 @@ export const adminQueries = {
   statuses: () =>
     queryOptions({
       queryKey: ['admin', 'statuses'],
-      queryFn: () => fetchStatusesList(),
+      queryFn: async () => ensureData(await fetchStatusesList(), 'statuses'),
       staleTime: 5 * 60 * 1000, // 5min - reference data, rarely changes during session
     }),
 
@@ -136,7 +148,7 @@ export const adminQueries = {
     queryOptions({
       queryKey: ['admin', 'roadmaps'],
       queryFn: async () => {
-        const data = await fetchRoadmaps()
+        const data = ensureData(await fetchRoadmaps(), 'roadmaps')
         return data.map((r) => ({
           ...r,
           id: r.id as RoadmapId, // Server serializes to string, cast back to branded type
@@ -153,7 +165,7 @@ export const adminQueries = {
   teamMembers: () =>
     queryOptions({
       queryKey: ['admin', 'team', 'members'],
-      queryFn: () => fetchTeamMembers(),
+      queryFn: async () => ensureData(await fetchTeamMembers(), 'teamMembers'),
       staleTime: 5 * 60 * 1000, // 5min - reference data for filters/assignments
     }),
 
@@ -260,6 +272,16 @@ export const adminQueries = {
       queryKey: ['admin', 'integrations', type],
       queryFn: () => fetchIntegrationByType({ data: { type } }),
       staleTime: 30 * 1000, // 30s - config may change frequently during setup
+    }),
+
+  /**
+   * Get all GitHub integrations with configs and event mappings
+   */
+  githubIntegrations: () =>
+    queryOptions({
+      queryKey: ['admin', 'integrations', 'github-all'],
+      queryFn: () => fetchGitHubIntegrationsFn(),
+      staleTime: 30 * 1000,
     }),
 
   /**

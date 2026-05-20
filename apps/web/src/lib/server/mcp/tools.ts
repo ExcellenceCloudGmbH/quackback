@@ -52,10 +52,7 @@ import {
   dismissMergeSuggestion,
   restoreMergeSuggestion,
 } from '@/lib/server/domains/merge-suggestions/merge-suggestion.service'
-import {
-  createComment,
-  deleteComment,
-} from '@/lib/server/domains/comments/comment.service'
+import { createComment, deleteComment } from '@/lib/server/domains/comments/comment.service'
 import { userEditComment } from '@/lib/server/domains/comments/comment.permissions'
 import { addReaction, removeReaction } from '@/lib/server/domains/comments/comment.reactions'
 import {
@@ -89,6 +86,92 @@ import {
 import { isFeatureEnabled } from '@/lib/server/domains/settings/settings.service'
 import { DomainException } from '@/lib/shared/errors'
 import { parseOptionalTypeId } from '@/lib/server/domains/api/validation'
+import {
+  createTicket,
+  updateTicket,
+  assignTicket,
+  transitionStatus,
+  getTicket,
+} from '@/lib/server/domains/tickets/ticket.service'
+import { listTickets, type TicketQueueScope } from '@/lib/server/domains/tickets/ticket.query'
+import { takeTicket, returnTicket } from '@/lib/server/domains/tickets/ticket.take-return'
+import {
+  bulkAssign,
+  bulkTransition,
+  bulkChangeInbox,
+} from '@/lib/server/domains/tickets/ticket.bulk'
+import {
+  getTicketStatus,
+  listTicketStatuses,
+  createTicketStatus,
+  updateTicketStatus,
+  archiveTicketStatus,
+} from '@/lib/server/domains/tickets/ticket-statuses.service'
+import {
+  searchContacts,
+  getContact,
+  createContact,
+  updateContact,
+  archiveContact,
+  findOrCreateByEmail as findOrCreateContactByEmail,
+  linkContactToUser,
+  unlinkContactFromUser,
+  listLinksForContact,
+  listContactsForOrganization,
+} from '@/lib/server/domains/organizations/contact.service'
+import {
+  listOrganizations,
+  getOrganization,
+  getOrganizationByDomain,
+  createOrganization,
+  updateOrganization,
+  archiveOrganization,
+  unarchiveOrganization,
+} from '@/lib/server/domains/organizations/organization.service'
+import {
+  addThread,
+  editThread,
+  softDeleteThread,
+  listThreads,
+} from '@/lib/server/domains/tickets/ticket.threads'
+import {
+  addParticipant,
+  removeParticipant,
+  listParticipants,
+} from '@/lib/server/domains/tickets/ticket.participants'
+import {
+  shareTicketWithTeam,
+  revokeShare,
+  listSharesForTicket,
+} from '@/lib/server/domains/tickets/ticket.share'
+import {
+  safeSubscribe,
+  unsubscribeFromTicket,
+  updateSubscriptionPrefs,
+} from '@/lib/server/domains/tickets/ticket.subscriptions'
+import {
+  toResourceScope,
+  canViewTicket,
+  canReplyPublic,
+  canCommentInternal,
+  canShareCrossTeam,
+  canManageParticipants,
+} from '@/lib/server/domains/tickets/ticket.permissions'
+import {
+  loadPermissionSet,
+  hasPermission,
+  hasPermissionForResource,
+} from '@/lib/server/domains/authz/authz.service'
+import { PERMISSIONS } from '@/lib/server/domains/authz'
+import {
+  TICKET_PRIORITIES,
+  TICKET_CHANNELS,
+  TICKET_VISIBILITY_SCOPES,
+  TICKET_STATUS_CATEGORIES,
+  TICKET_THREAD_AUDIENCES,
+  TICKET_PARTICIPANT_ROLES,
+  TICKET_SHARE_LEVELS,
+} from '@/lib/server/db'
 import type { McpAuthContext, McpScope } from './types'
 import type {
   PostId,
@@ -103,6 +186,16 @@ import type {
   MergeSuggestionId,
   HelpCenterArticleId,
   HelpCenterCategoryId,
+  TicketId,
+  TicketStatusId,
+  TicketThreadId,
+  TicketShareId,
+  TicketParticipantId,
+  TeamId,
+  ContactId,
+  UserId,
+  OrganizationId,
+  InboxId,
 } from '@quackback/ids'
 
 // ============================================================================
@@ -155,9 +248,29 @@ function decodeSearchCursor(cursor?: string): { entity: string; value: number | 
   }
 }
 
-/** Return an error if the token is missing a required scope. */
+/**
+ * Scope superset map: a granted scope implicitly satisfies the scopes listed.
+ * Keep relationships strictly tier-based (manage > write > read) and never
+ * cross domain boundaries.
+ */
+const SCOPE_IMPLIES: Partial<Record<McpScope, readonly McpScope[]>> = {
+  'write:feedback': ['read:feedback'],
+  'write:help-center': ['read:help-center'],
+  'manage:tickets': ['write:tickets', 'read:tickets'],
+  'write:tickets': ['read:tickets'],
+  'write:contacts': ['read:contacts'],
+}
+
+/** True when `granted` either equals `required` or transitively implies it. */
+function scopeSatisfies(granted: McpScope, required: McpScope): boolean {
+  if (granted === required) return true
+  const implied = SCOPE_IMPLIES[granted]
+  return !!implied && implied.includes(required)
+}
+
+/** Return an error if the token is missing a required scope (honouring implications). */
 function requireScope(auth: McpAuthContext, scope: McpScope): CallToolResult | null {
-  if (auth.scopes.includes(scope)) return null
+  if (auth.scopes.some((s) => scopeSatisfies(s, scope))) return null
   return {
     isError: true,
     content: [{ type: 'text', text: `Error: Insufficient scope. Required: ${scope}` }],
@@ -551,7 +664,11 @@ const createHelpCenterArticleSchema = {
       'Article content. Markdown (GFM), max 50,000 chars. Images via ![alt](url) are auto-rehosted to workspace storage on save. See tool description for full format details.'
     ),
   slug: z.string().max(200).optional().describe('URL slug (auto-generated from title if omitted)'),
-  description: z.string().max(300).optional().describe('Short page description for SEO and article previews (max 300 chars)'),
+  description: z
+    .string()
+    .max(300)
+    .optional()
+    .describe('Short page description for SEO and article previews (max 300 chars)'),
   authorId: z
     .string()
     .optional()
@@ -579,10 +696,7 @@ const updateHelpCenterArticleSchema = {
     .describe(
       'Any ISO 8601 datetime string to publish immediately (e.g. "2026-04-08T00:00:00Z"), or null to unpublish. The exact timestamp is not used — articles are always published at the current time.'
     ),
-  authorId: z
-    .string()
-    .optional()
-    .describe('Principal TypeID to reassign as the article author'),
+  authorId: z.string().optional().describe('Principal TypeID to reassign as the article author'),
 }
 
 const deleteHelpCenterArticleSchema = {
@@ -1238,11 +1352,10 @@ Examples:
       if (scopeDenied) return scopeDenied
       // No team role gate — the service layer allows comment authors OR team members
       try {
-        const result = await userEditComment(
-          args.commentId as CommentId,
-          args.content,
-          { principalId: auth.principalId, role: auth.role }
-        )
+        const result = await userEditComment(args.commentId as CommentId, args.content, {
+          principalId: auth.principalId,
+          role: auth.role,
+        })
 
         return jsonResult({
           id: result.id,
@@ -1762,8 +1875,7 @@ Examples:
 
         const { articleId: _, publishedAt: __, authorId: ___, ...updateData } = args
         const hasUpdates =
-          Object.values(updateData).some((v) => v !== undefined) ||
-          authorPrincipalId !== undefined
+          Object.values(updateData).some((v) => v !== undefined) || authorPrincipalId !== undefined
 
         // Validate + apply field/author updates first so a bad authorId
         // never leaves the article in a partially-published state.
@@ -1862,6 +1974,1396 @@ Examples:
             }
             await deleteCategory(args.categoryId as HelpCenterCategoryId)
             return jsonResult({ deleted: true, id: args.categoryId })
+          }
+        }
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // Ticketing — Phase 2 lifecycle tools
+  registerTicketTools(server, auth)
+  // Ticketing status catalogue + CRM — Phase 4
+  registerTicketStatusTools(server, auth)
+  registerContactTools(server, auth)
+  registerOrganizationTools(server, auth)
+}
+
+// ============================================================================
+// Ticketing tool registrations (Phase 2)
+// ============================================================================
+
+const ticketIdSchema = z.string().min(1)
+const ticketStatusIdSchema = z.string().min(1)
+const ticketIdsSchema = z.array(ticketIdSchema).min(1).max(500)
+
+const TICKET_QUEUE_SCOPES = [
+  'all',
+  'my_assigned',
+  'my_team',
+  'shared_with_me',
+  'unassigned',
+  'my_inbox',
+  'inbox',
+] as const satisfies readonly TicketQueueScope[]
+
+/** Format a ticket row for MCP responses (omits the rich-text JSON to keep payloads small). */
+function ticketResult(t: {
+  id: string
+  subject: string
+  descriptionText: string | null
+  priority: string
+  channel: string
+  visibilityScope: string
+  statusId: string | null
+  primaryTeamId: string | null
+  assigneePrincipalId: string | null
+  assigneeTeamId: string | null
+  requesterPrincipalId: string | null
+  requesterContactId: string | null
+  organizationId: string | null
+  inboxId: string | null
+  slaPolicyId: string | null
+  lastActivityAt: Date | null
+  firstResponseAt?: Date | null
+  resolvedAt?: Date | null
+  closedAt?: Date | null
+  reopenedAt?: Date | null
+  createdAt: Date
+  updatedAt: Date
+}): Record<string, unknown> {
+  return {
+    id: t.id,
+    subject: t.subject,
+    descriptionText: t.descriptionText,
+    priority: t.priority,
+    channel: t.channel,
+    visibilityScope: t.visibilityScope,
+    statusId: t.statusId,
+    primaryTeamId: t.primaryTeamId,
+    assigneePrincipalId: t.assigneePrincipalId,
+    assigneeTeamId: t.assigneeTeamId,
+    requesterPrincipalId: t.requesterPrincipalId,
+    requesterContactId: t.requesterContactId,
+    organizationId: t.organizationId,
+    inboxId: t.inboxId,
+    slaPolicyId: t.slaPolicyId,
+    lastActivityAt: t.lastActivityAt,
+    firstResponseAt: t.firstResponseAt ?? null,
+    resolvedAt: t.resolvedAt ?? null,
+    closedAt: t.closedAt ?? null,
+    reopenedAt: t.reopenedAt ?? null,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  }
+}
+
+function registerTicketTools(server: McpServer, auth: McpAuthContext) {
+  // list_tickets
+  server.tool(
+    'list_tickets',
+    `List tickets in a queue. Permission-aware: the queue "scope" must be authorised by the caller's role.
+
+Examples:
+- My assigned: list_tickets({ scope: "my_assigned" })
+- Open in my team: list_tickets({ scope: "my_team", statusCategory: "open" })
+- Unassigned in an inbox: list_tickets({ scope: "unassigned", inboxId: "inbox_01..." })
+- Search: list_tickets({ scope: "all", search: "login" })`,
+    {
+      scope: z.enum(TICKET_QUEUE_SCOPES).default('my_assigned'),
+      statusCategory: z.enum(TICKET_STATUS_CATEGORIES).optional(),
+      statusIds: z.array(ticketStatusIdSchema).optional(),
+      inboxId: z.string().min(1).nullable().optional(),
+      organizationId: z.string().min(1).nullable().optional(),
+      requesterContactId: z.string().min(1).nullable().optional(),
+      search: z.string().min(1).optional(),
+      sort: z.enum(['last_activity_desc', 'created_desc', 'created_asc']).optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+      offset: z.number().int().min(0).optional(),
+    },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:tickets')
+      if (denied) return denied
+      try {
+        const permissionSet = await loadPermissionSet(auth.principalId)
+        const result = await listTickets({
+          scope: args.scope,
+          permissionSet,
+          statusCategory: args.statusCategory,
+          statusIds: args.statusIds as TicketStatusId[] | undefined,
+          inboxId: args.inboxId === undefined ? undefined : (args.inboxId as InboxId | null),
+          organizationId:
+            args.organizationId === undefined
+              ? undefined
+              : (args.organizationId as OrganizationId | null),
+          requesterContactId:
+            args.requesterContactId === undefined
+              ? undefined
+              : (args.requesterContactId as ContactId | null),
+          search: args.search,
+          sort: args.sort,
+          limit: args.limit,
+          offset: args.offset,
+        })
+        return compactJsonResult({
+          tickets: result.rows.map(ticketResult),
+          total: result.total,
+        })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // get_ticket
+  server.tool(
+    'get_ticket',
+    `Get a ticket header plus its current status. Use list_ticket_threads (Phase 3) for the conversation.
+
+Examples:
+- get_ticket({ ticketId: "ticket_01..." })`,
+    { ticketId: ticketIdSchema },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:tickets')
+      if (denied) return denied
+      try {
+        const ticket = await getTicket(args.ticketId as TicketId)
+        if (!ticket) {
+          return errorResult(new Error(`ticket ${args.ticketId} not found`))
+        }
+        const status = ticket.statusId
+          ? await getTicketStatus(ticket.statusId as TicketStatusId)
+          : null
+        return jsonResult({
+          ...ticketResult(ticket),
+          status: status
+            ? {
+                id: status.id,
+                slug: status.slug,
+                name: status.name,
+                category: status.category,
+              }
+            : null,
+        })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // create_ticket
+  server.tool(
+    'create_ticket',
+    `Create a new ticket. Filed on behalf of the caller; supply requesterPrincipalId / requesterContactId to attribute the customer.
+
+Examples:
+- Minimal: create_ticket({ subject: "Login broken", descriptionText: "Cannot log in..." })
+- With requester: create_ticket({ subject: "...", descriptionText: "...", requesterContactId: "contact_01..." })
+- Routed to team: create_ticket({ subject: "...", descriptionText: "...", primaryTeamId: "team_01...", priority: "high" })`,
+    {
+      subject: z.string().min(1).max(500),
+      descriptionText: z.string().min(1).max(100_000).optional(),
+      priority: z.enum(TICKET_PRIORITIES).optional(),
+      channel: z.enum(TICKET_CHANNELS).optional(),
+      visibilityScope: z.enum(TICKET_VISIBILITY_SCOPES).optional(),
+      statusId: ticketStatusIdSchema.optional(),
+      primaryTeamId: z.string().min(1).optional(),
+      assigneePrincipalId: z.string().min(1).optional(),
+      assigneeTeamId: z.string().min(1).optional(),
+      requesterPrincipalId: z.string().min(1).optional(),
+      requesterContactId: z.string().min(1).optional(),
+      organizationId: z.string().min(1).optional(),
+      inboxId: z.string().min(1).optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const created = await createTicket({
+          subject: args.subject,
+          descriptionText: args.descriptionText ?? null,
+          priority: args.priority,
+          channel: args.channel,
+          visibilityScope: args.visibilityScope,
+          statusId: args.statusId as TicketStatusId | undefined,
+          primaryTeamId: args.primaryTeamId as TeamId | undefined,
+          assigneePrincipalId: args.assigneePrincipalId as PrincipalId | undefined,
+          assigneeTeamId: args.assigneeTeamId as TeamId | undefined,
+          requesterPrincipalId: args.requesterPrincipalId as PrincipalId | undefined,
+          requesterContactId: args.requesterContactId as ContactId | undefined,
+          organizationId: args.organizationId as OrganizationId | undefined,
+          inboxId: args.inboxId as InboxId | undefined,
+          createdByPrincipalId: auth.principalId,
+        })
+        return jsonResult(ticketResult(created))
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // update_ticket
+  server.tool(
+    'update_ticket',
+    `Update editable fields on a ticket. Reads current ticket internally for optimistic concurrency.
+
+Examples:
+- update_ticket({ ticketId: "ticket_01...", priority: "urgent" })
+- update_ticket({ ticketId: "ticket_01...", subject: "...", visibilityScope: "team" })`,
+    {
+      ticketId: ticketIdSchema,
+      subject: z.string().min(1).max(500).optional(),
+      priority: z.enum(TICKET_PRIORITIES).optional(),
+      visibilityScope: z.enum(TICKET_VISIBILITY_SCOPES).optional(),
+      primaryTeamId: z.string().min(1).nullable().optional(),
+      organizationId: z.string().min(1).nullable().optional(),
+      requesterContactId: z.string().min(1).nullable().optional(),
+      inboxId: z.string().min(1).nullable().optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const existing = await getTicket(args.ticketId as TicketId)
+        if (!existing) return errorResult(new Error(`ticket ${args.ticketId} not found`))
+        const updated = await updateTicket(args.ticketId as TicketId, {
+          expectedUpdatedAt: existing.updatedAt,
+          actorPrincipalId: auth.principalId,
+          subject: args.subject,
+          priority: args.priority,
+          visibilityScope: args.visibilityScope,
+          primaryTeamId:
+            args.primaryTeamId === undefined ? undefined : (args.primaryTeamId as TeamId | null),
+          organizationId:
+            args.organizationId === undefined
+              ? undefined
+              : (args.organizationId as OrganizationId | null),
+          requesterContactId:
+            args.requesterContactId === undefined
+              ? undefined
+              : (args.requesterContactId as ContactId | null),
+          inboxId: args.inboxId === undefined ? undefined : (args.inboxId as InboxId | null),
+        })
+        return jsonResult(ticketResult(updated))
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // transition_ticket
+  server.tool(
+    'transition_ticket',
+    `Move a ticket to a new status. Lifecycle timestamps (resolvedAt/closedAt/reopenedAt) are updated based on the destination category.
+
+Examples:
+- transition_ticket({ ticketId: "ticket_01...", statusId: "ticket_status_01..." })`,
+    {
+      ticketId: ticketIdSchema,
+      statusId: ticketStatusIdSchema,
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const existing = await getTicket(args.ticketId as TicketId)
+        if (!existing) return errorResult(new Error(`ticket ${args.ticketId} not found`))
+        const updated = await transitionStatus(args.ticketId as TicketId, {
+          expectedUpdatedAt: existing.updatedAt,
+          actorPrincipalId: auth.principalId,
+          statusId: args.statusId as TicketStatusId,
+        })
+        return jsonResult(ticketResult(updated))
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // assign_ticket
+  server.tool(
+    'assign_ticket',
+    `Assign or unassign a ticket. Pass null for assigneePrincipalId / assigneeTeamId to clear.
+
+Examples:
+- Assign to a person: assign_ticket({ ticketId: "ticket_01...", assigneePrincipalId: "principal_01..." })
+- Assign to a team: assign_ticket({ ticketId: "ticket_01...", assigneeTeamId: "team_01..." })
+- Unassign: assign_ticket({ ticketId: "ticket_01...", assigneePrincipalId: null, assigneeTeamId: null })`,
+    {
+      ticketId: ticketIdSchema,
+      assigneePrincipalId: z.string().min(1).nullable().optional(),
+      assigneeTeamId: z.string().min(1).nullable().optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const existing = await getTicket(args.ticketId as TicketId)
+        if (!existing) return errorResult(new Error(`ticket ${args.ticketId} not found`))
+        const updated = await assignTicket(args.ticketId as TicketId, {
+          expectedUpdatedAt: existing.updatedAt,
+          actorPrincipalId: auth.principalId,
+          assigneePrincipalId:
+            args.assigneePrincipalId === undefined
+              ? undefined
+              : (args.assigneePrincipalId as PrincipalId | null),
+          assigneeTeamId:
+            args.assigneeTeamId === undefined ? undefined : (args.assigneeTeamId as TeamId | null),
+        })
+        return jsonResult(ticketResult(updated))
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // take_ticket
+  server.tool(
+    'take_ticket',
+    `Assign a ticket to yourself.
+
+Examples:
+- take_ticket({ ticketId: "ticket_01..." })`,
+    { ticketId: ticketIdSchema },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const updated = await takeTicket(args.ticketId as TicketId, auth.principalId)
+        return jsonResult(ticketResult(updated))
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // return_ticket
+  server.tool(
+    'return_ticket',
+    `Unassign a ticket (clear assignee).
+
+Examples:
+- return_ticket({ ticketId: "ticket_01..." })`,
+    { ticketId: ticketIdSchema },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const updated = await returnTicket(args.ticketId as TicketId, auth.principalId)
+        return jsonResult(ticketResult(updated))
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // bulk_assign_tickets
+  server.tool(
+    'bulk_assign_tickets',
+    `Assign or unassign many tickets in one batch. Best-effort: returns succeeded/failed lists.
+
+Examples:
+- bulk_assign_tickets({ ticketIds: ["ticket_01...", "ticket_01..."], assigneePrincipalId: "principal_01..." })`,
+    {
+      ticketIds: ticketIdsSchema,
+      assigneePrincipalId: z.string().min(1).nullable().optional(),
+      assigneeTeamId: z.string().min(1).nullable().optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'manage:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const set = await loadPermissionSet(auth.principalId)
+        const result = await bulkAssign({
+          ticketIds: args.ticketIds as TicketId[],
+          actorPrincipalId: auth.principalId,
+          assigneePrincipalId:
+            args.assigneePrincipalId === undefined
+              ? undefined
+              : (args.assigneePrincipalId as PrincipalId | null),
+          assigneeTeamId:
+            args.assigneeTeamId === undefined ? undefined : (args.assigneeTeamId as TeamId | null),
+          permit: (scope) => hasPermissionForResource(set, PERMISSIONS.TICKET_ASSIGN_ANY, scope),
+        })
+        return jsonResult(result)
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // bulk_transition_tickets
+  server.tool(
+    'bulk_transition_tickets',
+    `Move many tickets to a new status. Best-effort.
+
+Examples:
+- bulk_transition_tickets({ ticketIds: ["ticket_01..."], statusId: "ticket_status_01..." })`,
+    {
+      ticketIds: ticketIdsSchema,
+      statusId: ticketStatusIdSchema,
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'manage:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const set = await loadPermissionSet(auth.principalId)
+        const result = await bulkTransition({
+          ticketIds: args.ticketIds as TicketId[],
+          actorPrincipalId: auth.principalId,
+          statusId: args.statusId as TicketStatusId,
+          permit: (scope) => hasPermissionForResource(set, PERMISSIONS.TICKET_EDIT_FIELDS, scope),
+        })
+        return jsonResult(result)
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // bulk_change_inbox
+  server.tool(
+    'bulk_change_inbox',
+    `Move many tickets to a different inbox (or clear with null). Best-effort.
+
+Examples:
+- bulk_change_inbox({ ticketIds: ["ticket_01..."], inboxId: "inbox_01..." })
+- Clear inbox: bulk_change_inbox({ ticketIds: ["ticket_01..."], inboxId: null })`,
+    {
+      ticketIds: ticketIdsSchema,
+      inboxId: z.string().min(1).nullable(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'manage:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const set = await loadPermissionSet(auth.principalId)
+        const result = await bulkChangeInbox({
+          ticketIds: args.ticketIds as TicketId[],
+          actorPrincipalId: auth.principalId,
+          inboxId: args.inboxId as InboxId | null,
+          permit: (scope) => hasPermissionForResource(set, PERMISSIONS.TICKET_EDIT_FIELDS, scope),
+        })
+        return jsonResult(result)
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // ==========================================================================
+  // Phase 3 — threads / participants / shares / subscriptions / activity
+  // ==========================================================================
+
+  /** Build the ticket's resource scope for per-team permission checks. */
+  const loadTicketResourceScope = async (ticketId: TicketId) => {
+    const ticket = await getTicket(ticketId)
+    if (!ticket) return null
+    const shares = await listSharesForTicket(ticketId)
+    return {
+      ticket,
+      scope: toResourceScope({
+        primaryTeamId: ticket.primaryTeamId as TeamId | null,
+        assigneePrincipalId: ticket.assigneePrincipalId as PrincipalId | null,
+        assigneeTeamId: ticket.assigneeTeamId as TeamId | null,
+        shares: shares.map((s) => ({
+          teamId: s.teamId as TeamId,
+          revokedAt: s.revokedAt,
+        })),
+      }),
+    }
+  }
+
+  // list_ticket_threads
+  server.tool(
+    'list_ticket_threads',
+    `List the threads (public replies, internal notes, shared-team notes) on a ticket. Internal notes are filtered out for callers without permission.
+
+Examples:
+- list_ticket_threads({ ticketId: "ticket_01..." })
+- Include deleted: list_ticket_threads({ ticketId: "ticket_01...", includeDeleted: true })`,
+    {
+      ticketId: ticketIdSchema,
+      includeDeleted: z.boolean().optional(),
+    },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:tickets')
+      if (denied) return denied
+      try {
+        const loaded = await loadTicketResourceScope(args.ticketId as TicketId)
+        if (!loaded) return errorResult(new Error(`ticket ${args.ticketId} not found`))
+        const set = await loadPermissionSet(auth.principalId)
+        if (!canViewTicket(set, loaded.scope)) {
+          return errorResult(new Error('cannot view this ticket'))
+        }
+        const rows = await listThreads(args.ticketId as TicketId, {
+          viewerTeamIds: set.teamIds as TeamId[],
+          canSeeInternal: canCommentInternal(set, loaded.scope),
+          isRequester: loaded.ticket.requesterPrincipalId === auth.principalId,
+          includeDeleted: args.includeDeleted,
+        })
+        return compactJsonResult({ threads: rows })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // add_ticket_thread
+  server.tool(
+    'add_ticket_thread',
+    `Post a reply on a ticket. Audience controls visibility:
+- public: visible to the requester (counts toward first-response time)
+- internal: agents only
+- shared_team: only visible to the team named in sharedWithTeamId (requires an active share)
+
+Examples:
+- Public reply: add_ticket_thread({ ticketId: "ticket_01...", audience: "public", bodyText: "Looking into this now." })
+- Internal note: add_ticket_thread({ ticketId: "ticket_01...", audience: "internal", bodyText: "Customer is on enterprise plan." })
+- Shared note: add_ticket_thread({ ticketId: "ticket_01...", audience: "shared_team", bodyText: "...", sharedWithTeamId: "team_01..." })`,
+    {
+      ticketId: ticketIdSchema,
+      audience: z.enum(TICKET_THREAD_AUDIENCES),
+      bodyText: z.string().min(1).max(100_000),
+      sharedWithTeamId: z.string().min(1).optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const loaded = await loadTicketResourceScope(args.ticketId as TicketId)
+        if (!loaded) return errorResult(new Error(`ticket ${args.ticketId} not found`))
+        const set = await loadPermissionSet(auth.principalId)
+        if (args.audience === 'public') {
+          if (!canReplyPublic(set, loaded.scope)) {
+            return errorResult(new Error('cannot post public replies on this ticket'))
+          }
+        } else if (args.audience === 'internal' || args.audience === 'shared_team') {
+          if (!canCommentInternal(set, loaded.scope)) {
+            return errorResult(new Error('cannot post internal/shared notes on this ticket'))
+          }
+        }
+        const created = await addThread({
+          ticketId: args.ticketId as TicketId,
+          principalId: auth.principalId,
+          audience: args.audience,
+          bodyText: args.bodyText,
+          sharedWithTeamId: (args.sharedWithTeamId as TeamId | undefined) ?? null,
+        })
+        return jsonResult(created)
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // edit_ticket_thread
+  server.tool(
+    'edit_ticket_thread',
+    `Edit a thread you authored. Cannot edit another user's thread.
+
+Examples:
+- edit_ticket_thread({ threadId: "ticket_thread_01...", bodyText: "Updated text." })`,
+    {
+      threadId: z.string().min(1),
+      bodyText: z.string().min(1).max(100_000),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const updated = await editThread({
+          threadId: args.threadId as TicketThreadId,
+          actorPrincipalId: auth.principalId,
+          bodyText: args.bodyText,
+        })
+        return jsonResult(updated)
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // delete_ticket_thread
+  server.tool(
+    'delete_ticket_thread',
+    `Soft-delete a thread. Soft-deleted threads are hidden from list_ticket_threads unless includeDeleted=true.
+
+Examples:
+- delete_ticket_thread({ threadId: "ticket_thread_01..." })`,
+    { threadId: z.string().min(1) },
+    DESTRUCTIVE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const updated = await softDeleteThread(args.threadId as TicketThreadId, auth.principalId)
+        return jsonResult({ deleted: true, id: updated.id, deletedAt: updated.deletedAt })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // list_ticket_participants
+  server.tool(
+    'list_ticket_participants',
+    `List the watchers / collaborators / CC'd contacts on a ticket.
+
+Examples:
+- list_ticket_participants({ ticketId: "ticket_01..." })`,
+    { ticketId: ticketIdSchema },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:tickets')
+      if (denied) return denied
+      try {
+        const loaded = await loadTicketResourceScope(args.ticketId as TicketId)
+        if (!loaded) return errorResult(new Error(`ticket ${args.ticketId} not found`))
+        const set = await loadPermissionSet(auth.principalId)
+        if (!canViewTicket(set, loaded.scope)) {
+          return errorResult(new Error('cannot view this ticket'))
+        }
+        const rows = await listParticipants(args.ticketId as TicketId)
+        return compactJsonResult({ participants: rows })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // manage_ticket_participant
+  server.tool(
+    'manage_ticket_participant',
+    `Add or remove a watcher / collaborator / CC on a ticket. Exactly one of principalId or contactId must be supplied for "add".
+
+Examples:
+- Add watcher (user): manage_ticket_participant({ action: "add", ticketId: "ticket_01...", role: "watcher", principalId: "principal_01..." })
+- CC a contact: manage_ticket_participant({ action: "add", ticketId: "ticket_01...", role: "cc", contactId: "contact_01..." })
+- Remove: manage_ticket_participant({ action: "remove", participantId: "ticket_participant_01..." })`,
+    {
+      action: z.enum(['add', 'remove']),
+      ticketId: ticketIdSchema.optional(),
+      role: z.enum(TICKET_PARTICIPANT_ROLES).optional(),
+      principalId: z.string().min(1).optional(),
+      contactId: z.string().min(1).optional(),
+      participantId: z.string().min(1).optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        if (args.action === 'add') {
+          if (!args.ticketId || !args.role) {
+            return errorResult(new Error('ticketId and role are required for action "add"'))
+          }
+          const loaded = await loadTicketResourceScope(args.ticketId as TicketId)
+          if (!loaded) return errorResult(new Error(`ticket ${args.ticketId} not found`))
+          const set = await loadPermissionSet(auth.principalId)
+          if (!canManageParticipants(set, loaded.scope)) {
+            return errorResult(new Error('cannot manage participants on this ticket'))
+          }
+          const created = await addParticipant({
+            ticketId: args.ticketId as TicketId,
+            role: args.role,
+            principalId: (args.principalId as PrincipalId | undefined) ?? null,
+            contactId: (args.contactId as ContactId | undefined) ?? null,
+            addedByPrincipalId: auth.principalId,
+          })
+          return jsonResult(created)
+        }
+        // remove
+        if (!args.participantId) {
+          return errorResult(new Error('participantId is required for action "remove"'))
+        }
+        await removeParticipant(args.participantId as TicketParticipantId, auth.principalId)
+        return jsonResult({ removed: true, id: args.participantId })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // list_ticket_shares
+  server.tool(
+    'list_ticket_shares',
+    `List active and revoked share grants on a ticket.
+
+Examples:
+- list_ticket_shares({ ticketId: "ticket_01..." })`,
+    { ticketId: ticketIdSchema },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:tickets')
+      if (denied) return denied
+      try {
+        const loaded = await loadTicketResourceScope(args.ticketId as TicketId)
+        if (!loaded) return errorResult(new Error(`ticket ${args.ticketId} not found`))
+        const set = await loadPermissionSet(auth.principalId)
+        if (!canViewTicket(set, loaded.scope)) {
+          return errorResult(new Error('cannot view this ticket'))
+        }
+        const rows = await listSharesForTicket(args.ticketId as TicketId)
+        return compactJsonResult({ shares: rows })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // manage_ticket_share
+  server.tool(
+    'manage_ticket_share',
+    `Grant or revoke a cross-team share on a ticket.
+
+Examples:
+- Grant: manage_ticket_share({ action: "grant", ticketId: "ticket_01...", teamId: "team_01...", accessLevel: "comment" })
+- Revoke: manage_ticket_share({ action: "revoke", shareId: "ticket_share_01..." })`,
+    {
+      action: z.enum(['grant', 'revoke']),
+      ticketId: ticketIdSchema.optional(),
+      teamId: z.string().min(1).optional(),
+      accessLevel: z.enum(TICKET_SHARE_LEVELS).optional(),
+      shareId: z.string().min(1).optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'manage:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        if (args.action === 'grant') {
+          if (!args.ticketId || !args.teamId) {
+            return errorResult(new Error('ticketId and teamId are required for action "grant"'))
+          }
+          const loaded = await loadTicketResourceScope(args.ticketId as TicketId)
+          if (!loaded) return errorResult(new Error(`ticket ${args.ticketId} not found`))
+          const set = await loadPermissionSet(auth.principalId)
+          if (!canShareCrossTeam(set, loaded.scope)) {
+            return errorResult(new Error('cannot share this ticket cross-team'))
+          }
+          const created = await shareTicketWithTeam({
+            ticketId: args.ticketId as TicketId,
+            teamId: args.teamId as TeamId,
+            accessLevel: args.accessLevel,
+            grantedByPrincipalId: auth.principalId,
+          })
+          return jsonResult(created)
+        }
+        // revoke
+        if (!args.shareId) {
+          return errorResult(new Error('shareId is required for action "revoke"'))
+        }
+        const updated = await revokeShare(args.shareId as TicketShareId, auth.principalId)
+        return jsonResult(updated)
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // subscribe_ticket
+  server.tool(
+    'subscribe_ticket',
+    `Manage your (or another principal's) notification subscription for a ticket.
+Defaults principalId to the caller. Subscribing another principal requires write:tickets.
+
+Examples:
+- Self subscribe: subscribe_ticket({ action: "subscribe", ticketId: "ticket_01..." })
+- Self unsubscribe: subscribe_ticket({ action: "unsubscribe", ticketId: "ticket_01..." })
+- Update prefs: subscribe_ticket({ action: "update_prefs", ticketId: "ticket_01...", notifyThreads: true, notifyStatus: false })`,
+    {
+      action: z.enum(['subscribe', 'unsubscribe', 'update_prefs']),
+      ticketId: ticketIdSchema,
+      principalId: z.string().min(1).optional(),
+      notifyThreads: z.boolean().optional(),
+      notifyStatus: z.boolean().optional(),
+      notifyAssignment: z.boolean().optional(),
+      notifyParticipants: z.boolean().optional(),
+      notifyShares: z.boolean().optional(),
+      notifySla: z.boolean().optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const target = (args.principalId as PrincipalId | undefined) ?? auth.principalId
+      const isSelf = target === auth.principalId
+      const required: McpScope = isSelf ? 'read:tickets' : 'write:tickets'
+      const denied = requireScope(auth, required)
+      if (denied) return denied
+      try {
+        if (args.action === 'subscribe') {
+          await safeSubscribe({
+            ticketId: args.ticketId as TicketId,
+            principalId: target,
+            source: 'manual',
+          })
+          return jsonResult({ subscribed: true, ticketId: args.ticketId, principalId: target })
+        }
+        if (args.action === 'unsubscribe') {
+          const removed = await unsubscribeFromTicket(args.ticketId as TicketId, target)
+          return jsonResult({
+            unsubscribed: removed,
+            ticketId: args.ticketId,
+            principalId: target,
+          })
+        }
+        // update_prefs
+        const patch = {
+          notifyThreads: args.notifyThreads,
+          notifyStatus: args.notifyStatus,
+          notifyAssignment: args.notifyAssignment,
+          notifyParticipants: args.notifyParticipants,
+          notifyShares: args.notifyShares,
+          notifySla: args.notifySla,
+        }
+        const row = await updateSubscriptionPrefs({
+          ticketId: args.ticketId as TicketId,
+          principalId: target,
+          patch,
+          force: true,
+        })
+        return jsonResult(row)
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // get_ticket_activity
+  server.tool(
+    'get_ticket_activity',
+    `List ticket-activity events (status changes, assignments, threads, participants, shares) in reverse-chronological order. Use "before" (ISO date) for pagination.
+
+Examples:
+- get_ticket_activity({ ticketId: "ticket_01..." })
+- Older page: get_ticket_activity({ ticketId: "ticket_01...", before: "2026-04-01T00:00:00Z", limit: 100 })`,
+    {
+      ticketId: ticketIdSchema,
+      before: z.string().datetime().optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+    },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:tickets')
+      if (denied) return denied
+      try {
+        const loaded = await loadTicketResourceScope(args.ticketId as TicketId)
+        if (!loaded) return errorResult(new Error(`ticket ${args.ticketId} not found`))
+        const set = await loadPermissionSet(auth.principalId)
+        if (!canViewTicket(set, loaded.scope)) {
+          return errorResult(new Error('cannot view this ticket'))
+        }
+        const { listTicketActivity } = await import('@/lib/server/domains/tickets/ticket.activity')
+        const rows = await listTicketActivity(args.ticketId as TicketId, {
+          before: args.before ? new Date(args.before) : undefined,
+          limit: args.limit,
+        })
+        return compactJsonResult({ activity: rows })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+}
+
+// ============================================================================
+// Ticket status catalogue tools (Phase 4)
+// ============================================================================
+
+function registerTicketStatusTools(server: McpServer, auth: McpAuthContext) {
+  // list_ticket_statuses
+  server.tool(
+    'list_ticket_statuses',
+    `List the ticket workflow statuses (the workspace's status catalogue). Use the returned ids when calling create_ticket / transition_ticket.
+
+Examples:
+- list_ticket_statuses({})
+- Include archived: list_ticket_statuses({ includeDeleted: true })`,
+    { includeDeleted: z.boolean().optional() },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:tickets')
+      if (denied) return denied
+      try {
+        const rows = await listTicketStatuses({ includeDeleted: args.includeDeleted })
+        return compactJsonResult({ statuses: rows })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // manage_ticket_status
+  server.tool(
+    'manage_ticket_status',
+    `Create, update, or archive a ticket status. Requires manage:tickets scope AND admin.manage_settings permission.
+
+Examples:
+- Create: manage_ticket_status({ action: "create", name: "Waiting on customer", slug: "waiting_on_customer", category: "pending", color: "#f59e0b" })
+- Update: manage_ticket_status({ action: "update", statusId: "ticket_status_01...", name: "In review", position: 3 })
+- Archive (soft-delete): manage_ticket_status({ action: "archive", statusId: "ticket_status_01..." })`,
+    {
+      action: z.enum(['create', 'update', 'archive']),
+      statusId: z.string().min(1).optional(),
+      name: z.string().min(1).max(100).optional(),
+      slug: z.string().min(1).max(100).optional(),
+      color: z.string().min(1).optional(),
+      category: z.enum(TICKET_STATUS_CATEGORIES).optional(),
+      position: z.number().int().optional(),
+      isDefault: z.boolean().optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'manage:tickets')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        const set = await loadPermissionSet(auth.principalId)
+        if (!hasPermission(set, PERMISSIONS.ADMIN_MANAGE_SETTINGS)) {
+          return errorResult(new Error('admin.manage_settings permission required'))
+        }
+        switch (args.action) {
+          case 'create': {
+            if (!args.name || !args.slug || !args.category) {
+              return errorResult(
+                new Error('name, slug, and category are required for action "create"')
+              )
+            }
+            const created = await createTicketStatus(
+              {
+                name: args.name,
+                slug: args.slug,
+                category: args.category,
+                color: args.color,
+                position: args.position,
+                isDefault: args.isDefault,
+              },
+              { principalId: auth.principalId }
+            )
+            return jsonResult(created)
+          }
+          case 'update': {
+            if (!args.statusId) {
+              return errorResult(new Error('statusId is required for action "update"'))
+            }
+            const updated = await updateTicketStatus(
+              args.statusId as TicketStatusId,
+              {
+                name: args.name,
+                color: args.color,
+                category: args.category,
+                position: args.position,
+                isDefault: args.isDefault,
+              },
+              { principalId: auth.principalId }
+            )
+            return jsonResult(updated)
+          }
+          case 'archive': {
+            if (!args.statusId) {
+              return errorResult(new Error('statusId is required for action "archive"'))
+            }
+            const archived = await archiveTicketStatus(args.statusId as TicketStatusId, {
+              principalId: auth.principalId,
+            })
+            return jsonResult(archived)
+          }
+        }
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+}
+
+// ============================================================================
+// Contact tools (Phase 4)
+// ============================================================================
+
+function registerContactTools(server: McpServer, auth: McpAuthContext) {
+  // search_contacts
+  server.tool(
+    'search_contacts',
+    `Search contacts by name/email/external-id substring, by exact email, or filter by organization.
+
+Examples:
+- By query: search_contacts({ query: "acme" })
+- By email: search_contacts({ email: "alice@acme.com" })
+- By org: search_contacts({ organizationId: "organization_01...", limit: 100 })`,
+    {
+      query: z.string().min(1).optional(),
+      email: z.string().min(1).optional(),
+      organizationId: z.string().min(1).optional(),
+      includeArchived: z.boolean().optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+      offset: z.number().int().min(0).optional(),
+    },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:contacts')
+      if (denied) return denied
+      try {
+        const rows = await searchContacts({
+          query: args.query,
+          email: args.email,
+          organizationId: args.organizationId as OrganizationId | undefined,
+          includeArchived: args.includeArchived,
+          limit: args.limit,
+          offset: args.offset,
+        })
+        return compactJsonResult({ contacts: rows })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // get_contact
+  server.tool(
+    'get_contact',
+    `Fetch one contact along with the portal-user accounts linked to it.
+
+Example: get_contact({ contactId: "contact_01..." })`,
+    { contactId: z.string().min(1) },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:contacts')
+      if (denied) return denied
+      try {
+        const contact = await getContact(args.contactId as ContactId)
+        if (!contact) return errorResult(new Error(`contact ${args.contactId} not found`))
+        const links = await listLinksForContact(args.contactId as ContactId)
+        return jsonResult({ contact, links })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // manage_contact
+  server.tool(
+    'manage_contact',
+    `Create, update, archive, or upsert-by-email a contact.
+"find_or_create_by_email" is concurrency-safe and idempotent — use it from intake/automation flows.
+
+Examples:
+- Create: manage_contact({ action: "create", name: "Alice", email: "alice@acme.com", organizationId: "organization_01..." })
+- Update: manage_contact({ action: "update", contactId: "contact_01...", title: "VP Eng" })
+- Archive: manage_contact({ action: "archive", contactId: "contact_01..." })
+- Upsert: manage_contact({ action: "find_or_create_by_email", email: "bob@acme.com", name: "Bob" })`,
+    {
+      action: z.enum(['create', 'update', 'archive', 'find_or_create_by_email']),
+      contactId: z.string().min(1).optional(),
+      name: z.string().nullable().optional(),
+      email: z.string().nullable().optional(),
+      phone: z.string().nullable().optional(),
+      title: z.string().nullable().optional(),
+      externalId: z.string().nullable().optional(),
+      organizationId: z.string().nullable().optional(),
+      avatarUrl: z.string().nullable().optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:contacts')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        switch (args.action) {
+          case 'create': {
+            const created = await createContact({
+              name: args.name,
+              email: args.email,
+              phone: args.phone,
+              title: args.title,
+              externalId: args.externalId,
+              organizationId: args.organizationId as OrganizationId | null | undefined,
+              avatarUrl: args.avatarUrl,
+            })
+            return jsonResult(created)
+          }
+          case 'update': {
+            if (!args.contactId) {
+              return errorResult(new Error('contactId is required for action "update"'))
+            }
+            const updated = await updateContact(args.contactId as ContactId, {
+              name: args.name,
+              email: args.email,
+              phone: args.phone,
+              title: args.title,
+              externalId: args.externalId,
+              organizationId: args.organizationId as OrganizationId | null | undefined,
+              avatarUrl: args.avatarUrl,
+            })
+            return jsonResult(updated)
+          }
+          case 'archive': {
+            if (!args.contactId) {
+              return errorResult(new Error('contactId is required for action "archive"'))
+            }
+            await archiveContact(args.contactId as ContactId)
+            return jsonResult({ archived: true, id: args.contactId })
+          }
+          case 'find_or_create_by_email': {
+            if (!args.email) {
+              return errorResult(
+                new Error('email is required for action "find_or_create_by_email"')
+              )
+            }
+            const contact = await findOrCreateContactByEmail({
+              email: args.email,
+              name: args.name,
+              organizationId: args.organizationId as OrganizationId | null | undefined,
+            })
+            return jsonResult(contact)
+          }
+        }
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // link_contact_user
+  server.tool(
+    'link_contact_user',
+    `Link or unlink a portal-user account to a contact (N‑to‑N). "link" is idempotent.
+
+Examples:
+- Link: link_contact_user({ action: "link", contactId: "contact_01...", userId: "user_01..." })
+- Unlink: link_contact_user({ action: "unlink", contactId: "contact_01...", userId: "user_01..." })`,
+    {
+      action: z.enum(['link', 'unlink']),
+      contactId: z.string().min(1),
+      userId: z.string().min(1),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:contacts')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        if (args.action === 'link') {
+          const link = await linkContactToUser({
+            contactId: args.contactId as ContactId,
+            userId: args.userId as UserId,
+            linkedByPrincipalId: auth.principalId,
+          })
+          return jsonResult(link)
+        }
+        await unlinkContactFromUser(args.contactId as ContactId, args.userId as UserId)
+        return jsonResult({
+          unlinked: true,
+          contactId: args.contactId,
+          userId: args.userId,
+        })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+}
+
+// ============================================================================
+// Organization tools (Phase 4)
+// ============================================================================
+
+function registerOrganizationTools(server: McpServer, auth: McpAuthContext) {
+  // list_organizations
+  server.tool(
+    'list_organizations',
+    `List customer organizations (B2B accounts). Optionally filter by name/domain substring.
+
+Examples:
+- list_organizations({})
+- list_organizations({ search: "acme", limit: 100 })`,
+    {
+      search: z.string().min(1).optional(),
+      includeArchived: z.boolean().optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+      offset: z.number().int().min(0).optional(),
+    },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:contacts')
+      if (denied) return denied
+      try {
+        const rows = await listOrganizations({
+          search: args.search,
+          includeArchived: args.includeArchived,
+          limit: args.limit,
+          offset: args.offset,
+        })
+        return compactJsonResult({ organizations: rows })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // get_organization
+  server.tool(
+    'get_organization',
+    `Fetch one organization plus its contacts (capped at 50; use search_contacts for paging).
+
+Example: get_organization({ organizationId: "organization_01..." })`,
+    { organizationId: z.string().min(1) },
+    READ_ONLY,
+    async (args): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:contacts')
+      if (denied) return denied
+      try {
+        const organization = await getOrganization(args.organizationId as OrganizationId)
+        if (!organization) {
+          return errorResult(new Error(`organization ${args.organizationId} not found`))
+        }
+        const contactsList = await listContactsForOrganization(
+          args.organizationId as OrganizationId
+        )
+        return jsonResult({ organization, contacts: contactsList })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // manage_organization
+  server.tool(
+    'manage_organization',
+    `Create, update, archive, unarchive, or upsert-by-domain an organization.
+"find_or_create_by_domain" looks up an org by normalized domain and creates it if missing.
+
+Examples:
+- Create: manage_organization({ action: "create", name: "Acme", domain: "acme.com" })
+- Update: manage_organization({ action: "update", organizationId: "organization_01...", website: "https://acme.com" })
+- Archive: manage_organization({ action: "archive", organizationId: "organization_01..." })
+- Unarchive: manage_organization({ action: "unarchive", organizationId: "organization_01..." })
+- Upsert: manage_organization({ action: "find_or_create_by_domain", domain: "acme.com" })`,
+    {
+      action: z.enum(['create', 'update', 'archive', 'unarchive', 'find_or_create_by_domain']),
+      organizationId: z.string().min(1).optional(),
+      name: z.string().min(1).max(200).optional(),
+      domain: z.string().nullable().optional(),
+      externalId: z.string().nullable().optional(),
+      website: z.string().nullable().optional(),
+      notes: z.string().nullable().optional(),
+    },
+    WRITE,
+    async (args): Promise<CallToolResult> => {
+      const scopeDenied = requireScope(auth, 'write:contacts')
+      if (scopeDenied) return scopeDenied
+      const roleDenied = requireTeamRole(auth)
+      if (roleDenied) return roleDenied
+      try {
+        switch (args.action) {
+          case 'create': {
+            if (!args.name) {
+              return errorResult(new Error('name is required for action "create"'))
+            }
+            const created = await createOrganization({
+              name: args.name,
+              domain: args.domain,
+              externalId: args.externalId,
+              website: args.website,
+              notes: args.notes,
+            })
+            return jsonResult(created)
+          }
+          case 'update': {
+            if (!args.organizationId) {
+              return errorResult(new Error('organizationId is required for action "update"'))
+            }
+            const updated = await updateOrganization(args.organizationId as OrganizationId, {
+              name: args.name,
+              domain: args.domain,
+              externalId: args.externalId,
+              website: args.website,
+              notes: args.notes,
+            })
+            return jsonResult(updated)
+          }
+          case 'archive': {
+            if (!args.organizationId) {
+              return errorResult(new Error('organizationId is required for action "archive"'))
+            }
+            await archiveOrganization(args.organizationId as OrganizationId)
+            return jsonResult({ archived: true, id: args.organizationId })
+          }
+          case 'unarchive': {
+            if (!args.organizationId) {
+              return errorResult(new Error('organizationId is required for action "unarchive"'))
+            }
+            await unarchiveOrganization(args.organizationId as OrganizationId)
+            return jsonResult({ unarchived: true, id: args.organizationId })
+          }
+          case 'find_or_create_by_domain': {
+            if (!args.domain) {
+              return errorResult(
+                new Error('domain is required for action "find_or_create_by_domain"')
+              )
+            }
+            const existing = await getOrganizationByDomain(args.domain)
+            if (existing) return jsonResult(existing)
+            try {
+              const created = await createOrganization({
+                name: args.name ?? args.domain,
+                domain: args.domain,
+                externalId: args.externalId,
+                website: args.website,
+                notes: args.notes,
+              })
+              return jsonResult(created)
+            } catch (err) {
+              // Race recovery: a parallel caller may have just inserted the row.
+              const after = await getOrganizationByDomain(args.domain)
+              if (after) return jsonResult(after)
+              throw err
+            }
           }
         }
       } catch (err) {

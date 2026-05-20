@@ -19,6 +19,7 @@ import { NewCommentEmail } from './templates/new-comment'
 import { ChangelogPublishedEmail } from './templates/changelog-published'
 import { FeedbackLinkedEmail } from './templates/feedback-linked'
 import { PasswordResetEmail } from './templates/password-reset'
+import { TicketEventEmail } from './templates/tickets/ticket-event'
 
 /**
  * Get environment variable at runtime.
@@ -530,3 +531,72 @@ export { NewCommentEmail } from './templates/new-comment'
 export { ChangelogPublishedEmail } from './templates/changelog-published'
 export { FeedbackLinkedEmail } from './templates/feedback-linked'
 export { PasswordResetEmail } from './templates/password-reset'
+export { TicketEventEmail } from './templates/tickets/ticket-event'
+
+// ============================================================================
+// Ticket Event Email (Phase 7.5)
+// ============================================================================
+
+interface SendTicketEventParams {
+  to: string
+  title: string
+  body?: string
+  ticketSubject: string
+  ticketUrl: string
+  workspaceName: string
+  unsubscribeUrl: string
+  logoUrl?: string
+  statusLabel?: string
+  priorityLabel?: string
+}
+
+/**
+ * Send a ticket-event notification email.
+ *
+ * One function for all 8 ticket events + 2 SLA events. The caller decides
+ * the title/body copy (per-event) and the receiver address.
+ */
+export async function sendTicketEventEmail(params: SendTicketEventParams): Promise<EmailResult> {
+  const {
+    to,
+    title,
+    body,
+    ticketSubject,
+    ticketUrl,
+    workspaceName,
+    unsubscribeUrl,
+    logoUrl,
+    statusLabel,
+    priorityLabel,
+  } = params
+
+  if (getProvider() === 'console') {
+    console.log('\n┌────────────────────────────────────────────────────────────')
+    console.log('│ [DEV] Ticket Event Email')
+    console.log('├────────────────────────────────────────────────────────────')
+    console.log(`│ To: ${to}`)
+    console.log(`│ Title: ${title}`)
+    if (body) console.log(`│ Body: ${body}`)
+    console.log(`│ Ticket: ${ticketSubject}`)
+    console.log(`│ URL: ${ticketUrl}`)
+    console.log(`│ Unsubscribe: ${unsubscribeUrl}`)
+    console.log('└────────────────────────────────────────────────────────────\n')
+    return { sent: false }
+  }
+
+  return sendEmail({
+    to,
+    subject: title,
+    react: TicketEventEmail({
+      title,
+      body,
+      ticketSubject,
+      ticketUrl,
+      organizationName: workspaceName,
+      unsubscribeUrl,
+      logoUrl,
+      statusLabel,
+      priorityLabel,
+    }),
+  })
+}

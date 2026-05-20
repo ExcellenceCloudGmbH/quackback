@@ -19,3 +19,8 @@ import './members'
 import './users'
 import './roadmaps'
 import './changelog'
+// Phase 3-7: ticketing + support config + admin/RBAC
+import './tickets'
+import './ticket-statuses'
+import './support-config'
+import './admin'

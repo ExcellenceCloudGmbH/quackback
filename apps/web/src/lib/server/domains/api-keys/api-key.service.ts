@@ -11,8 +11,15 @@ import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { isAdmin } from '@/lib/shared/roles'
 import { createHash, randomBytes, timingSafeEqual } from 'crypto'
 import { createServicePrincipal } from '@/lib/server/domains/principals/principal.service'
-import type { ApiKey, ApiKeyId, CreateApiKeyInput, CreateApiKeyResult } from './api-key.types'
-export type { ApiKey, ApiKeyId, CreateApiKeyInput, CreateApiKeyResult }
+import { ALL_PERMISSIONS } from '@/lib/server/domains/authz/authz.permissions'
+import type {
+  ApiKey,
+  ApiKeyId,
+  CreateApiKeyInput,
+  CreateApiKeyResult,
+  UpdateApiKeyInput,
+} from './api-key.types'
+export type { ApiKey, ApiKeyId, CreateApiKeyInput, CreateApiKeyResult, UpdateApiKeyInput }
 
 /** API key prefix */
 const API_KEY_PREFIX = 'qb_'
@@ -32,7 +39,40 @@ function toApiKey(row: ApiKey & Record<string, unknown>): ApiKey {
     expiresAt: row.expiresAt,
     createdAt: row.createdAt,
     revokedAt: row.revokedAt,
+    scopes: (row.scopes as string[]) ?? [],
+    allowedTeamIds: (row.allowedTeamIds as string[]) ?? [],
+    allowedInboxIds: (row.allowedInboxIds as string[]) ?? [],
+    lastIp: (row.lastIp as string | null) ?? null,
+    lastUserAgent: (row.lastUserAgent as string | null) ?? null,
+    rotatedAt: (row.rotatedAt as Date | null) ?? null,
+    compatLegacyFullAccess: (row.compatLegacyFullAccess as boolean | undefined) ?? true,
+    compatAcknowledgedAt: (row.compatAcknowledgedAt as Date | null) ?? null,
   }
+}
+
+const ALL_PERMISSION_SET = new Set<string>(ALL_PERMISSIONS as readonly string[])
+
+function validateScopes(scopes: readonly string[] | undefined): string[] {
+  if (!scopes || scopes.length === 0) return []
+  const out: string[] = []
+  const seen = new Set<string>()
+  for (const s of scopes) {
+    const v = String(s).trim()
+    if (!v) continue
+    if (!ALL_PERMISSION_SET.has(v)) {
+      throw new ValidationError('VALIDATION_ERROR', `Unknown permission scope: ${v}`)
+    }
+    if (!seen.has(v)) {
+      seen.add(v)
+      out.push(v)
+    }
+  }
+  return out
+}
+
+function dedupeIds(ids: readonly string[] | undefined): string[] {
+  if (!ids || ids.length === 0) return []
+  return Array.from(new Set(ids.map((s) => String(s).trim()).filter(Boolean)))
 }
 
 /**
@@ -84,6 +124,10 @@ export async function createApiKey(
   const keyHash = hashApiKey(plainTextKey)
   const keyPrefix = getKeyPrefix(plainTextKey)
 
+  const scopes = validateScopes(input.scopes)
+  const allowedTeamIds = dedupeIds(input.allowedTeamIds)
+  const allowedInboxIds = dedupeIds(input.allowedInboxIds)
+
   // Look up creator's role for the service principal
   const creator = await db.query.principal.findFirst({
     where: eq(principal.id, createdById),
@@ -108,6 +152,11 @@ export async function createApiKey(
       createdById,
       principalId: servicePrincipal.id,
       expiresAt: input.expiresAt ?? null,
+      scopes,
+      allowedTeamIds,
+      allowedInboxIds,
+      // If any scope is set explicitly at creation, drop legacy compat.
+      compatLegacyFullAccess: scopes.length === 0,
     })
     .returning()
 
@@ -184,6 +233,7 @@ export async function rotateApiKey(id: ApiKeyId): Promise<CreateApiKeyResult> {
       keyHash,
       keyPrefix,
       lastUsedAt: null, // Reset last used
+      rotatedAt: new Date(),
     })
     .where(and(eq(apiKeys.id, id), isNull(apiKeys.revokedAt)))
     .returning()
@@ -280,5 +330,72 @@ export async function updateApiKeyName(id: ApiKeyId, name: string): Promise<ApiK
     .set({ displayName: name.trim() })
     .where(eq(principal.id, updated.principalId))
 
+  return toApiKey(updated)
+}
+
+/**
+ * Update an API key. Any combination of name + scopes + allowedTeamIds +
+ * allowedInboxIds may be supplied. Setting any non-empty `scopes` clears
+ * `compatLegacyFullAccess` automatically.
+ */
+export async function updateApiKey(id: ApiKeyId, input: UpdateApiKeyInput): Promise<ApiKey> {
+  const patch: Record<string, unknown> = {}
+  if (input.name !== undefined) {
+    if (!input.name?.trim()) {
+      throw new ValidationError('VALIDATION_ERROR', 'API key name is required')
+    }
+    if (input.name.length > 255) {
+      throw new ValidationError('VALIDATION_ERROR', 'API key name must be 255 characters or less')
+    }
+    patch.name = input.name.trim()
+  }
+  let scopesAfter: string[] | undefined
+  if (input.scopes !== undefined) {
+    scopesAfter = validateScopes(input.scopes)
+    patch.scopes = scopesAfter
+    if (scopesAfter.length > 0) {
+      patch.compatLegacyFullAccess = false
+    }
+  }
+  if (input.allowedTeamIds !== undefined) {
+    patch.allowedTeamIds = dedupeIds(input.allowedTeamIds)
+  }
+  if (input.allowedInboxIds !== undefined) {
+    patch.allowedInboxIds = dedupeIds(input.allowedInboxIds)
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return getApiKeyById(id)
+  }
+
+  const [updated] = await db.update(apiKeys).set(patch).where(eq(apiKeys.id, id)).returning()
+  if (!updated) {
+    throw new NotFoundError('API_KEY_NOT_FOUND', 'API key not found')
+  }
+
+  if (input.name !== undefined) {
+    await db
+      .update(principal)
+      .set({ displayName: input.name.trim() })
+      .where(eq(principal.id, updated.principalId))
+  }
+
+  return toApiKey(updated)
+}
+
+/**
+ * Mark the legacy "all permissions" compatibility flag as acknowledged.
+ * Does NOT change behavior — it just suppresses the warning surfaced via
+ * `compatLegacyFullAccess` until scopes are actually set.
+ */
+export async function acknowledgeLegacyCompat(id: ApiKeyId): Promise<ApiKey> {
+  const [updated] = await db
+    .update(apiKeys)
+    .set({ compatAcknowledgedAt: new Date() })
+    .where(eq(apiKeys.id, id))
+    .returning()
+  if (!updated) {
+    throw new NotFoundError('API_KEY_NOT_FOUND', 'API key not found')
+  }
   return toApiKey(updated)
 }

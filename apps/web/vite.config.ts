@@ -35,6 +35,7 @@ export default defineConfig(({ mode }) => {
       __BUILD_TIME__: JSON.stringify(buildInfo.buildTime),
     },
     server: {
+      host: process.env.NITRO_HOST || undefined,
       port: Number(process.env.PORT || 3000),
       cors: mode === 'development',
       allowedHosts: true,

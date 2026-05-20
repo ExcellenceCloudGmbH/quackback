@@ -13,17 +13,27 @@ vi.mock('@/lib/server/domains/api-keys/api-key.service', () => ({
 const { mockFindFirst } = vi.hoisted(() => ({
   mockFindFirst: vi.fn().mockResolvedValue({ role: 'admin' }),
 }))
-vi.mock('@/lib/server/db', () => ({
-  db: {
-    query: {
-      principal: {
-        findFirst: mockFindFirst,
+vi.mock('@/lib/server/db', () => {
+  // Best-effort UPDATE chain for last_ip / last_user_agent.
+  const updateChain = {
+    set: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    execute: vi.fn().mockResolvedValue(undefined),
+  }
+  return {
+    db: {
+      query: {
+        principal: {
+          findFirst: mockFindFirst,
+        },
       },
+      update: vi.fn(() => updateChain),
     },
-  },
-  principal: { id: 'id' },
-  eq: vi.fn(),
-}))
+    principal: { id: 'id' },
+    apiKeys: { id: 'id' },
+    eq: vi.fn(),
+  }
+})
 
 describe('API Auth', () => {
   const mockApiKey: ApiKey = {
@@ -36,6 +46,14 @@ describe('API Auth', () => {
     lastUsedAt: null,
     expiresAt: null,
     revokedAt: null,
+    scopes: [],
+    allowedTeamIds: [],
+    allowedInboxIds: [],
+    lastIp: null,
+    lastUserAgent: null,
+    rotatedAt: null,
+    compatLegacyFullAccess: true,
+    compatAcknowledgedAt: null,
   }
 
   beforeEach(() => {
@@ -91,7 +109,7 @@ describe('API Auth', () => {
       })
 
       const result = await requireApiKey(request)
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         apiKey: mockApiKey,
         principalId: mockApiKey.principalId,
         role: 'admin',
@@ -160,7 +178,7 @@ describe('API Auth', () => {
 
       const result = await withApiKeyAuth(request, { role: 'team' })
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         apiKey: mockApiKey,
         principalId: mockApiKey.principalId,
         role: 'admin',
@@ -182,7 +200,9 @@ describe('API Auth', () => {
       })
 
       await expect(withApiKeyAuth(request, { role: 'admin' })).rejects.toThrow(ForbiddenError)
-      await expect(withApiKeyAuth(request, { role: 'admin' })).rejects.toThrow('Admin access required')
+      await expect(withApiKeyAuth(request, { role: 'admin' })).rejects.toThrow(
+        'Admin access required'
+      )
     })
 
     it('should throw ForbiddenError when team role required but member is a portal user', async () => {
@@ -199,7 +219,9 @@ describe('API Auth', () => {
       })
 
       await expect(withApiKeyAuth(request, { role: 'team' })).rejects.toThrow(ForbiddenError)
-      await expect(withApiKeyAuth(request, { role: 'team' })).rejects.toThrow('Team member access required')
+      await expect(withApiKeyAuth(request, { role: 'team' })).rejects.toThrow(
+        'Team member access required'
+      )
     })
 
     it('should allow admin through for both team and admin roles', async () => {

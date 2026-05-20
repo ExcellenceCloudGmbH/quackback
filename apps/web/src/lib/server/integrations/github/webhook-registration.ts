@@ -31,7 +31,7 @@ export async function registerGitHubWebhook(
     body: JSON.stringify({
       name: 'web',
       active: true,
-      events: ['issues'],
+      events: ['issues', 'issue_comment'],
       config: {
         url: callbackUrl,
         content_type: 'json',

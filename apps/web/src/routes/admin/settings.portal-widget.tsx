@@ -179,6 +179,7 @@ function WidgetAppearanceControls({
     defaultBoard?: string
     position?: string
     tabs?: { feedback?: boolean; changelog?: boolean; help?: boolean }
+    ticketing?: { enabled?: boolean }
   }
   boards: { id: string; name: string; slug: string }[]
   position: 'bottom-right' | 'bottom-left'
@@ -196,6 +197,7 @@ function WidgetAppearanceControls({
     changelog: config.tabs?.changelog ?? false,
   })
   const [helpTab, setHelpTab] = useState(config.tabs?.help ?? false)
+  const [ticketingEnabled, setTicketingEnabled] = useState(config.ticketing?.enabled ?? false)
 
   const showHelpTabToggle = helpCenterFlagEnabled && helpCenterEnabled
 
@@ -333,6 +335,38 @@ function WidgetAppearanceControls({
               </div>
             </div>
           )}
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2.5">
+            <div>
+              <Label htmlFor="tab-support" className="text-xs font-medium cursor-pointer">
+                Support
+              </Label>
+              <p className="text-[11px] text-muted-foreground">
+                Let users open and reply to support tickets from the widget
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <InlineSpinner visible={saving} />
+              <Switch
+                id="tab-support"
+                checked={ticketingEnabled}
+                onCheckedChange={async (checked) => {
+                  setTicketingEnabled(checked)
+                  setSaving(true)
+                  try {
+                    await updateWidgetConfigFn({ data: { ticketing: { enabled: checked } } })
+                    startTransition(() => router.invalidate())
+                  } catch {
+                    setTicketingEnabled(!checked)
+                  } finally {
+                    setSaving(false)
+                  }
+                }}
+                disabled={isBusy}
+                aria-label="Support tickets"
+              />
+            </div>
+          </div>
         </div>
       </div>
 

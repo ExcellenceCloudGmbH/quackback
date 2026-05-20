@@ -34,6 +34,10 @@ interface OAuthState {
   ts: number
   /** Pre-auth fields collected before OAuth (e.g. Zendesk subdomain) */
   preAuthFields?: Record<string, string>
+  /** 'new' = create a new integration row, 'reconnect' = update existing */
+  intent?: 'new' | 'reconnect'
+  /** Integration ID to reconnect (when intent === 'reconnect') */
+  integrationId?: string
 }
 
 function buildSettingsUrl(
@@ -198,7 +202,19 @@ export async function handleOAuthCallback(
     accessToken = exchangeResult.accessToken
 
     const { saveIntegration } = await import('./save')
-    await saveIntegration(integrationType, { principalId, ...exchangeResult })
+    const saveParams: Parameters<typeof saveIntegration>[1] = {
+      principalId,
+      ...exchangeResult,
+      ...(stateData.intent === 'new' ? { forceCreate: true } : {}),
+      ...(stateData.intent === 'reconnect' && stateData.integrationId
+        ? { integrationId: stateData.integrationId as import('@quackback/ids').IntegrationId }
+        : {}),
+    }
+    // Pass pre-auth fields as initial config for new connections (e.g., repo full name)
+    if (stateData.preAuthFields && stateData.intent === 'new') {
+      saveParams.config = { ...saveParams.config, ...stateData.preAuthFields }
+    }
+    await saveIntegration(integrationType, saveParams)
 
     const successUrl = buildSettingsUrl(tenantUrl, settingsPath, integrationType, 'connected')
     return redirectResponse(successUrl, [clearCookie(cookieName, isSecureRequest(request))])

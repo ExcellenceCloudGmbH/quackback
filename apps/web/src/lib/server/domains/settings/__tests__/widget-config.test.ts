@@ -21,6 +21,10 @@ describe('Widget Config Types', () => {
       expect(DEFAULT_WIDGET_CONFIG.defaultBoard).toBeUndefined()
       expect(DEFAULT_WIDGET_CONFIG.position).toBeUndefined()
     })
+
+    it('should have ticketing.enabled set to false (opt-in)', () => {
+      expect(DEFAULT_WIDGET_CONFIG.ticketing?.enabled).toBe(false)
+    })
   })
 
   describe('WidgetConfig type constraints', () => {
@@ -81,6 +85,14 @@ describe('Widget Config Types', () => {
       expect(publicConfig.enabled).toBe(true)
       // identifyVerification is NOT in PublicWidgetConfig (type-level check)
       expect('identifyVerification' in publicConfig).toBe(false)
+    })
+
+    it('should accept ticketing.enabled', () => {
+      const publicConfig: PublicWidgetConfig = {
+        enabled: true,
+        ticketing: { enabled: true },
+      }
+      expect(publicConfig.ticketing?.enabled).toBe(true)
     })
   })
 })

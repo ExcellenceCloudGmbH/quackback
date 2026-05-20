@@ -439,6 +439,11 @@ const updateWidgetConfigSchema = z.object({
       help: z.boolean().optional(),
     })
     .optional(),
+  ticketing: z
+    .object({
+      enabled: z.boolean().optional(),
+    })
+    .optional(),
 })
 
 export const updateWidgetConfigFn = createServerFn({ method: 'POST' })

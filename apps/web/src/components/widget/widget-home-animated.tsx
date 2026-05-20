@@ -67,6 +67,8 @@ export interface WidgetHomeProps {
   anonymousVotingEnabled?: boolean
   anonymousPostingEnabled?: boolean
   imageUploadsInWidget?: boolean
+  /** Optional slot rendered above the post composer (e.g. the support entry card). */
+  supportSlot?: import('react').ReactNode
 }
 
 interface SearchResult {
@@ -173,6 +175,7 @@ export function WidgetHomeAnimated({
   anonymousVotingEnabled = true,
   anonymousPostingEnabled = false,
   imageUploadsInWidget = true,
+  supportSlot,
 }: WidgetHomeProps) {
   const intl = useIntl()
   const {
@@ -461,6 +464,7 @@ export function WidgetHomeAnimated({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
       <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin">
+        {supportSlot && <div className="w-full px-3 pt-2">{supportSlot}</div>}
         <div className="w-full px-3 pt-2 pb-3">
           <motion.div
             className="rounded-lg border border-border bg-card overflow-hidden"

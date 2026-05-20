@@ -7,6 +7,11 @@ export type McpScope =
   | 'write:changelog'
   | 'read:help-center'
   | 'write:help-center'
+  | 'read:tickets'
+  | 'write:tickets'
+  | 'manage:tickets'
+  | 'read:contacts'
+  | 'write:contacts'
 
 /**
  * Auth context resolved once in the route handler.

@@ -43,9 +43,12 @@ export const Route = createFileRoute('/admin/feedback/')({
     const statusFilterSlugs = deps.status || []
     const ownerFilterId = deps.owner
 
-    // Pre-fetch all data in parallel using React Query
+    // Pre-fetch all data in parallel using React Query.
+    // Use prefetchQuery (not ensureQueryData) so transient server errors don't
+    // crash the loader. Components use useSuspenseQuery which handles retries
+    // and shows the error boundary only after retries are exhausted.
     await Promise.all([
-      queryClient.ensureQueryData(
+      queryClient.prefetchQuery(
         adminQueries.inboxPosts({
           boardIds: boardFilterIds.length > 0 ? boardFilterIds : undefined,
           statusSlugs: statusFilterSlugs.length > 0 ? statusFilterSlugs : undefined,
@@ -63,11 +66,11 @@ export const Route = createFileRoute('/admin/feedback/')({
           limit: 20,
         })
       ),
-      queryClient.ensureQueryData(adminQueries.boards()),
-      queryClient.ensureQueryData(adminQueries.tags()),
-      queryClient.ensureQueryData(adminQueries.statuses()),
-      queryClient.ensureQueryData(adminQueries.teamMembers()),
-      queryClient.ensureQueryData(mergeSuggestionQueries.summary()),
+      queryClient.prefetchQuery(adminQueries.boards()),
+      queryClient.prefetchQuery(adminQueries.tags()),
+      queryClient.prefetchQuery(adminQueries.statuses()),
+      queryClient.prefetchQuery(adminQueries.teamMembers()),
+      queryClient.prefetchQuery(mergeSuggestionQueries.summary()),
     ])
 
     return {

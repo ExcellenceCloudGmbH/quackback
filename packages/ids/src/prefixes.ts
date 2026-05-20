@@ -65,6 +65,47 @@ export const ID_PREFIXES = {
   merge_suggestion: 'merge_sug',
   activity: 'activity',
 
+  // Ticketing — access & visibility (Phase 1: RBAC + teams + audit)
+  team: 'team',
+  team_membership: 'team_member',
+  role: 'role',
+  permission: 'perm',
+  role_permission: 'role_perm',
+  role_assignment: 'role_asgn',
+  audit_event: 'audit',
+
+  // Ticketing — Phase 2: organizations & contacts
+  organization: 'org',
+  contact: 'contact',
+  contact_user_link: 'cu_link',
+
+  // Ticketing — Phase 3: ticket core
+  ticket: 'ticket',
+  ticket_status: 'ticket_status',
+  ticket_thread: 'ticket_thread',
+  ticket_attachment: 'ticket_att',
+  ticket_participant: 'ticket_part',
+  ticket_share: 'ticket_share',
+  ticket_activity: 'ticket_act',
+
+  // Ticketing — Phase 4: inboxes, channels, routing
+  inbox: 'inbox',
+  inbox_channel: 'inbox_ch',
+  inbox_membership: 'inbox_mem',
+  routing_rule: 'route_rule',
+
+  // Ticketing — Phase 5: SLA + escalations
+  business_hours: 'bizhrs',
+  sla_policy: 'sla_pol',
+  sla_target: 'sla_tgt',
+  ticket_sla_clock: 'sla_clk',
+  escalation_rule: 'esc_rule',
+  sla_escalation_log: 'esc_log',
+
+  // Ticketing — Phase 7: subscriptions + webhook delivery log
+  ticket_subscription: 'tkt_sub',
+  webhook_delivery: 'wh_deliv',
+
   // ============================================
   // Auth Entities (Better-auth, text primary keys)
   // ============================================

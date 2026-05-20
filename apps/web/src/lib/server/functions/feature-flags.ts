@@ -9,6 +9,7 @@ export const updateFeatureFlagsFn = createServerFn({ method: 'POST' })
       analytics: z.boolean().optional(),
       helpCenter: z.boolean().optional(),
       aiFeedbackExtraction: z.boolean().optional(),
+      tickets: z.boolean().optional(),
     })
   )
   .handler(async ({ data }): Promise<FeatureFlags> => {

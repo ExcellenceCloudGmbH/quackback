@@ -18,6 +18,7 @@ type Command =
   | 'identify'
   | 'logout'
   | 'open'
+  | 'openSupport'
   | 'close'
   | 'showLauncher'
   | 'hideLauncher'
@@ -241,18 +242,25 @@ export function createSDK(): SDK {
         launcher?.setOpen(true)
         panelOpen = true
         const ctx = opts as {
-          view?: 'home' | 'new-post' | 'changelog' | 'help'
+          view?: 'home' | 'new-post' | 'changelog' | 'help' | 'support'
           postId?: string
           articleId?: string
           entryId?: string
+          ticketId?: string
         }
         emitter.emit('open', {
           view: ctx.view,
           postId: ctx.postId,
           articleId: ctx.articleId,
           entryId: ctx.entryId,
+          ticketId: ctx.ticketId,
         })
         return
+      }
+      case 'openSupport': {
+        const ticketId = a as string | undefined
+        const opts: OpenOptions = ticketId ? { view: 'support', ticketId } : { view: 'support' }
+        return dispatch('open', opts)
       }
       case 'close':
         panel?.hide()

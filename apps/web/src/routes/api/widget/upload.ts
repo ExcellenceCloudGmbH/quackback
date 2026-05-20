@@ -8,7 +8,8 @@ export async function handleWidgetUpload({ request }: { request: Request }): Pro
   if (!authHeader?.startsWith('Bearer ')) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const token = authHeader.slice(7)
+  // Strip HMAC suffix: portal session cookies are `{token}.{hmac}`, DB stores bare token.
+  const token = authHeader.slice(7).split('.')[0]
   const sessionRecord = await db.query.session.findFirst({
     where: and(eq(session.token, token), gt(session.expiresAt, new Date())),
   })

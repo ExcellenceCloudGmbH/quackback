@@ -39,6 +39,11 @@ const ALL_SCOPES: McpScope[] = [
   'write:changelog',
   'read:help-center',
   'write:help-center',
+  'read:tickets',
+  'write:tickets',
+  'manage:tickets',
+  'read:contacts',
+  'write:contacts',
 ]
 
 const API_KEY_PREFIX = 'qb_'
@@ -130,10 +135,10 @@ export async function resolveAuthContext(request: Request): Promise<McpAuthConte
         headers['WWW-Authenticate'] =
           `Bearer resource_metadata="${config.baseUrl}/.well-known/oauth-protected-resource"`
       }
-      return new Response(
-        JSON.stringify({ error: err.message }),
-        { status: err.statusCode, headers }
-      )
+      return new Response(JSON.stringify({ error: err.message }), {
+        status: err.statusCode,
+        headers,
+      })
     }
 
     const principalRecord = await db.query.principal.findFirst({
