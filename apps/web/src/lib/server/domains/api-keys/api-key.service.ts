@@ -9,7 +9,8 @@ import { db, apiKeys, principal, eq, and, isNull } from '@/lib/server/db'
 import type { PrincipalId } from '@quackback/ids'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { isAdmin } from '@/lib/shared/roles'
-import { createHash, randomBytes, timingSafeEqual } from 'crypto'
+import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
+import { config } from '@/lib/server/config'
 import { createServicePrincipal } from '@/lib/server/domains/principals/principal.service'
 import { ALL_PERMISSIONS } from '@/lib/server/domains/authz/authz.permissions'
 import type {
@@ -87,12 +88,14 @@ function generateApiKey(): string {
 }
 
 /**
- * Hash an API key for storage
+ * Hash an API key for storage using HMAC-SHA256.
  *
- * Uses SHA-256 to create a one-way hash of the key
+ * Uses the server's SECRET_KEY as the HMAC key so that stolen database
+ * hashes are useless without the application secret. The API key itself
+ * has 192 bits of entropy (24 random bytes), making brute-force infeasible.
  */
 function hashApiKey(key: string): string {
-  return createHash('sha256').update(key).digest('hex')
+  return createHmac('sha256', config.secretKey).update(key).digest('hex')
 }
 
 /**
