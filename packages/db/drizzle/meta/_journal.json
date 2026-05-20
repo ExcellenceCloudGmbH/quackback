@@ -341,211 +341,134 @@
     {
       "idx": 48,
       "version": "7",
-      "when": 1777680000000,
-      "tag": "0048_ticketing_rbac_foundation",
+      "when": 1777620521131,
+      "tag": "0048_consolidate_chat_target_keys",
       "breakpoints": true
     },
     {
       "idx": 49,
       "version": "7",
-      "when": 1777766400000,
-      "tag": "0049_organizations_contacts",
+      "when": 1777668617288,
+      "tag": "0049_settings_tier_limits",
       "breakpoints": true
     },
     {
       "idx": 50,
       "version": "7",
-      "when": 1777852800000,
-      "tag": "0050_ticket_core",
+      "when": 1777669821603,
+      "tag": "0050_api_keys_scopes",
       "breakpoints": true
     },
     {
       "idx": 51,
       "version": "7",
-      "when": 1777939200000,
-      "tag": "0051_inboxes_routing",
+      "when": 1777669821604,
+      "tag": "0051_ai_usage_log_month_index",
       "breakpoints": true
     },
     {
       "idx": 52,
       "version": "7",
-      "when": 1778025600000,
-      "tag": "0052_sla_escalations",
+      "when": 1777655280134,
+      "tag": "0052_otp_to_magic_link",
       "breakpoints": true
     },
     {
       "idx": 53,
       "version": "7",
-      "when": 1778112000000,
-      "tag": "0053_api_key_scopes",
+      "when": 1778457600000,
+      "tag": "0053_settings_managed_field_paths",
       "breakpoints": true
     },
     {
       "idx": 54,
       "version": "7",
-      "when": 1778198400000,
-      "tag": "0054_ticket_subscriptions_and_webhook_deliveries",
+      "when": 1778457600001,
+      "tag": "0054_settings_state",
       "breakpoints": true
     },
     {
       "idx": 55,
       "version": "7",
-      "when": 1778284800000,
-      "tag": "0055_webhook_deliveries_request_payload",
+      "when": 1778457600002,
+      "tag": "0055_hook_deliveries",
       "breakpoints": true
     },
     {
       "idx": 56,
       "version": "7",
-      "when": 1778371200000,
-      "tag": "0056_webhook_inbox_filter",
+      "when": 1778457600003,
+      "tag": "0056_admin_auth_settings",
       "breakpoints": true
     },
     {
       "idx": 57,
       "version": "7",
-      "when": 1777818662744,
-      "tag": "0057_github_ticket_sync",
+      "when": 1778457600004,
+      "tag": "0057_audit_log",
       "breakpoints": true
     },
     {
       "idx": 58,
       "version": "7",
-      "when": 1778457600000,
-      "tag": "0058_integration_sync_log",
+      "when": 1778457600005,
+      "tag": "0058_sso_recovery_codes",
       "breakpoints": true
     },
     {
       "idx": 59,
       "version": "7",
-      "when": 1777836610355,
-      "tag": "0059_old_cloak",
+      "when": 1778457600006,
+      "tag": "0059_sso_required_default",
       "breakpoints": true
     },
     {
       "idx": 60,
       "version": "7",
-      "when": 1777620521131,
-      "tag": "0060_consolidate_chat_target_keys",
+      "when": 1778457600007,
+      "tag": "0060_session_user_created_at_index",
       "breakpoints": true
     },
     {
       "idx": 61,
       "version": "7",
-      "when": 1777668617288,
-      "tag": "0061_settings_tier_limits",
+      "when": 1778457600008,
+      "tag": "0061_normalize_2fa_password_dependency",
       "breakpoints": true
     },
     {
       "idx": 62,
       "version": "7",
-      "when": 1777669821603,
-      "tag": "0062_api_keys_scopes",
+      "when": 1778457600009,
+      "tag": "0062_drop_sso_required_flag",
       "breakpoints": true
     },
     {
       "idx": 63,
       "version": "7",
-      "when": 1777669821604,
-      "tag": "0063_ai_usage_log_month_index",
+      "when": 1778457600010,
+      "tag": "0063_comment_content_json",
       "breakpoints": true
     },
     {
       "idx": 64,
       "version": "7",
-      "when": 1777655280134,
-      "tag": "0064_otp_to_magic_link",
+      "when": 1778457600011,
+      "tag": "0064_post_mentions",
       "breakpoints": true
     },
     {
       "idx": 65,
       "version": "7",
-      "when": 1778457600000,
-      "tag": "0065_settings_managed_field_paths",
+      "when": 1778457600012,
+      "tag": "0065_principal_displayname_lower_idx",
       "breakpoints": true
     },
     {
       "idx": 66,
       "version": "7",
-      "when": 1778457600001,
-      "tag": "0066_settings_state",
-      "breakpoints": true
-    },
-    {
-      "idx": 67,
-      "version": "7",
-      "when": 1778457600002,
-      "tag": "0067_hook_deliveries",
-      "breakpoints": true
-    },
-    {
-      "idx": 68,
-      "version": "7",
-      "when": 1778457600003,
-      "tag": "0068_admin_auth_settings",
-      "breakpoints": true
-    },
-    {
-      "idx": 69,
-      "version": "7",
-      "when": 1778457600004,
-      "tag": "0069_audit_log",
-      "breakpoints": true
-    },
-    {
-      "idx": 70,
-      "version": "7",
-      "when": 1778457600005,
-      "tag": "0070_sso_recovery_codes",
-      "breakpoints": true
-    },
-    {
-      "idx": 71,
-      "version": "7",
-      "when": 1778457600006,
-      "tag": "0071_sso_required_default",
-      "breakpoints": true
-    },
-    {
-      "idx": 72,
-      "version": "7",
-      "when": 1778457600007,
-      "tag": "0072_session_user_created_at_index",
-      "breakpoints": true
-    },
-    {
-      "idx": 73,
-      "version": "7",
-      "when": 1778457600008,
-      "tag": "0073_normalize_2fa_password_dependency",
-      "breakpoints": true
-    },
-    {
-      "idx": 74,
-      "version": "7",
-      "when": 1778457600009,
-      "tag": "0074_drop_sso_required_flag",
-      "breakpoints": true
-    },
-    {
-      "idx": 75,
-      "version": "7",
-      "when": 1778457600010,
-      "tag": "0075_comment_content_json",
-      "breakpoints": true
-    },
-    {
-      "idx": 76,
-      "version": "7",
-      "when": 1778457600011,
-      "tag": "0076_post_mentions",
-      "breakpoints": true
-    },
-    {
-      "idx": 77,
-      "version": "7",
-      "when": 1778457600012,
-      "tag": "0077_principal_displayname_lower_idx",
+      "when": 1779494400000,
+      "tag": "0066_ticketing_and_authz",
       "breakpoints": true
     }
   ]
