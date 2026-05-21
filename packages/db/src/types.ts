@@ -18,8 +18,16 @@ import type { principal } from './schema/auth'
 export const STATUS_CATEGORIES = ['active', 'complete', 'closed'] as const
 export type StatusCategory = (typeof STATUS_CATEGORIES)[number]
 
-// Moderation states for posts (e.g., for imported content filtering)
-export const MODERATION_STATES = ['published', 'pending', 'spam', 'archived'] as const
+// Moderation states for posts — single source of truth, kept in sync with
+// the posts.moderation_state column enum (schema.test.ts pins the match).
+export const MODERATION_STATES = [
+  'published',
+  'pending',
+  'spam',
+  'archived',
+  'closed',
+  'deleted',
+] as const
 export type ModerationState = (typeof MODERATION_STATES)[number]
 
 // Board types

@@ -15,7 +15,8 @@ import { describe, it, expect } from 'vitest'
 import { canViewPost, canCreatePost } from '../posts'
 import { ANONYMOUS_ACTOR, type Actor } from '../types'
 import type { SegmentId, PrincipalId } from '@quackback/ids'
-import type { BoardAudience, BoardModeration } from '@/lib/server/db'
+import type { BoardAudience, BoardModeration, ModerationState } from '@/lib/server/db'
+import { MODERATION_STATES } from '@/lib/server/db'
 
 // ----------------------------------------------------------------------
 // Actor fixtures
@@ -57,16 +58,7 @@ const service: Actor = {
 // Helpers
 // ----------------------------------------------------------------------
 
-type ModerationState = 'published' | 'pending' | 'spam' | 'archived' | 'closed' | 'deleted'
-
-const ALL_MODERATION_STATES: ModerationState[] = [
-  'published',
-  'pending',
-  'spam',
-  'archived',
-  'closed',
-  'deleted',
-]
+const ALL_MODERATION_STATES = [...MODERATION_STATES]
 
 const publicBoard = { audience: { kind: 'public' } as BoardAudience }
 const teamBoard = { audience: { kind: 'team' } as BoardAudience }

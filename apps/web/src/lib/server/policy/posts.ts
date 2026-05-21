@@ -5,12 +5,15 @@
  * isn't visible, and create is always denied when view is denied.
  */
 import { and, eq, or, sql, type SQL } from 'drizzle-orm'
-import { posts, type BoardAudience, type BoardModeration } from '@/lib/server/db'
+import {
+  posts,
+  type BoardAudience,
+  type BoardModeration,
+  type ModerationState,
+} from '@/lib/server/db'
 import type { PrincipalId } from '@quackback/ids'
 import { allowDecision, denyDecision, isTeamActor, type Actor, type Decision } from './types'
 import { canViewBoard, boardViewFilter } from './boards'
-
-type ModerationState = 'published' | 'pending' | 'spam' | 'archived' | 'closed' | 'deleted'
 
 interface PostShape {
   moderationState: ModerationState
