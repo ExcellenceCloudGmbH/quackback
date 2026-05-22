@@ -503,6 +503,7 @@ export interface UpdatePortalConfigInput {
   oauth?: Partial<PortalAuthMethods>
   features?: Partial<PortalFeatures>
   welcomeCard?: Partial<PortalWelcomeCard>
+  moderationDefault?: ModerationDefault
 }
 
 // =============================================================================

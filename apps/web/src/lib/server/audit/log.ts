@@ -54,6 +54,7 @@ export type AuditEventType =
   // v1 access controls
   | 'board.audience.changed'
   | 'board.moderation.changed'
+  | 'moderation.default.changed'
   | 'post.moderation.approved'
   | 'post.moderation.rejected'
   | 'segment.member.added'

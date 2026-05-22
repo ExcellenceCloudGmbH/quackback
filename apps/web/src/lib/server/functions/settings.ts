@@ -7,6 +7,8 @@ import {
   type BrandingConfig,
   type UpdatePortalConfigInput,
 } from '@/lib/server/domains/settings'
+import { isAdmin } from '@/lib/shared/roles'
+import { ForbiddenError } from '@/lib/shared/errors'
 import { userIdSchema, type UserId } from '@quackback/ids'
 import {
   getPortalConfig,
@@ -748,3 +750,31 @@ export const regenerateWidgetSecretFn = createServerFn({ method: 'POST' }).handl
     throw error
   }
 })
+
+// ============================================
+// Moderation Default Operations
+// ============================================
+
+const moderationDefaultSchema = z.object({
+  requireApproval: z.enum(['none', 'anonymous', 'authenticated', 'all']),
+})
+
+export const updateModerationDefaultFn = createServerFn({ method: 'POST' })
+  .inputValidator(moderationDefaultSchema.parse)
+  .handler(async ({ data }) => {
+    console.log(`[fn:settings] updateModerationDefaultFn: requireApproval=${data.requireApproval}`)
+    const auth = await requireAuth()
+    if (!isAdmin(auth.principal.role)) {
+      throw new ForbiddenError('FORBIDDEN', 'Admin only')
+    }
+    const before = await getPortalConfig()
+    const updated = await updatePortalConfig({ moderationDefault: data })
+    await recordAuditEvent({
+      event: 'moderation.default.changed',
+      actor: actorFromAuth(auth),
+      target: { type: 'settings', id: 'portal-config' },
+      before: { moderationDefault: before.moderationDefault },
+      after: { moderationDefault: data },
+    })
+    return { moderationDefault: updated.moderationDefault }
+  })
