@@ -4,7 +4,8 @@ import { fetchUserAvatar } from '@/lib/server/functions/portal'
 import { PortalHeader } from '@/components/public/portal-header'
 import { AuthPopoverProvider } from '@/components/auth/auth-popover-context'
 import { AuthDialog } from '@/components/auth/auth-dialog'
-import { PortalAccessDenied } from '@/components/portal/portal-access-denied'
+import { PortalAccessGate } from '@/components/portal/portal-access-gate'
+import type { PortalAccessGateError } from '@/components/portal/portal-access-gate'
 import { DEFAULT_PORTAL_CONFIG } from '@/lib/shared/types/settings'
 import { generateThemeCSS, getGoogleFontsUrl } from '@/lib/shared/theme'
 import { resolveLocale } from '@/lib/shared/i18n'
@@ -19,7 +20,7 @@ const getPortalLocale = createServerFn({ method: 'GET' }).handler(async () => {
 })
 
 export const Route = createFileRoute('/_portal')({
-  loader: async ({ context, location }) => {
+  loader: async ({ context }) => {
     const { session, settings, userRole, baseUrl } = context
 
     const org = settings?.settings
@@ -38,31 +39,26 @@ export const Route = createFileRoute('/_portal')({
     const accessResult = evaluatePortalAccess({ visibility, role, isAuthenticated })
 
     if (!accessResult.granted) {
-      if (accessResult.reason === 'unauthenticated') {
-        // Encode the current path+search so the login page can redirect back.
-        const returnTo = location.pathname + (location.searchStr ?? '')
-        throw redirect({
-          to: '/auth/login',
-          search: { returnTo },
-        })
+      // Both denied cases (unauthenticated + unauthorized) render an in-place
+      // overlay — no redirect. Throwing aborts the match so child loaders
+      // never execute; real portal content never reaches the client.
+      const brandingData = settings?.brandingData ?? null
+      const brandingConfig = settings?.brandingConfig ?? {}
+      const hasThemeConfig = brandingConfig.light || brandingConfig.dark
+      const gateError: PortalAccessGateError = {
+        type: 'portal-access-gate',
+        reason: accessResult.reason,
+        workspaceName: org.name,
+        logoUrl: brandingData?.logoUrl ?? null,
+        themeStyles: hasThemeConfig ? generateThemeCSS(brandingConfig) : '',
+        customCss: settings?.customCss ?? '',
+        authConfig: {
+          found: true,
+          oauth: settings?.publicPortalConfig?.oauth ?? DEFAULT_PORTAL_CONFIG.oauth,
+          customProviderNames: settings?.publicPortalConfig?.customProviderNames,
+        },
       }
-      // reason === 'unauthorized': render access-denied UI instead of the portal.
-      return {
-        portalAccessDenied: true as const,
-        org,
-        baseUrl: baseUrl ?? '',
-        userRole,
-        session,
-        brandingData: settings?.brandingData ?? null,
-        faviconData: settings?.faviconData ?? null,
-        themeStyles: '',
-        customCss: '',
-        themeMode: 'user' as const,
-        googleFontsUrl: null,
-        initialUserData: undefined,
-        authConfig: { found: true, oauth: {}, customProviderNames: undefined },
-        locale: await getPortalLocale(),
-      }
+      throw Object.assign(new Error(JSON.stringify(gateError)), gateError)
     }
 
     // userRole comes from bootstrap data, avatar needs to be fetched
@@ -107,7 +103,6 @@ export const Route = createFileRoute('/_portal')({
     const locale = await getPortalLocale()
 
     return {
-      portalAccessDenied: false as const,
       org,
       baseUrl: baseUrl ?? '',
       userRole,
@@ -147,8 +142,56 @@ export const Route = createFileRoute('/_portal')({
       links: [{ rel: 'icon', href: faviconUrl }],
     }
   },
+  errorComponent: PortalErrorBoundary,
   component: PortalLayout,
 })
+
+/**
+ * Catches errors thrown from the _portal loader. When the error is a
+ * PortalAccessGateError we render the in-place overlay; anything else falls
+ * through to the default error UI.
+ *
+ * The gate data is carried two ways so it survives SSR serialization:
+ *   1. As extra properties on the Error object (works in pure client / dev).
+ *   2. As JSON in the error message (survives when only message is preserved).
+ */
+function PortalErrorBoundary({ error }: { error: unknown; reset?: () => void }) {
+  const gateErr = parseGateError(error)
+  if (gateErr) {
+    return (
+      <PortalAccessGate
+        reason={gateErr.reason}
+        workspaceName={gateErr.workspaceName}
+        logoUrl={gateErr.logoUrl}
+        authConfig={gateErr.authConfig}
+        themeStyles={gateErr.themeStyles}
+        customCss={gateErr.customCss}
+      />
+    )
+  }
+  // Unknown error — surface a minimal message.
+  const message = error instanceof Error ? error.message : 'An unexpected error occurred.'
+  return (
+    <div className="flex min-h-screen items-center justify-center p-8 text-center">
+      <p className="text-muted-foreground">{message}</p>
+    </div>
+  )
+}
+
+function parseGateError(error: unknown): PortalAccessGateError | null {
+  if (!(error instanceof Error)) return null
+  // Fast path: extra properties survive (dev / client-only execution).
+  const ext = error as unknown as Partial<PortalAccessGateError>
+  if (ext.type === 'portal-access-gate') return ext as PortalAccessGateError
+  // Fallback: parse from JSON message (SSR serialization strips extra props).
+  try {
+    const parsed = JSON.parse(error.message) as Partial<PortalAccessGateError>
+    if (parsed.type === 'portal-access-gate') return parsed as PortalAccessGateError
+  } catch {
+    // not a gate error
+  }
+  return null
+}
 
 function PortalLayout() {
   const loaderData = Route.useLoaderData()
@@ -164,19 +207,6 @@ function PortalLayout() {
     authConfig,
     locale,
   } = loaderData
-
-  // Authenticated but non-team visitor on a private portal.
-  if (loaderData.portalAccessDenied) {
-    return (
-      <PortalIntlProvider locale={locale}>
-        <div className="min-h-screen bg-background">
-          {themeStyles && <style dangerouslySetInnerHTML={{ __html: themeStyles }} />}
-          {customCss && <style dangerouslySetInnerHTML={{ __html: customCss }} />}
-          <PortalAccessDenied workspaceName={org.name} logoUrl={brandingData?.logoUrl ?? null} />
-        </div>
-      </PortalIntlProvider>
-    )
-  }
 
   return (
     <PortalIntlProvider locale={locale}>
