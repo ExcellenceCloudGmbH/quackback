@@ -68,6 +68,7 @@ export function buildNavSections(flags?: { helpCenter?: boolean }): NavSection[]
         { label: 'Statuses', to: '/admin/settings/statuses', icon: Cog6ToothIcon },
         { label: 'Tags', to: '/admin/settings/tags', icon: TagIcon },
         { label: 'Permissions', to: '/admin/settings/permissions', icon: ShieldCheckIcon },
+        { label: 'Moderation', to: '/admin/settings/moderation', icon: ShieldCheckIcon },
       ],
     },
   ]
