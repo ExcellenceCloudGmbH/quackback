@@ -80,7 +80,7 @@ export function buildNavSections(flags?: { helpCenter?: boolean }): NavSection[]
   }
 
   sections.push({
-    label: 'People',
+    label: 'Customers',
     items: [{ label: 'People', to: '/admin/settings/people', icon: UserGroupIcon }],
   })
 
