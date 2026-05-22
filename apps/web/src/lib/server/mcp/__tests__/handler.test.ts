@@ -1024,6 +1024,7 @@ describe('MCP HTTP Handler', () => {
       // Verify isPrivate was passed through to the service
       expect(mockCreateComment).toHaveBeenCalledWith(
         expect.objectContaining({ isPrivate: true }),
+        expect.any(Object),
         expect.any(Object)
       )
     })
