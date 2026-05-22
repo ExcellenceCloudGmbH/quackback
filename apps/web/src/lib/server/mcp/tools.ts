@@ -1040,7 +1040,7 @@ Examples:
         const mcpCommentActor = {
           principalId: auth.principalId,
           role: auth.role,
-          principalType: 'user' as const,
+          principalType: auth.userId ? ('user' as const) : ('service' as const),
           segmentIds: callerSegmentIds,
         }
         const result = await createComment(
@@ -1096,7 +1096,7 @@ Examples:
         const actor = {
           principalId: auth.principalId,
           role: 'admin' as const,
-          principalType: 'user' as const,
+          principalType: auth.userId ? ('user' as const) : ('service' as const),
           segmentIds: callerSegmentIds,
         }
 

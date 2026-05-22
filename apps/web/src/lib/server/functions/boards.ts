@@ -8,7 +8,7 @@ import type { BoardId } from '@quackback/ids'
 import type { BoardSettings, BoardAudience, SetupState } from '@/lib/server/db'
 import { requireAuth } from './auth-helpers'
 import { getSettings } from './workspace'
-import { db, settings, boards, eq } from '@/lib/server/db'
+import { db, settings, boards, eq, and, isNull } from '@/lib/server/db'
 import {
   listBoards,
   getBoardById,
@@ -184,10 +184,13 @@ export const updateBoardFn = createServerFn({ method: 'POST' })
     // because updateBoard no longer accepts it.
     if (data.isPublic !== undefined) {
       const audience: BoardAudience = data.isPublic ? { kind: 'public' } : { kind: 'team' }
-      await db
+      const [updatedWithAudience] = await db
         .update(boards)
-        .set({ audience })
-        .where(eq(boards.id, data.id as BoardId))
+        .set({ audience, updatedAt: new Date() })
+        .where(and(eq(boards.id, data.id as BoardId), isNull(boards.deletedAt)))
+        .returning()
+      console.log(`[fn:boards] updateBoardFn: updated id=${board.id}`)
+      return serializeBoard(updatedWithAudience)
     }
 
     console.log(`[fn:boards] updateBoardFn: updated id=${board.id}`)
