@@ -296,10 +296,6 @@ const updatePortalConfigSchema = z.object({
   oauth: z.record(z.string(), z.boolean().optional()).optional(),
   features: z
     .object({
-      publicView: z.boolean().optional(),
-      submissions: z.boolean().optional(),
-      comments: z.boolean().optional(),
-      voting: z.boolean().optional(),
       anonymousVoting: z.boolean().optional(),
       anonymousCommenting: z.boolean().optional(),
       anonymousPosting: z.boolean().optional(),

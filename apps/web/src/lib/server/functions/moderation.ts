@@ -7,9 +7,9 @@
  *                          reason in the audit trail; restoring returns it to the queue.
  *
  * Approve and reject are team-level operations (admin OR member): mirrors
- * Canny/Featurebase where moderators are a separate concept from workspace
+ * industry feedback tools where moderators are a separate concept from workspace
  * admins. Changing the workspace moderation *policy* is admin-only and lives
- * on the Settings → Moderation page.
+ * on the Settings → Feedback → Permissions page.
  */
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'

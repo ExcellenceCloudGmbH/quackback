@@ -38,7 +38,7 @@ describe('parseJsonConfig', () => {
   it('stored values override defaults for nested keys', () => {
     const stored = JSON.stringify({
       oauth: { password: false, email: true },
-      features: { publicView: false },
+      features: { anonymousVoting: false },
     })
 
     const result = parseJsonConfig(stored, DEFAULT_PORTAL_CONFIG)
@@ -49,9 +49,9 @@ describe('parseJsonConfig', () => {
     expect(result.oauth.google).toBe(true)
     expect(result.oauth.github).toBe(true)
     // Explicit override
-    expect(result.features.publicView).toBe(false)
+    expect(result.features.anonymousVoting).toBe(false)
     // Rest of features preserved from defaults
-    expect(result.features.submissions).toBe(true)
+    expect(result.features.anonymousCommenting).toBe(false)
   })
 
   it('handles flat configs (no nested objects)', () => {

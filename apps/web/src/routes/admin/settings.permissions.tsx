@@ -73,10 +73,6 @@ function PermissionsPage() {
   const [anonCommenting, setAnonCommenting] = useState(features?.anonymousCommenting ?? false)
   const [anonVoting, setAnonVoting] = useState(features?.anonymousVoting ?? true)
 
-  // Content toggles
-  const [richMediaInPosts, setRichMediaInPosts] = useState(features?.richMediaInPosts ?? true)
-  const [videoEmbedsInPosts, setVideoEmbedsInPosts] = useState(features?.videoEmbedsInPosts ?? true)
-
   // Moderation toggles
   const [moderationToggles, setModerationToggles] = useState<ApprovalToggles>(() =>
     requireApprovalToToggles(portalConfigQuery.data.moderationDefault?.requireApproval ?? 'none')
@@ -194,35 +190,6 @@ function PermissionsPage() {
             saving={savingField === 'moderation-authenticated'}
             onCheckedChange={(checked) => updateModeration('authenticated', checked)}
             disabled={isBusy}
-          />
-        </div>
-      </SettingsCard>
-
-      <SettingsCard title="Post content" description="What users can add to their posts.">
-        <div className="divide-y divide-border/50">
-          <PermissionToggle
-            id="rich-media-in-posts"
-            label="Allow images in posts"
-            description="Let users attach images when writing posts."
-            checked={richMediaInPosts}
-            saving={savingField === 'richMediaInPosts'}
-            onCheckedChange={(checked) => {
-              setRichMediaInPosts(checked)
-              updateFeature('richMediaInPosts', checked, () => setRichMediaInPosts(!checked))
-            }}
-            disabled={isBusy}
-          />
-          <PermissionToggle
-            id="video-embeds-in-posts"
-            label="Allow videos in posts"
-            description="Let users embed YouTube and other videos in posts."
-            checked={videoEmbedsInPosts}
-            saving={savingField === 'videoEmbedsInPosts'}
-            onCheckedChange={(checked) => {
-              setVideoEmbedsInPosts(checked)
-              updateFeature('videoEmbedsInPosts', checked, () => setVideoEmbedsInPosts(!checked))
-            }}
-            disabled={isBusy || !richMediaInPosts}
           />
         </div>
       </SettingsCard>

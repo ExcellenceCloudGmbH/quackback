@@ -177,14 +177,6 @@ export interface PortalAuthMethods {
  * Portal feature toggles
  */
 export interface PortalFeatures {
-  /** Whether unauthenticated users can view the portal */
-  publicView: boolean
-  /** Whether portal users can submit new posts */
-  submissions: boolean
-  /** Whether portal users can comment on posts */
-  comments: boolean
-  /** Whether portal users can vote on posts */
-  voting: boolean
   /** Whether unauthenticated visitors can vote without signing in */
   anonymousVoting: boolean
   /** Whether unauthenticated visitors can comment without signing in */
@@ -197,10 +189,6 @@ export interface PortalFeatures {
   allowDeleteAfterEngagement: boolean
   /** Show public edit history on posts */
   showPublicEditHistory: boolean
-  /** Whether rich media (images, tables, embeds) is enabled in the admin post editor */
-  richMediaInPosts?: boolean
-  /** Whether YouTube/video embeds are enabled in the admin post editor (only applies when richMediaInPosts is true) */
-  videoEmbedsInPosts?: boolean
 }
 
 /**
@@ -257,10 +245,6 @@ export const DEFAULT_PORTAL_CONFIG: PortalConfig = {
     github: true,
   },
   features: {
-    publicView: true,
-    submissions: true,
-    comments: true,
-    voting: true,
     allowEditAfterEngagement: false,
     allowDeleteAfterEngagement: false,
     showPublicEditHistory: false,

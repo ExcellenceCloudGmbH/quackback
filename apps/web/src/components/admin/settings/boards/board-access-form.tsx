@@ -24,7 +24,7 @@ import type { BoardAudience } from '@/lib/shared/db-types'
  * `{ kind: 'segments' }`, the form shows a read-only banner directing the
  * admin to manage the segment list on the Segments admin page.
  *
- * Post moderation is workspace-wide (Settings → Moderation), not per-board.
+ * Post moderation is workspace-wide (Settings → Permissions), not per-board.
  *
  * Submit calls `updateBoardAccessFn` (admin-only, audited) — distinct from
  * the general board update path so members can't change board visibility.
