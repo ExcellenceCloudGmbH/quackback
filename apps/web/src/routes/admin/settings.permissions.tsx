@@ -7,7 +7,12 @@ import { BackLink } from '@/components/ui/back-link'
 import { PageHeader } from '@/components/shared/page-header'
 import { SettingsCard } from '@/components/admin/settings/settings-card'
 import { Switch } from '@/components/ui/switch'
-import { updatePortalConfigFn } from '@/lib/server/functions/settings'
+import { updatePortalConfigFn, updateModerationDefaultFn } from '@/lib/server/functions/settings'
+import {
+  requireApprovalToToggles,
+  togglesToRequireApproval,
+  type ApprovalToggles,
+} from '@/lib/shared/moderation-policy'
 
 export const Route = createFileRoute('/admin/settings/permissions')({
   loader: async ({ context }) => {
@@ -63,20 +68,19 @@ function PermissionsPage() {
 
   const features = portalConfigQuery.data.features
 
-  // Portal access
-  const [publicView, setPublicView] = useState(features?.publicView ?? true)
-
-  // Action toggles — signed-in + anonymous per action
-  const [submissions, setSubmissions] = useState(features?.submissions ?? true)
+  // Anonymous access toggles
   const [anonPosting, setAnonPosting] = useState(features?.anonymousPosting ?? false)
-  const [comments, setComments] = useState(features?.comments ?? true)
   const [anonCommenting, setAnonCommenting] = useState(features?.anonymousCommenting ?? false)
-  const [voting, setVoting] = useState(features?.voting ?? true)
   const [anonVoting, setAnonVoting] = useState(features?.anonymousVoting ?? true)
 
   // Content toggles
   const [richMediaInPosts, setRichMediaInPosts] = useState(features?.richMediaInPosts ?? true)
   const [videoEmbedsInPosts, setVideoEmbedsInPosts] = useState(features?.videoEmbedsInPosts ?? true)
+
+  // Moderation toggles
+  const [moderationToggles, setModerationToggles] = useState<ApprovalToggles>(() =>
+    requireApprovalToToggles(portalConfigQuery.data.moderationDefault?.requireApproval ?? 'none')
+  )
 
   const [savingField, setSavingField] = useState<string | null>(null)
 
@@ -89,6 +93,23 @@ function PermissionsPage() {
       })
     } catch {
       revert()
+    } finally {
+      setSavingField(null)
+    }
+  }
+
+  async function updateModeration(key: keyof ApprovalToggles, checked: boolean) {
+    const prev = moderationToggles
+    const next = { ...moderationToggles, [key]: checked }
+    setModerationToggles(next)
+    setSavingField(`moderation-${key}`)
+    try {
+      await updateModerationDefaultFn({
+        data: { requireApproval: togglesToRequireApproval(next) },
+      })
+      startTransition(() => router.invalidate())
+    } catch {
+      setModerationToggles(prev)
     } finally {
       setSavingField(null)
     }
@@ -107,63 +128,20 @@ function PermissionsPage() {
         description="Control who can access your portal and what they can do."
       />
 
-      <SettingsCard title="Portal access" description="Who can see your feedback portal.">
+      <SettingsCard
+        title="Permissions"
+        description="Control what visitors without an account can do on your portal."
+      >
         <div className="divide-y divide-border/50">
-          <PermissionToggle
-            id="public-view"
-            label="Public view"
-            description="Let anyone browse posts without signing in."
-            checked={publicView}
-            saving={savingField === 'publicView'}
-            onCheckedChange={(checked) => {
-              setPublicView(checked)
-              updateFeature('publicView', checked, () => setPublicView(!checked))
-            }}
-            disabled={isBusy}
-          />
-        </div>
-      </SettingsCard>
-
-      <SettingsCard title="Submissions" description="Who can create new posts.">
-        <div className="divide-y divide-border/50">
-          <PermissionToggle
-            id="submissions"
-            label="Signed-in users can submit"
-            description="Allow users to submit new posts."
-            checked={submissions}
-            saving={savingField === 'submissions'}
-            onCheckedChange={(checked) => {
-              setSubmissions(checked)
-              updateFeature('submissions', checked, () => setSubmissions(!checked))
-            }}
-            disabled={isBusy}
-          />
           <PermissionToggle
             id="anon-posting"
-            label="Anonymous users can submit"
+            label="Anonymous users can submit posts"
             description="Let visitors submit without an account."
             checked={anonPosting}
             saving={savingField === 'anonymousPosting'}
             onCheckedChange={(checked) => {
               setAnonPosting(checked)
               updateFeature('anonymousPosting', checked, () => setAnonPosting(!checked))
-            }}
-            disabled={isBusy || !submissions}
-          />
-        </div>
-      </SettingsCard>
-
-      <SettingsCard title="Comments" description="Who can comment on posts.">
-        <div className="divide-y divide-border/50">
-          <PermissionToggle
-            id="comments"
-            label="Signed-in users can comment"
-            description="Allow users to comment on posts."
-            checked={comments}
-            saving={savingField === 'comments'}
-            onCheckedChange={(checked) => {
-              setComments(checked)
-              updateFeature('comments', checked, () => setComments(!checked))
             }}
             disabled={isBusy}
           />
@@ -177,23 +155,6 @@ function PermissionsPage() {
               setAnonCommenting(checked)
               updateFeature('anonymousCommenting', checked, () => setAnonCommenting(!checked))
             }}
-            disabled={isBusy || !comments}
-          />
-        </div>
-      </SettingsCard>
-
-      <SettingsCard title="Voting" description="Who can upvote posts.">
-        <div className="divide-y divide-border/50">
-          <PermissionToggle
-            id="voting"
-            label="Signed-in users can vote"
-            description="Allow users to upvote posts."
-            checked={voting}
-            saving={savingField === 'voting'}
-            onCheckedChange={(checked) => {
-              setVoting(checked)
-              updateFeature('voting', checked, () => setVoting(!checked))
-            }}
             disabled={isBusy}
           />
           <PermissionToggle
@@ -206,7 +167,33 @@ function PermissionsPage() {
               setAnonVoting(checked)
               updateFeature('anonymousVoting', checked, () => setAnonVoting(!checked))
             }}
-            disabled={isBusy || !voting}
+            disabled={isBusy}
+          />
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="Moderation"
+        description="Posts from the selected groups wait for review before publishing."
+      >
+        <div className="divide-y divide-border/50">
+          <PermissionToggle
+            id="moderate-anonymous"
+            label="Require approval for anonymous posts"
+            description="Posts from visitors without an account wait for review before they appear."
+            checked={moderationToggles.anonymous}
+            saving={savingField === 'moderation-anonymous'}
+            onCheckedChange={(checked) => updateModeration('anonymous', checked)}
+            disabled={isBusy}
+          />
+          <PermissionToggle
+            id="moderate-authenticated"
+            label="Require approval for signed-in posts"
+            description="Posts from signed-in portal users wait for review before they appear."
+            checked={moderationToggles.authenticated}
+            saving={savingField === 'moderation-authenticated'}
+            onCheckedChange={(checked) => updateModeration('authenticated', checked)}
+            disabled={isBusy}
           />
         </div>
       </SettingsCard>
