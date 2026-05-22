@@ -153,14 +153,11 @@ describe('buildNavSections', () => {
     expect(experimental.to).toBe('/admin/settings/experimental')
   })
 
-  it('has Access item in Feedback section after Permissions', () => {
+  it('does not have a standalone Access item in the Feedback section', () => {
     const sections = buildNavSections()
     const feedback = sections.find((s) => s.label === 'Feedback')!
-    const permissionsIdx = feedback.items.findIndex((i) => i.label === 'Permissions')
-    const accessIdx = feedback.items.findIndex((i) => i.label === 'Access')
-    expect(accessIdx).toBeGreaterThan(-1)
-    expect(feedback.items[accessIdx].to).toBe('/admin/settings/access')
-    expect(accessIdx).toBe(permissionsIdx + 1)
+    const accessItem = feedback.items.find((i) => i.label === 'Access')
+    expect(accessItem).toBeUndefined()
   })
 
   it('does NOT list standalone API Keys, Webhooks, or MCP entries anywhere', () => {

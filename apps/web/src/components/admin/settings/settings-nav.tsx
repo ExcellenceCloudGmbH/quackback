@@ -17,7 +17,6 @@ import {
   BookOpenIcon,
   TagIcon,
   MegaphoneIcon,
-  LockClosedIcon,
 } from '@heroicons/react/24/solid'
 import { cn } from '@/lib/shared/utils'
 import type { FeatureFlags } from '@/lib/shared/types'
@@ -69,7 +68,6 @@ export function buildNavSections(flags?: { helpCenter?: boolean }): NavSection[]
         { label: 'Statuses', to: '/admin/settings/statuses', icon: Cog6ToothIcon },
         { label: 'Tags', to: '/admin/settings/tags', icon: TagIcon },
         { label: 'Permissions', to: '/admin/settings/permissions', icon: ShieldCheckIcon },
-        { label: 'Access', to: '/admin/settings/access', icon: LockClosedIcon },
       ],
     },
   ]

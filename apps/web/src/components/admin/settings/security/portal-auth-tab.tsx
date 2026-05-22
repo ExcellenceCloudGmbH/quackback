@@ -3,6 +3,7 @@ import { useRouter } from '@tanstack/react-router'
 import {
   ArrowPathIcon,
   EnvelopeIcon,
+  GlobeAltIcon,
   KeyIcon,
   ShieldCheckIcon,
   LockClosedIcon,
@@ -13,18 +14,22 @@ import { Switch } from '@/components/ui/switch'
 import { MethodRow } from '@/components/admin/settings/auth-shared/method-row'
 import { OAuthProviderGrid } from '@/components/admin/settings/auth-shared/oauth-provider-grid'
 import { AuthProviderCredentialsDialog } from '@/components/admin/settings/portal-auth/auth-provider-credentials-dialog'
+import { PortalPrivacyDialog } from '@/components/admin/settings/portal-privacy-dialog'
+import { SettingsCard } from '@/components/admin/settings/settings-card'
 import { WarningBox } from '@/components/shared/warning-box'
 import { AUTH_PROVIDERS } from '@/lib/shared/auth-providers'
 import { updatePortalConfigFn } from '@/lib/server/functions/settings'
+import { updatePortalAccessFn } from '@/lib/server/functions/portal-access'
 import { isPathManagedFromBootstrap } from '@/lib/client/config-file'
 import { useRouteContext } from '@tanstack/react-router'
 import { cn } from '@/lib/shared/utils'
-import type { PortalAuthMethods } from '@/lib/shared/types'
+import type { PortalAuthMethods, PortalConfig } from '@/lib/shared/types/settings'
 
 interface PortalAuthTabProps {
   initialOauth: PortalAuthMethods
   credentialStatus: Record<string, boolean> & { _emailConfigured?: boolean }
   customOidcProviderTier: boolean
+  portalConfig: PortalConfig
 }
 
 /**
@@ -47,15 +52,94 @@ interface PortalAuthTabProps {
  * The `Sign-in Methods` card includes an explicit info row pointing
  * users to the Team tab for SSO so the absence isn't silent.
  */
+// ---------------------------------------------------------------------------
+// Visibility option descriptors
+// ---------------------------------------------------------------------------
+
+interface VisibilityOption {
+  value: 'public' | 'private'
+  label: string
+  description: string
+  icon: typeof LockClosedIcon
+}
+
+const VISIBILITY_OPTIONS: VisibilityOption[] = [
+  {
+    value: 'public',
+    label: 'Public',
+    description: 'Anyone can view your portal without signing in.',
+    icon: GlobeAltIcon,
+  },
+  {
+    value: 'private',
+    label: 'Private',
+    description: 'Visitors must be authorized to view the portal.',
+    icon: LockClosedIcon,
+  },
+]
+
 export function PortalAuthTab({
   initialOauth,
   credentialStatus,
   customOidcProviderTier,
+  portalConfig,
 }: PortalAuthTabProps) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [saving, setSaving] = useState(false)
   const [oauthState, setOauthState] = useState<Record<string, boolean | undefined>>(initialOauth)
+
+  // --- Portal visibility state ---
+  const currentVisibility = (portalConfig.access?.visibility ?? 'public') as 'public' | 'private'
+  const [visibility, setVisibility] = useState<'public' | 'private'>(currentVisibility)
+  const [visibilitySaving, setVisibilitySaving] = useState(false)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [pendingVisibility, setPendingVisibility] = useState<'public' | 'private' | null>(null)
+
+  const isVisibilityBusy = visibilitySaving || isPending
+
+  async function applyVisibility(next: 'public' | 'private') {
+    const prev = visibility
+    setVisibility(next)
+    setVisibilitySaving(true)
+    try {
+      await updatePortalAccessFn({ data: { visibility: next } })
+      startTransition(() => {
+        router.invalidate()
+      })
+    } catch {
+      // Revert optimistic update on error
+      setVisibility(prev)
+    } finally {
+      setVisibilitySaving(false)
+    }
+  }
+
+  function handleVisibilitySelect(next: 'public' | 'private') {
+    if (next === visibility || isVisibilityBusy) return
+
+    if (next === 'private') {
+      setPendingVisibility('private')
+      setDialogOpen(true)
+    } else {
+      void applyVisibility('public')
+    }
+  }
+
+  function handleConfirmPrivate() {
+    setDialogOpen(false)
+    if (pendingVisibility === 'private') {
+      setPendingVisibility(null)
+      void applyVisibility('private')
+    }
+  }
+
+  function handleCancelDialog(open: boolean) {
+    if (!open) {
+      setPendingVisibility(null)
+    }
+    setDialogOpen(open)
+  }
 
   const { managedFieldPaths = [] } =
     (useRouteContext({ from: '__root__' }) as { managedFieldPaths?: string[] }) ?? {}
@@ -122,6 +206,59 @@ export function PortalAuthTab({
 
   return (
     <div className="space-y-6">
+      {/* Portal visibility — phase 1 */}
+      <SettingsCard
+        title="Portal visibility"
+        description="Choose whether your portal is open to anyone or restricted to authorized visitors."
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {VISIBILITY_OPTIONS.map((option) => {
+            const isSelected = visibility === option.value
+            const Icon = option.icon
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => handleVisibilitySelect(option.value)}
+                disabled={isVisibilityBusy}
+                className={cn(
+                  'relative flex flex-col gap-2 rounded-lg border p-4 text-left transition-colors',
+                  isSelected
+                    ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                    : 'border-border/50 bg-card hover:border-border hover:bg-muted/30',
+                  isVisibilityBusy && 'cursor-not-allowed opacity-60'
+                )}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon
+                    className={cn(
+                      'h-4 w-4 shrink-0',
+                      isSelected ? 'text-primary' : 'text-muted-foreground'
+                    )}
+                  />
+                  <span className="text-sm font-medium">{option.label}</span>
+                  {visibilitySaving && isSelected && (
+                    <ArrowPathIcon className="ml-auto h-3.5 w-3.5 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">{option.description}</p>
+              </button>
+            )
+          })}
+        </div>
+      </SettingsCard>
+
+      {/*
+       * Phase 2 seam — allowed email domains section will be added here.
+       * It will only be visible when visibility === 'private'.
+       */}
+
+      <PortalPrivacyDialog
+        open={dialogOpen}
+        onOpenChange={handleCancelDialog}
+        onConfirm={handleConfirmPrivate}
+      />
+
       {noPortalAuthEnabled && (
         <WarningBox
           variant="warning"

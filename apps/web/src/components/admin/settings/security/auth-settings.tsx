@@ -5,7 +5,7 @@ import { TeamAuthMethodsSection } from './team-auth-methods-section'
 import { PortalAuthTab } from './portal-auth-tab'
 import { SsoPageCallout } from './sso-page-callout'
 import { settingsQueries } from '@/lib/client/queries/settings'
-import type { AuthConfig, PortalAuthMethods } from '@/lib/shared/types/settings'
+import type { AuthConfig, PortalAuthMethods, PortalConfig } from '@/lib/shared/types/settings'
 
 export type AuthTab = 'team' | 'portal'
 
@@ -17,6 +17,8 @@ interface AuthSettingsProps {
   teamAuthConfig: AuthConfig
   /** Portal-side oauth/methods from settings.portalConfig.oauth. */
   portalOauth: PortalAuthMethods
+  /** Full portal config — needed for the visibility card inside PortalAuthTab. */
+  portalConfig: PortalConfig
   credentialStatus: Record<string, boolean> & { _emailConfigured?: boolean }
   /** Tier flag for portal custom OIDC — passed through to <PortalAuthTab>. */
   customOidcProviderTier: boolean
@@ -39,6 +41,7 @@ export function AuthSettings({
   tab,
   teamAuthConfig,
   portalOauth,
+  portalConfig,
   credentialStatus,
   customOidcProviderTier,
 }: AuthSettingsProps) {
@@ -77,6 +80,7 @@ export function AuthSettings({
           initialOauth={portalOauth}
           credentialStatus={credentialStatus}
           customOidcProviderTier={customOidcProviderTier}
+          portalConfig={portalConfig}
         />
       </TabsContent>
     </Tabs>

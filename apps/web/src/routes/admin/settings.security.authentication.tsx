@@ -67,6 +67,7 @@ function AuthenticationPage() {
         tab={tab}
         teamAuthConfig={authConfigQuery.data}
         portalOauth={portalOauth}
+        portalConfig={portalConfigQuery.data}
         credentialStatus={credentialStatusQuery.data}
         customOidcProviderTier={customOidcProviderTier}
       />
