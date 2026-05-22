@@ -20,15 +20,14 @@ const getPortalLocale = createServerFn({ method: 'GET' }).handler(async () => {
 })
 
 export const Route = createFileRoute('/_portal')({
-  loader: async ({ context }) => {
-    const { session, settings, userRole, baseUrl } = context
-
-    const org = settings?.settings
-    if (!org) {
-      throw redirect({ to: '/onboarding' })
-    }
+  beforeLoad: ({ context }) => {
+    const { session, settings, userRole } = context
 
     // Portal-level visibility gate (Phase 1: team-only for private portals).
+    // Throwing here — in beforeLoad — sets firstBadMatchIndex, which aborts
+    // all child route loaders. No portal data is fetched or dehydrated for a
+    // blocked visitor. (A throw from loader does not abort child loaders.)
+    //
     // An anonymous Better Auth session has session.user but principalType===
     // 'anonymous' — mirror the check in widget.tsx to resolve auth state.
     const portalConfig = settings?.portalConfig
@@ -40,15 +39,16 @@ export const Route = createFileRoute('/_portal')({
 
     if (!accessResult.granted) {
       // Both denied cases (unauthenticated + unauthorized) render an in-place
-      // overlay — no redirect. Throwing aborts the match so child loaders
-      // never execute; real portal content never reaches the client.
+      // overlay via the route's errorComponent. The gate payload is carried
+      // two ways so it survives SSR serialization — see parseGateError below.
+      const org = settings?.settings
       const brandingData = settings?.brandingData ?? null
       const brandingConfig = settings?.brandingConfig ?? {}
       const hasThemeConfig = brandingConfig.light || brandingConfig.dark
       const gateError: PortalAccessGateError = {
         type: 'portal-access-gate',
         reason: accessResult.reason,
-        workspaceName: org.name,
+        workspaceName: org?.name ?? '',
         logoUrl: brandingData?.logoUrl ?? null,
         themeStyles: hasThemeConfig ? generateThemeCSS(brandingConfig) : '',
         customCss: settings?.customCss ?? '',
@@ -59,6 +59,14 @@ export const Route = createFileRoute('/_portal')({
         },
       }
       throw Object.assign(new Error(JSON.stringify(gateError)), gateError)
+    }
+  },
+  loader: async ({ context }) => {
+    const { session, settings, userRole, baseUrl } = context
+
+    const org = settings?.settings
+    if (!org) {
+      throw redirect({ to: '/onboarding' })
     }
 
     // userRole comes from bootstrap data, avatar needs to be fetched
