@@ -1,0 +1,269 @@
+/**
+ * Tests for the new built-in field evaluator cases:
+ * name, display_name, principal_type.
+ *
+ * Uses the same SQL-capture approach as the existing evaluator tests:
+ * mock @/lib/server/db so that db.execute captures the generated SQL
+ * string, then assert on the normalized query text.
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+// -----------------------------------------------------------------------
+// Captured SQL storage
+// -----------------------------------------------------------------------
+
+let capturedSql = ''
+
+// -----------------------------------------------------------------------
+// The `sql` tag mock: builds a simple object whose `.toString()` and
+// flattenSql() reconstitute the interpolated query text.
+// -----------------------------------------------------------------------
+
+type SqlValue = string | number | boolean | null | SqlObj | SqlObj[]
+interface SqlObj {
+  __sql: true
+  text: string
+}
+
+function makeSql(strings: TemplateStringsArray, ...values: SqlValue[]): SqlObj {
+  let text = strings[0] ?? ''
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i]
+    if (v && typeof v === 'object' && '__sql' in v) {
+      text += (v as SqlObj).text
+    } else if (Array.isArray(v)) {
+      text += v
+        .map((x) => (x && typeof x === 'object' && '__sql' in x ? x.text : String(x)))
+        .join(', ')
+    } else {
+      text += String(v)
+    }
+    text += strings[i + 1] ?? ''
+  }
+  return { __sql: true, text }
+}
+
+makeSql.raw = (s: string): SqlObj => ({ __sql: true, text: s })
+makeSql.join = (parts: SqlObj[], sep: SqlObj): SqlObj => ({
+  __sql: true,
+  text: parts.map((p) => p.text).join(sep.text),
+})
+
+// -----------------------------------------------------------------------
+// Mock @/lib/server/db
+// -----------------------------------------------------------------------
+
+vi.mock('@/lib/server/db', () => {
+  return {
+    db: {
+      execute: vi.fn(async (sqlObj: SqlObj) => {
+        capturedSql = sqlObj.text
+        return []
+      }),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: vi.fn(async () => []),
+        })),
+      })),
+      delete: vi.fn(() => ({
+        where: vi.fn(() => ({
+          returning: vi.fn(async () => []),
+        })),
+      })),
+      insert: vi.fn(() => ({
+        values: vi.fn(() => ({
+          onConflictDoNothing: vi.fn(async () => {}),
+        })),
+      })),
+      transaction: vi.fn(async (fn: (tx: unknown) => Promise<void>) => {
+        await fn({
+          insert: vi.fn(() => ({
+            values: vi.fn(() => ({
+              onConflictDoNothing: vi.fn(async () => {}),
+            })),
+          })),
+          delete: vi.fn(() => ({
+            where: vi.fn(async () => {}),
+          })),
+        })
+      }),
+    },
+    eq: vi.fn((a: unknown, b: unknown) => ({ __cond: 'eq', a, b })),
+    and: vi.fn((...args: unknown[]) => ({ __cond: 'and', args })),
+    inArray: vi.fn((col: unknown, vals: unknown[]) => ({ __cond: 'in', col, vals })),
+    isNull: vi.fn((col: unknown) => ({ __cond: 'isNull', col })),
+    sql: makeSql,
+    segments: {
+      id: 'id',
+      type: 'type',
+      deletedAt: 'deleted_at',
+    },
+    userSegments: {
+      segmentId: 'segment_id',
+      principalId: 'principal_id',
+      addedBy: 'added_by',
+    },
+  }
+})
+
+// -----------------------------------------------------------------------
+// Mock getSegment (used by evaluateDynamicSegment)
+// -----------------------------------------------------------------------
+
+type MockCondition = {
+  attribute: string
+  operator: string
+  value?: string | number | boolean | string[]
+  metadataKey?: string
+}
+
+type MockSegment = {
+  id: string
+  name: string
+  type: string
+  rules: {
+    match: 'all' | 'any'
+    conditions: MockCondition[]
+  } | null
+}
+let mockSegment: MockSegment | null = null
+
+vi.mock('../segment.service', () => ({
+  getSegment: vi.fn(async () => mockSegment),
+}))
+
+vi.mock('@/lib/server/integrations/user-sync-notify', () => ({
+  notifyUserSyncIntegrations: vi.fn(async () => {}),
+}))
+
+vi.mock('@quackback/ids', () => ({
+  fromUuid: vi.fn((_prefix: string, id: string) => id),
+}))
+
+// -----------------------------------------------------------------------
+// Tests
+// -----------------------------------------------------------------------
+
+import { evaluateDynamicSegment } from '../segment.evaluation'
+
+function makeSegment(conditions: MockCondition[]): MockSegment {
+  return {
+    id: 'segment_test',
+    name: 'Test Segment',
+    type: 'dynamic',
+    rules: { match: 'all', conditions },
+  }
+}
+
+beforeEach(() => {
+  capturedSql = ''
+  mockSegment = null
+  vi.clearAllMocks()
+})
+
+describe('evaluator — name attribute', () => {
+  it('eq operator produces u.name = value', async () => {
+    mockSegment = makeSegment([{ attribute: 'name', operator: 'eq', value: 'Alice' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('u.name')
+    expect(capturedSql).toContain('=')
+    expect(capturedSql).toContain('Alice')
+  })
+
+  it('contains operator produces u.name ILIKE %value%', async () => {
+    mockSegment = makeSegment([{ attribute: 'name', operator: 'contains', value: 'ali' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('u.name')
+    expect(capturedSql).toContain('ILIKE')
+    expect(capturedSql).toContain('%ali%')
+  })
+
+  it('is_set on name produces TRUE (name is NOT NULL)', async () => {
+    mockSegment = makeSegment([{ attribute: 'name', operator: 'is_set' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    // name is a NOT NULL column — is_set is always true; evaluator emits TRUE
+    expect(capturedSql).toContain('TRUE')
+  })
+
+  it('is_not_set on name produces FALSE (name is NOT NULL)', async () => {
+    mockSegment = makeSegment([{ attribute: 'name', operator: 'is_not_set' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    // name is a NOT NULL column — is_not_set is never true; evaluator emits FALSE
+    expect(capturedSql).toContain('FALSE')
+  })
+})
+
+describe('evaluator — display_name attribute', () => {
+  it('eq operator produces p.display_name = value', async () => {
+    mockSegment = makeSegment([{ attribute: 'display_name', operator: 'eq', value: 'Bob' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('p.display_name')
+    expect(capturedSql).toContain('=')
+    expect(capturedSql).toContain('Bob')
+  })
+
+  it('starts_with operator produces p.display_name ILIKE value%', async () => {
+    mockSegment = makeSegment([{ attribute: 'display_name', operator: 'starts_with', value: 'Bo' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('p.display_name')
+    expect(capturedSql).toContain('ILIKE')
+    expect(capturedSql).toContain('Bo%')
+  })
+
+  it('is_set produces p.display_name IS NOT NULL (nullable column)', async () => {
+    mockSegment = makeSegment([{ attribute: 'display_name', operator: 'is_set' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('p.display_name')
+    expect(capturedSql).toContain('IS NOT NULL')
+  })
+
+  it('is_not_set produces p.display_name IS NULL (nullable column)', async () => {
+    mockSegment = makeSegment([{ attribute: 'display_name', operator: 'is_not_set' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('p.display_name')
+    expect(capturedSql).toContain('IS NULL')
+  })
+})
+
+describe('evaluator — principal_type attribute', () => {
+  it('eq operator produces p.type = value', async () => {
+    mockSegment = makeSegment([{ attribute: 'principal_type', operator: 'eq', value: 'user' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('p.type')
+    expect(capturedSql).toContain('=')
+    expect(capturedSql).toContain('user')
+  })
+
+  it('neq operator produces p.type != value', async () => {
+    mockSegment = makeSegment([
+      { attribute: 'principal_type', operator: 'neq', value: 'anonymous' },
+    ])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('p.type')
+    expect(capturedSql).toContain('!=')
+    expect(capturedSql).toContain('anonymous')
+  })
+
+  it('in operator produces p.type IN (values)', async () => {
+    mockSegment = makeSegment([
+      { attribute: 'principal_type', operator: 'in', value: ['user', 'anonymous'] },
+    ])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('p.type')
+    expect(capturedSql).toContain('IN')
+    expect(capturedSql).toContain('user')
+    expect(capturedSql).toContain('anonymous')
+  })
+
+  it('is_set on principal_type produces TRUE (always-present field)', async () => {
+    mockSegment = makeSegment([{ attribute: 'principal_type', operator: 'is_set' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('TRUE')
+  })
+
+  it('is_not_set on principal_type produces FALSE (always-present field)', async () => {
+    mockSegment = makeSegment([{ attribute: 'principal_type', operator: 'is_not_set' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('FALSE')
+  })
+})

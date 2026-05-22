@@ -69,6 +69,15 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
         return sql`${activityCountSql('votes', false)} ${sql.raw(isSet ? '> 0' : '= 0')}`
       case 'comment_count':
         return sql`${activityCountSql('comments', true)} ${sql.raw(isSet ? '> 0' : '= 0')}`
+      // name is NOT NULL — is_set is always true, is_not_set is never true
+      case 'name':
+        return isSet ? sql`TRUE` : sql`FALSE`
+      // display_name is nullable — check for null
+      case 'display_name':
+        return isSet ? sql`p.display_name IS NOT NULL` : sql`p.display_name IS NULL`
+      // principal.type is always set — is_set is always true, is_not_set is never true
+      case 'principal_type':
+        return isSet ? sql`TRUE` : sql`FALSE`
       default:
         return null
     }
@@ -95,6 +104,12 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
         if (!key) return null
         return sql`(u.metadata::jsonb->>${key}) IN (${placeholders})`
       }
+      case 'name':
+        return sql`u.name IN (${placeholders})`
+      case 'display_name':
+        return sql`p.display_name IN (${placeholders})`
+      case 'principal_type':
+        return sql`p.type IN (${placeholders})`
       default:
         return null
     }
@@ -157,6 +172,30 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
       const sqlOp = OPERATOR_SQL[operator]
       if (!sqlOp) return null
       return sql`${activityCountSql('comments', true)} ${sql.raw(sqlOp)} ${Number(value)}`
+    }
+
+    case 'name': {
+      const field = sql`u.name`
+      const strResult = stringOperatorSql(field, operator, value)
+      if (strResult) return strResult
+      const sqlOp = OPERATOR_SQL[operator]
+      if (!sqlOp) return null
+      return sql`${field} ${sql.raw(sqlOp)} ${String(value)}`
+    }
+
+    case 'display_name': {
+      const field = sql`p.display_name`
+      const strResult = stringOperatorSql(field, operator, value)
+      if (strResult) return strResult
+      const sqlOp = OPERATOR_SQL[operator]
+      if (!sqlOp) return null
+      return sql`${field} ${sql.raw(sqlOp)} ${String(value)}`
+    }
+
+    case 'principal_type': {
+      const sqlOp = OPERATOR_SQL[operator]
+      if (!sqlOp) return null
+      return sql`p.type ${sql.raw(sqlOp)} ${String(value)}`
     }
 
     default:

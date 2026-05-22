@@ -41,6 +41,9 @@ export type SegmentRuleAttribute =
   | 'comment_count'
   | 'plan'
   | 'metadata_key'
+  | 'name'
+  | 'display_name'
+  | 'principal_type'
 
 export interface SegmentCondition {
   attribute: SegmentRuleAttribute
