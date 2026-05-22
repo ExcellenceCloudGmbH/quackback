@@ -15,6 +15,23 @@ import type { PrincipalId } from '@quackback/ids'
 import { allowDecision, denyDecision, isTeamActor, type Actor, type Decision } from './types'
 import { canViewBoard, boardViewFilter } from './boards'
 
+/** A board's approval policy after `'inherit'` has been resolved away. */
+export type ResolvedRequireApproval = 'none' | 'anonymous' | 'authenticated' | 'all'
+
+/**
+ * Collapse a board's `requireApproval` to a concrete level. Total: an absent
+ * board config inherits; `'inherit'` takes the workspace default; an absent
+ * global default is `'none'`. The policy layer never sees `'inherit'`.
+ */
+export function resolveRequireApproval(
+  boardModeration: BoardModeration | undefined,
+  globalDefault: ResolvedRequireApproval | undefined
+): ResolvedRequireApproval {
+  const board = boardModeration?.requireApproval ?? 'inherit'
+  if (board === 'inherit') return globalDefault ?? 'none'
+  return board
+}
+
 interface PostShape {
   moderationState: ModerationState
   principalId?: PrincipalId | null

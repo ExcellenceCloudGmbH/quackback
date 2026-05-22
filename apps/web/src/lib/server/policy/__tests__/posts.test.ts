@@ -12,7 +12,7 @@
  * Pairs with boards.test.ts (audience matrix) and segment-membership tests.
  */
 import { describe, it, expect } from 'vitest'
-import { canViewPost, canCreatePost } from '../posts'
+import { canViewPost, canCreatePost, resolveRequireApproval } from '../posts'
 import { ANONYMOUS_ACTOR, type Actor } from '../types'
 import type { SegmentId, PrincipalId } from '@quackback/ids'
 import type { BoardAudience, BoardModeration, ModerationState } from '@/lib/server/db'
@@ -406,5 +406,26 @@ describe('canCreatePost — moderation defaults safely when undefined', () => {
 
   it('absent moderation does not crash on missing trustedSegmentIds', () => {
     expect(() => canCreatePost(trustedPortal, { audience: { kind: 'public' } })).not.toThrow()
+  })
+})
+
+describe('resolveRequireApproval', () => {
+  it('returns the global default when the board inherits', () => {
+    expect(
+      resolveRequireApproval({ requireApproval: 'inherit', trustedSegmentIds: [] }, 'all')
+    ).toBe('all')
+  })
+  it('returns the board value when the board overrides', () => {
+    expect(
+      resolveRequireApproval({ requireApproval: 'anonymous', trustedSegmentIds: [] }, 'all')
+    ).toBe('anonymous')
+  })
+  it('falls back to none when the board config is absent', () => {
+    expect(resolveRequireApproval(undefined, undefined)).toBe('none')
+  })
+  it('falls back to none when inheriting and the global default is absent', () => {
+    expect(
+      resolveRequireApproval({ requireApproval: 'inherit', trustedSegmentIds: [] }, undefined)
+    ).toBe('none')
   })
 })

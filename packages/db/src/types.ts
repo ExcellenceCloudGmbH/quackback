@@ -50,13 +50,13 @@ export type BoardAudience =
 // Stored in boards.moderation jsonb. trustedSegmentIds bypass requireApproval
 // even when their submitter category would normally be gated.
 export interface BoardModeration {
-  requireApproval: 'none' | 'anonymous' | 'authenticated' | 'all'
+  requireApproval: 'inherit' | 'none' | 'anonymous' | 'authenticated' | 'all'
   trustedSegmentIds: string[]
 }
 
 export const DEFAULT_BOARD_AUDIENCE: BoardAudience = { kind: 'public' }
 export const DEFAULT_BOARD_MODERATION: BoardModeration = {
-  requireApproval: 'none',
+  requireApproval: 'inherit',
   trustedSegmentIds: [],
 }
 
