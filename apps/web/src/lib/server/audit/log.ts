@@ -57,6 +57,7 @@ export type AuditEventType =
   | 'moderation.default.changed'
   | 'post.moderation.approved'
   | 'post.moderation.rejected'
+  | 'post.moderation.held'
   | 'segment.member.added'
   | 'segment.member.removed'
   | 'segment.sso_mapping.changed'

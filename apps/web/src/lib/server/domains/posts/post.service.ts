@@ -37,6 +37,7 @@ import {
   buildEventActor,
 } from '@/lib/server/events/dispatch'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
+import { recordAuditEvent } from '@/lib/server/audit/log'
 import { markdownToTiptapJson } from '@/lib/server/markdown-tiptap'
 import { rehostExternalImages } from '@/lib/server/content/rehost-images'
 import { subscribeToPost } from '@/lib/server/domains/subscriptions/subscription.service'
@@ -197,6 +198,16 @@ export async function createPost(
 
     return newPost
   })
+
+  if (moderationState === 'pending') {
+    await recordAuditEvent({
+      event: 'post.moderation.held',
+      actor: { userId: author.userId, email: author.email, role: author.actor?.role ?? null },
+      target: { type: 'post', id: post.id },
+      after: { moderationState: 'pending' },
+      metadata: { principalType: author.actor?.principalType ?? 'anonymous' },
+    })
+  }
 
   if (!options?.skipDispatch) {
     // Auto-subscribe the author to their own post
