@@ -42,9 +42,27 @@ vi.mock('@/lib/server/functions/auth-helpers', () => ({
 }))
 
 // In-memory state for the db mock.
-type Post = { id: string; moderationState: string; deletedAt: Date | null }
-const dbState: { posts: Post[]; auditEvents: Array<Record<string, unknown>> } = {
+type Post = {
+  id: string
+  moderationState: string
+  deletedAt: Date | null
+  boardId: string
+  principalId: string
+  title: string
+  content: string
+  createdAt: Date
+}
+type Board = { id: string; name: string }
+type Principal = { id: string; displayName: string | null }
+const dbState: {
+  posts: Post[]
+  boards: Board[]
+  principals: Principal[]
+  auditEvents: Array<Record<string, unknown>>
+} = {
   posts: [],
+  boards: [],
+  principals: [],
   auditEvents: [],
 }
 
@@ -62,36 +80,119 @@ vi.mock('@/lib/server/audit/log', () => ({
 }))
 
 // Column ref sentinel — same approach as segment-membership tests.
-interface PostsColumn {
-  __col: keyof Post
+interface ColRef {
+  __table: string
+  __col: string
 }
 
 // Conditions supported by the mock query engine.
-type EqCondition = { kind: 'eq'; col: keyof Post; val: string }
-type IsNullCondition = { kind: 'isNull'; col: keyof Post }
+type EqCondition = { kind: 'eq'; col: ColRef; val: unknown }
+type IsNullCondition = { kind: 'isNull'; col: ColRef }
 type AndCondition = { kind: 'and'; conditions: PostCondition[] }
 type PostCondition = EqCondition | IsNullCondition | AndCondition
 
-function matchPost(post: Post, c: PostCondition): boolean {
-  if (c.kind === 'eq') return post[c.col] === c.val
-  if (c.kind === 'isNull') return post[c.col] === null || post[c.col] === undefined
-  if (c.kind === 'and') return c.conditions.every((sub) => matchPost(post, sub))
+// Resolve a ColRef against a joined row (posts + boards + principal)
+type JoinedRow = Post & { __board: Board; __principal: Principal | undefined }
+
+function getVal(row: JoinedRow, col: ColRef): unknown {
+  if (col.__table === 'posts') return (row as unknown as Record<string, unknown>)[col.__col]
+  if (col.__table === 'boards')
+    return (row.__board as unknown as Record<string, unknown>)[col.__col]
+  if (col.__table === 'principal')
+    return row.__principal
+      ? (row.__principal as unknown as Record<string, unknown>)[col.__col]
+      : undefined
+  return undefined
+}
+
+function matchRow(row: JoinedRow, c: PostCondition): boolean {
+  if (c.kind === 'eq') return getVal(row, c.col) === c.val
+  if (c.kind === 'isNull') {
+    const v = getVal(row, c.col)
+    return v === null || v === undefined
+  }
+  if (c.kind === 'and') return c.conditions.every((sub) => matchRow(row, sub))
   return false
+}
+
+// The select query mock builds a fluent chain:
+// select({...}).from(posts).innerJoin(boards, ...).leftJoin(principal, ...).where(...).orderBy(...)
+// We capture the projection spec and resolve it at orderBy() time.
+type ProjectionSpec = Record<string, ColRef>
+
+function buildSelectChain(
+  spec: ProjectionSpec,
+  joinedRows: JoinedRow[] | null,
+  cond: PostCondition | null
+) {
+  const resolve = () => {
+    const rows = joinedRows ?? []
+    const filtered = cond ? rows.filter((r) => matchRow(r, cond)) : rows
+    return filtered.map((r) => {
+      const out: Record<string, unknown> = {}
+      for (const [key, col] of Object.entries(spec)) {
+        out[key] = getVal(r, col)
+      }
+      return out
+    })
+  }
+  return {
+    orderBy: vi.fn(() => Promise.resolve(resolve())),
+    where: vi.fn((c: PostCondition) => buildSelectChain(spec, joinedRows, c)),
+  }
+}
+
+function buildJoinChain(spec: ProjectionSpec, rows: JoinedRow[]) {
+  const chain: Record<string, unknown> = {}
+
+  chain.innerJoin = vi.fn((_table: unknown, _on: unknown) => {
+    // Filter to rows that have a matching board
+    const withBoards = rows.flatMap((r) => {
+      const board = dbState.boards.find((b) => b.id === r.boardId)
+      return board ? [{ ...r, __board: board }] : []
+    })
+    return buildJoinChain(spec, withBoards)
+  })
+
+  chain.leftJoin = vi.fn((_table: unknown, _on: unknown) => {
+    // Left-join: always keep all rows, enrich with principal when found
+    const enriched = rows.map((r) => ({
+      ...r,
+      __principal: dbState.principals.find((p) => p.id === r.principalId),
+    }))
+    return buildJoinChain(spec, enriched)
+  })
+
+  chain.where = vi.fn((c: PostCondition) => buildSelectChain(spec, rows, c))
+
+  return chain as {
+    innerJoin: ReturnType<typeof vi.fn>
+    leftJoin: ReturnType<typeof vi.fn>
+    where: ReturnType<typeof vi.fn>
+  }
 }
 
 vi.mock('@/lib/server/db', () => ({
   db: {
-    select: vi.fn(() => ({
-      from: vi.fn(() => ({
-        where: vi.fn(async (cond: PostCondition) =>
-          dbState.posts.filter((p) => matchPost(p, cond))
-        ),
-      })),
+    select: vi.fn((spec: ProjectionSpec) => ({
+      from: vi.fn((_table: unknown) => {
+        const baseRows: JoinedRow[] = dbState.posts.map((p) => ({
+          ...p,
+          __board: dbState.boards.find((b) => b.id === p.boardId) ?? { id: '', name: '' },
+          __principal: dbState.principals.find((pr) => pr.id === p.principalId),
+        }))
+        return buildJoinChain(spec, baseRows)
+      }),
     })),
     query: {
       posts: {
         findFirst: vi.fn(async (args: { where: PostCondition }) => {
-          return dbState.posts.find((p) => matchPost(p, args.where))
+          const rows: JoinedRow[] = dbState.posts.map((p) => ({
+            ...p,
+            __board: { id: '', name: '' },
+            __principal: undefined,
+          }))
+          return rows.find((r) => matchRow(r, args.where))
         }),
       },
     },
@@ -99,8 +200,16 @@ vi.mock('@/lib/server/db', () => ({
       set: vi.fn((patch: Partial<Post>) => ({
         where: vi.fn((cond: PostCondition) => ({
           returning: vi.fn(() => {
-            const matched = dbState.posts.filter((p) => matchPost(p, cond))
-            dbState.posts = dbState.posts.map((p) => (matchPost(p, cond) ? { ...p, ...patch } : p))
+            const rows: JoinedRow[] = dbState.posts.map((p) => ({
+              ...p,
+              __board: { id: '', name: '' },
+              __principal: undefined,
+            }))
+            const matched = rows.filter((r) => matchRow(r, cond))
+            dbState.posts = dbState.posts.map((p) => {
+              const r: JoinedRow = { ...p, __board: { id: '', name: '' }, __principal: undefined }
+              return matchRow(r, cond) ? { ...p, ...patch } : p
+            })
             return Promise.resolve(matched.map((p) => ({ id: p.id })))
           }),
         })),
@@ -108,19 +217,33 @@ vi.mock('@/lib/server/db', () => ({
     })),
   },
   posts: {
-    id: { __col: 'id' } satisfies PostsColumn,
-    moderationState: { __col: 'moderationState' } satisfies PostsColumn,
-    deletedAt: { __col: 'deletedAt' } satisfies PostsColumn,
+    id: { __table: 'posts', __col: 'id' } satisfies ColRef,
+    moderationState: { __table: 'posts', __col: 'moderationState' } satisfies ColRef,
+    deletedAt: { __table: 'posts', __col: 'deletedAt' } satisfies ColRef,
+    boardId: { __table: 'posts', __col: 'boardId' } satisfies ColRef,
+    principalId: { __table: 'posts', __col: 'principalId' } satisfies ColRef,
+    title: { __table: 'posts', __col: 'title' } satisfies ColRef,
+    content: { __table: 'posts', __col: 'content' } satisfies ColRef,
+    createdAt: { __table: 'posts', __col: 'createdAt' } satisfies ColRef,
+  },
+  boards: {
+    id: { __table: 'boards', __col: 'id' } satisfies ColRef,
+    name: { __table: 'boards', __col: 'name' } satisfies ColRef,
+  },
+  principal: {
+    id: { __table: 'principal', __col: 'id' } satisfies ColRef,
+    displayName: { __table: 'principal', __col: 'displayName' } satisfies ColRef,
   },
   eq: vi.fn(
-    (col: PostsColumn, val: string): EqCondition => ({
+    (col: ColRef, val: unknown): EqCondition => ({
       kind: 'eq',
-      col: col.__col,
+      col,
       val,
     })
   ),
   and: vi.fn((...conditions: PostCondition[]): AndCondition => ({ kind: 'and', conditions })),
-  isNull: vi.fn((col: PostsColumn): IsNullCondition => ({ kind: 'isNull', col: col.__col })),
+  isNull: vi.fn((col: ColRef): IsNullCondition => ({ kind: 'isNull', col })),
+  desc: vi.fn((col: ColRef) => col),
 }))
 
 import { ForbiddenError, NotFoundError, ConflictError } from '@/lib/shared/errors'
@@ -155,8 +278,19 @@ const AUTH_MEMBER = {
 }
 const AUTH_USER = { ...AUTH_ADMIN, principal: { ...AUTH_ADMIN.principal, role: 'user' as const } }
 
+// Default extra fields for posts used by approve/reject tests (not exercised by those tests)
+const POST_DEFAULTS = {
+  boardId: 'b1',
+  principalId: 'pr1',
+  title: 'T',
+  content: 'C',
+  createdAt: new Date('2024-01-01'),
+}
+
 beforeEach(() => {
   dbState.posts = []
+  dbState.boards = []
+  dbState.principals = []
   dbState.auditEvents = []
   mockRequireAuth.mockReset()
 })
@@ -182,19 +316,24 @@ describe('listPendingPostsFn — role gating', () => {
   })
 
   it('admin sees all pending', async () => {
+    dbState.boards = [{ id: 'b1', name: 'Ideas' }]
+    dbState.principals = [{ id: 'pr1', displayName: 'Alice' }]
     dbState.posts = [
-      { id: 'p1', moderationState: 'pending', deletedAt: null },
-      { id: 'p2', moderationState: 'published', deletedAt: null },
-      { id: 'p3', moderationState: 'pending', deletedAt: null },
+      { ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null },
+      { ...POST_DEFAULTS, id: 'p2', moderationState: 'published', deletedAt: null },
+      { ...POST_DEFAULTS, id: 'p3', moderationState: 'pending', deletedAt: null },
     ]
     mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
-    const result = (await listPending()({ data: {} })) as { posts: Post[] }
+    const result = (await listPending()({ data: {} })) as { posts: Array<{ id: string }> }
+    // Only the two pending posts are returned (published is excluded by query filter)
     expect(result.posts).toHaveLength(2)
-    expect(result.posts.every((p) => p.moderationState === 'pending')).toBe(true)
+    expect(result.posts.map((p) => p.id).sort()).toEqual(['p1', 'p3'])
   })
 
   it('member also sees pending (moderation is a team activity)', async () => {
-    dbState.posts = [{ id: 'p1', moderationState: 'pending', deletedAt: null }]
+    dbState.boards = [{ id: 'b1', name: 'Ideas' }]
+    dbState.principals = [{ id: 'pr1', displayName: 'Alice' }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null }]
     mockRequireAuth.mockResolvedValue(AUTH_MEMBER)
     const result = (await listPending()({ data: {} })) as { posts: Post[] }
     expect(result.posts).toHaveLength(1)
@@ -229,14 +368,14 @@ describe('approvePostFn', () => {
   })
 
   it('flips moderationState pending → published', async () => {
-    dbState.posts = [{ id: 'p1', moderationState: 'pending', deletedAt: null }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null }]
     mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
     await approve()({ data: { postId: 'p1' } })
     expect(dbState.posts[0].moderationState).toBe('published')
   })
 
   it('records an audit row with before/after state', async () => {
-    dbState.posts = [{ id: 'p1', moderationState: 'pending', deletedAt: null }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null }]
     mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
     await approve()({ data: { postId: 'p1' } })
     const event = dbState.auditEvents.find((e) => e.event === 'post.moderation.approved')
@@ -249,13 +388,13 @@ describe('approvePostFn', () => {
   it('throws ConflictError when approving an already-published post', async () => {
     // Race between two moderators: the second approve must be rejected,
     // not silently re-applied, so the audit log stays clean.
-    dbState.posts = [{ id: 'p1', moderationState: 'published', deletedAt: null }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'published', deletedAt: null }]
     mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
     await expect(approve()({ data: { postId: 'p1' } })).rejects.toBeInstanceOf(ConflictError)
   })
 
   it('member can approve', async () => {
-    dbState.posts = [{ id: 'p1', moderationState: 'pending', deletedAt: null }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null }]
     mockRequireAuth.mockResolvedValue(AUTH_MEMBER)
     await approve()({ data: { postId: 'p1' } })
     expect(dbState.posts[0].moderationState).toBe('published')
@@ -284,7 +423,7 @@ describe('rejectPostFn', () => {
   })
 
   it('soft-deletes (sets deletedAt) instead of flipping moderationState to spam', async () => {
-    dbState.posts = [{ id: 'p1', moderationState: 'pending', deletedAt: null }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null }]
     mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
     await reject()({ data: { postId: 'p1' } })
     const post = dbState.posts[0]
@@ -294,7 +433,7 @@ describe('rejectPostFn', () => {
   })
 
   it('records reason in audit metadata when supplied', async () => {
-    dbState.posts = [{ id: 'p1', moderationState: 'pending', deletedAt: null }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null }]
     mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
     await reject()({ data: { postId: 'p1', reason: 'link spam' } })
     const event = dbState.auditEvents.find((e) => e.event === 'post.moderation.rejected')
@@ -302,7 +441,7 @@ describe('rejectPostFn', () => {
   })
 
   it('omits reason (null) when not supplied', async () => {
-    dbState.posts = [{ id: 'p1', moderationState: 'pending', deletedAt: null }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null }]
     mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
     await reject()({ data: { postId: 'p1' } })
     const event = dbState.auditEvents.find((e) => e.event === 'post.moderation.rejected')
@@ -310,15 +449,65 @@ describe('rejectPostFn', () => {
   })
 
   it('throws ConflictError when rejecting a non-pending post', async () => {
-    dbState.posts = [{ id: 'p1', moderationState: 'published', deletedAt: null }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'published', deletedAt: null }]
     mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
     await expect(reject()({ data: { postId: 'p1' } })).rejects.toBeInstanceOf(ConflictError)
   })
 
   it('member can reject', async () => {
-    dbState.posts = [{ id: 'p1', moderationState: 'pending', deletedAt: null }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null }]
     mockRequireAuth.mockResolvedValue(AUTH_MEMBER)
     await reject()({ data: { postId: 'p1' } })
     expect(dbState.posts[0].deletedAt).toBeInstanceOf(Date)
+  })
+})
+
+// ----------------------------------------------------------------------
+// listPendingPostsFn — soft-delete exclusion + enrichment
+// ----------------------------------------------------------------------
+
+describe('listPendingPostsFn — listPendingPosts exclusion + enrichment', () => {
+  it('excludes a post that is pending but has deletedAt set (rejected)', async () => {
+    dbState.boards = [{ id: 'b1', name: 'Ideas' }]
+    dbState.principals = [{ id: 'pr1', displayName: 'Alice' }]
+    dbState.posts = [
+      { ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null },
+      {
+        ...POST_DEFAULTS,
+        id: 'p2',
+        moderationState: 'pending',
+        deletedAt: new Date('2024-06-01'),
+      },
+    ]
+    mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
+    const result = (await listPending()({ data: {} })) as {
+      posts: Array<{ id: string }>
+    }
+    expect(result.posts).toHaveLength(1)
+    expect(result.posts[0].id).toBe('p1')
+  })
+
+  it('each returned row carries boardName and authorName', async () => {
+    dbState.boards = [{ id: 'b1', name: 'Feature Requests' }]
+    dbState.principals = [{ id: 'pr1', displayName: 'Bob' }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null }]
+    mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
+    const result = (await listPending()({ data: {} })) as {
+      posts: Array<{ id: string; boardName: string; authorName: string | null }>
+    }
+    expect(result.posts).toHaveLength(1)
+    expect(result.posts[0].boardName).toBe('Feature Requests')
+    expect(result.posts[0].authorName).toBe('Bob')
+  })
+
+  it('authorName is null when principal has no displayName', async () => {
+    dbState.boards = [{ id: 'b1', name: 'Ideas' }]
+    dbState.principals = [{ id: 'pr1', displayName: null }]
+    dbState.posts = [{ ...POST_DEFAULTS, id: 'p1', moderationState: 'pending', deletedAt: null }]
+    mockRequireAuth.mockResolvedValue(AUTH_ADMIN)
+    const result = (await listPending()({ data: {} })) as {
+      posts: Array<{ id: string; authorName: string | null }>
+    }
+    expect(result.posts[0].authorName).toBeNull()
   })
 })

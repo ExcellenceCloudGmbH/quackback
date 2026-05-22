@@ -13,7 +13,7 @@
  */
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
-import { db, posts, eq, and, isNull } from '@/lib/server/db'
+import { db, posts, boards, principal, eq, and, isNull, desc } from '@/lib/server/db'
 import { requireAuth } from '@/lib/server/functions/auth-helpers'
 import { recordAuditEvent, actorFromAuth } from '@/lib/server/audit/log'
 import { isTeamMember } from '@/lib/shared/roles'
@@ -27,7 +27,21 @@ export const listPendingPostsFn = createServerFn({ method: 'GET' }).handler(asyn
   if (!isTeamMember(auth.principal.role)) {
     throw new ForbiddenError('FORBIDDEN', 'Team only')
   }
-  const rows = await db.select().from(posts).where(eq(posts.moderationState, 'pending'))
+  const rows = await db
+    .select({
+      id: posts.id,
+      title: posts.title,
+      content: posts.content,
+      createdAt: posts.createdAt,
+      boardName: boards.name,
+      // Mirror post.inbox.ts: author relation is principal joined on posts.principalId
+      authorName: principal.displayName,
+    })
+    .from(posts)
+    .innerJoin(boards, eq(posts.boardId, boards.id))
+    .leftJoin(principal, eq(posts.principalId, principal.id))
+    .where(and(eq(posts.moderationState, 'pending'), isNull(posts.deletedAt)))
+    .orderBy(desc(posts.createdAt))
   return { posts: rows }
 })
 
