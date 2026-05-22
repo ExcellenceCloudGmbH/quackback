@@ -10,7 +10,7 @@ import { DEFAULT_PORTAL_CONFIG } from '@/lib/shared/types/settings'
 import { generateThemeCSS, getGoogleFontsUrl } from '@/lib/shared/theme'
 import { resolveLocale } from '@/lib/shared/i18n'
 import { PortalIntlProvider } from '@/components/portal-intl-provider'
-import { evaluatePortalAccess } from '@/lib/server/domains/settings/portal-access'
+import { evaluateMyPortalAccessFn } from '@/lib/server/functions/portal-access'
 
 /** Resolve locale from Accept-Language header on the server. */
 const getPortalLocale = createServerFn({ method: 'GET' }).handler(async () => {
@@ -20,29 +20,19 @@ const getPortalLocale = createServerFn({ method: 'GET' }).handler(async () => {
 })
 
 export const Route = createFileRoute('/_portal')({
-  beforeLoad: ({ context }) => {
-    const { session, settings, userRole } = context
+  beforeLoad: async ({ context }) => {
+    const { settings } = context
 
-    // Portal-level visibility gate (Phase 1: team-only for private portals).
+    // Portal-level visibility gate.
     // Throwing here — in beforeLoad — sets firstBadMatchIndex, which aborts
     // all child route loaders. No portal data is fetched or dehydrated for a
     // blocked visitor. (A throw from loader does not abort child loaders.)
     //
-    // An anonymous Better Auth session has session.user but principalType===
-    // 'anonymous' — mirror the check in widget.tsx to resolve auth state.
-    const portalConfig = settings?.portalConfig
-    const visibility = portalConfig?.access?.visibility ?? 'public'
-    const isAnonymousPrincipal = session?.user?.principalType === 'anonymous'
-    const isAuthenticated = !!session?.user && !isAnonymousPrincipal
-    const role = (userRole ?? null) as 'admin' | 'member' | 'user' | null
-    const accessResult = evaluatePortalAccess({
-      visibility,
-      role,
-      isAuthenticated,
-      userEmail: session?.user?.email ?? null,
-      emailVerified: session?.user?.emailVerified ?? false,
-      allowedDomains: portalConfig?.access?.allowedDomains ?? [],
-    })
+    // The access decision is evaluated server-side by evaluateMyPortalAccessFn,
+    // which reads the caller's session and the full portal config (including
+    // allowedDomains) entirely on the server. Only the decision is returned —
+    // allowedDomains and widgetSignIn never touch the client context.
+    const accessResult = await evaluateMyPortalAccessFn()
 
     if (!accessResult.granted) {
       // Both denied cases (unauthenticated + unauthorized) render an in-place

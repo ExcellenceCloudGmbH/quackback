@@ -222,15 +222,16 @@ export const PORTAL_WELCOME_CARD_TITLE_MAX = 120
 /**
  * Portal-level access control settings.
  *
- * Phase 1: visibility only. Later phases extend `allowedDomains` and
- * `widgetSignIn` — those fields exist here so the DB column can accept
- * them when written; only `visibility` is enforced in Phase 1.
+ * `allowedDomains` and `widgetSignIn` are server-only policy. They are
+ * read by `evaluateMyPortalAccessFn` server-side and never serialized
+ * into the router context or any client payload. The router context
+ * carries only `visibility` from this shape (redacted in `__root.tsx`).
  */
 export interface PortalAccessConfig {
   visibility: 'public' | 'private'
-  /** Phase 2+: email domains whose users are automatically granted access. */
+  /** Email domains whose verified users are automatically granted access. */
   allowedDomains: string[]
-  /** Phase 2+: whether widget-authenticated users may access a private portal. */
+  /** Whether widget-authenticated users may access a private portal. */
   widgetSignIn: boolean
 }
 
@@ -533,7 +534,8 @@ export interface PublicPortalConfig {
   welcomeCard?: PortalWelcomeCard
   /**
    * Client-safe access control indicator. Only `isPrivate` is exposed;
-   * `allowedDomains` and `widgetSignIn` are server-only policy.
+   * `allowedDomains` and `widgetSignIn` remain server-only (see
+   * `PortalAccessConfig` and `evaluateMyPortalAccessFn`).
    */
   portalAccess?: { isPrivate: boolean }
 }

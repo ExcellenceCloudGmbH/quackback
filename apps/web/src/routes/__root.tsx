@@ -76,10 +76,30 @@ export const Route = createRootRouteWithContext<RouterContext>()({
     // oauth callbacks, magic-link landing) skip the inline overlay
     // so suspended owners can still get back in.
 
+    // Redact allowedDomains and widgetSignIn from the portalConfig placed
+    // into the router context. Both fields are server-only policy: the
+    // domain gate now runs server-side via evaluateMyPortalAccessFn.
+    // Nothing on the client legitimately reads them from context —
+    // the admin Security → Portal tab fetches the full config via its own
+    // settingsQueries.portalConfig() query, which is unaffected.
+    const redactedSettings: TenantSettings | null =
+      settings && settings.portalConfig?.access
+        ? ({
+            ...settings,
+            portalConfig: {
+              ...settings.portalConfig,
+              access: {
+                // Only expose visibility — keep allowedDomains and widgetSignIn off the wire.
+                visibility: settings.portalConfig.access.visibility,
+              },
+            },
+          } as TenantSettings)
+        : settings
+
     return {
       baseUrl,
       session,
-      settings,
+      settings: redactedSettings,
       userRole,
       themeCookie,
       managedFieldPaths,
@@ -116,19 +136,6 @@ export const Route = createRootRouteWithContext<RouterContext>()({
       {
         rel: 'stylesheet',
         href: appCss,
-      },
-      {
-        rel: 'preconnect',
-        href: 'https://fonts.googleapis.com',
-      },
-      {
-        rel: 'preconnect',
-        href: 'https://fonts.gstatic.com',
-        crossOrigin: 'anonymous',
-      },
-      {
-        rel: 'stylesheet',
-        href: 'https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap',
       },
       {
         rel: 'alternate',

@@ -1,5 +1,6 @@
 /**
- * Admin server function: update portal access settings (visibility, allowed domains).
+ * Server functions for portal access: evaluate the caller's access (gate)
+ * and update portal access settings (admin only).
  */
 import { z } from 'zod'
 import { createServerFn } from '@tanstack/react-start'
@@ -9,6 +10,95 @@ import { isAdmin } from '@/lib/shared/roles'
 import { requireAuth } from './auth-helpers'
 import { getPortalConfig, updatePortalConfig } from '@/lib/server/domains/settings/settings.service'
 import { actorFromAuth, recordAuditEvent } from '@/lib/server/audit/log'
+import { evaluatePortalAccess } from '@/lib/server/domains/settings/portal-access'
+import type { UserId } from '@quackback/ids'
+
+// ---------------------------------------------------------------------------
+// Gate: evaluate the calling request's own access
+// ---------------------------------------------------------------------------
+
+/**
+ * Evaluate the portal access of the current request's caller.
+ *
+ * The caller's identity is read entirely server-side from the request
+ * headers — a caller cannot supply their own identity or evaluate as
+ * someone else.
+ *
+ * Returns ONLY the access decision: { granted, reason }. The full
+ * portal access policy (allowedDomains, widgetSignIn) is never
+ * included in the response — this is a public RPC endpoint and
+ * returning the allowlist would recreate the exact exposure being
+ * fixed here.
+ *
+ * Non-sensitive display data needed by the blocked overlay (workspace
+ * name, logo URL, OAuth config) is returned alongside the decision
+ * because those values are already public and the overlay needs them
+ * without a separate round-trip.
+ */
+export type PortalAccessDecision =
+  | {
+      granted: true
+      reason: 'public' | 'team' | 'domain'
+    }
+  | {
+      granted: false
+      reason: 'unauthenticated' | 'unauthorized'
+    }
+
+export const evaluateMyPortalAccessFn = createServerFn({ method: 'GET' }).handler(async () => {
+  const { auth } = await import('@/lib/server/auth/index')
+  const { db, principal, eq } = await import('@/lib/server/db')
+  const headers = getRequestHeaders()
+
+  // Resolve the caller's session — no client-supplied identity accepted.
+  let session: Awaited<ReturnType<typeof auth.api.getSession>> | null = null
+  try {
+    session = await auth.api.getSession({ headers })
+  } catch {
+    // No session available; treat as anonymous.
+  }
+
+  let role: 'admin' | 'member' | 'user' | null = null
+  let userEmail: string | null = null
+  let emailVerified = false
+  let isAnonymousPrincipal = false
+
+  if (session?.user) {
+    userEmail = session.user.email
+    emailVerified = session.user.emailVerified
+
+    // Resolve principalType so anonymous Better Auth sessions are not
+    // counted as authenticated portal sessions.
+    const principalRecord = await db.query.principal.findFirst({
+      where: eq(principal.userId, session.user.id as UserId),
+      columns: { type: true, role: true },
+    })
+    if (principalRecord?.type === 'anonymous') {
+      isAnonymousPrincipal = true
+    }
+    role = (principalRecord?.role as 'admin' | 'member' | 'user' | null) ?? null
+  }
+
+  const isAuthenticated = !!session?.user && !isAnonymousPrincipal
+
+  // Read the full portal config server-side — never leaves this function.
+  const portalConfig = await getPortalConfig()
+  const visibility = portalConfig.access?.visibility ?? 'public'
+  const allowedDomains = portalConfig.access?.allowedDomains ?? []
+
+  const result = evaluatePortalAccess({
+    visibility,
+    role,
+    isAuthenticated,
+    userEmail,
+    emailVerified,
+    allowedDomains,
+  })
+
+  // Return only the decision. Never include allowedDomains, widgetSignIn,
+  // or any other policy input — those must stay server-side.
+  return { granted: result.granted, reason: result.reason } as PortalAccessDecision
+})
 
 // ---------------------------------------------------------------------------
 // Domain normalization helpers
@@ -71,7 +161,7 @@ export const updatePortalAccessFn = createServerFn({ method: 'POST' })
   .inputValidator(updatePortalVisibilitySchema.parse)
   .handler(async ({ data }) => {
     console.log(
-      `[fn:portal-access] updatePortalAccessFn: visibility=${data.visibility}, allowedDomains=${JSON.stringify(data.allowedDomains ?? [])}`
+      `[fn:portal-access] updatePortalAccessFn: visibility=${data.visibility}, domainCount=${(data.allowedDomains ?? []).length}`
     )
     const auth = await requireAuth()
     if (!isAdmin(auth.principal.role)) {

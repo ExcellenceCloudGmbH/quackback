@@ -1,4 +1,4 @@
-import { useState, useTransition, useRef, useCallback } from 'react'
+import { useState, useTransition, useCallback } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import {
   ArrowPathIcon,
@@ -108,7 +108,6 @@ export function PortalAuthTab({
   const [domainInput, setDomainInput] = useState('')
   const [domainsSaving, setDomainsSaving] = useState(false)
   const [domainInputError, setDomainInputError] = useState<string | null>(null)
-  const domainInputRef = useRef<HTMLInputElement>(null)
 
   const saveDomains = useCallback(
     async (nextDomains: string[]) => {
@@ -320,7 +319,6 @@ export function PortalAuthTab({
             <div className="flex gap-2">
               <div className="flex-1">
                 <Input
-                  ref={domainInputRef}
                   value={domainInput}
                   onChange={(e) => {
                     setDomainInput(e.target.value)
