@@ -11,7 +11,6 @@ import {
   ChevronDownIcon,
   KeyIcon,
   ChatBubbleLeftRightIcon,
-  AdjustmentsHorizontalIcon,
   ShieldCheckIcon,
   DocumentTextIcon,
   BeakerIcon,
@@ -82,18 +81,7 @@ export function buildNavSections(flags?: { helpCenter?: boolean }): NavSection[]
 
   sections.push({
     label: 'People',
-    items: [
-      {
-        label: 'User Attributes',
-        to: '/admin/settings/user-attributes',
-        icon: AdjustmentsHorizontalIcon,
-      },
-      {
-        label: 'Segments',
-        to: '/admin/settings/segments',
-        icon: UserGroupIcon,
-      },
-    ],
+    items: [{ label: 'People', to: '/admin/settings/people', icon: UserGroupIcon }],
   })
 
   return sections

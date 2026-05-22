@@ -20,14 +20,14 @@ describe('buildNavSections', () => {
     expect(labels).toContain('Help Center')
   })
 
-  it('places Help Center between Feedback and End Users', () => {
+  it('places Help Center between Feedback and People', () => {
     const sections = buildNavSections({ helpCenter: true })
     const labels = sections.map((s) => s.label)
     const feedbackIdx = labels.indexOf('Feedback')
     const helpCenterIdx = labels.indexOf('Help Center')
-    const endUsersIdx = labels.indexOf('End Users')
+    const peopleIdx = labels.indexOf('People')
     expect(helpCenterIdx).toBeGreaterThan(feedbackIdx)
-    expect(helpCenterIdx).toBeLessThan(endUsersIdx)
+    expect(helpCenterIdx).toBeLessThan(peopleIdx)
   })
 
   it('has Help Center item', () => {
@@ -83,19 +83,13 @@ describe('buildNavSections', () => {
   it('has the expected section order with helpCenter flag on', () => {
     const sections = buildNavSections({ helpCenter: true })
     const labels = sections.map((s) => s.label)
-    expect(labels).toEqual([
-      'Administration',
-      'Customization',
-      'Feedback',
-      'Help Center',
-      'End Users',
-    ])
+    expect(labels).toEqual(['Administration', 'Customization', 'Feedback', 'Help Center', 'People'])
   })
 
   it('has the expected section order without helpCenter', () => {
     const sections = buildNavSections()
     const labels = sections.map((s) => s.label)
-    expect(labels).toEqual(['Administration', 'Customization', 'Feedback', 'End Users'])
+    expect(labels).toEqual(['Administration', 'Customization', 'Feedback', 'People'])
   })
 
   it('Administration contains Members, Integrations, Security, Audit log, API, Experimental in that order', () => {
@@ -161,13 +155,11 @@ describe('buildNavSections', () => {
     expect(allItems).not.toContain('MCP Server')
   })
 
-  it('does NOT duplicate Security/Authentication under End Users', () => {
+  it('does NOT duplicate Security/Authentication under People', () => {
     const sections = buildNavSections()
-    const endUsers = sections.find((s) => s.label === 'End Users')!
-    const dupes = endUsers.items.filter(
-      (i) => i.label === 'Authentication' || i.label === 'Security'
-    )
+    const people = sections.find((s) => s.label === 'People')!
+    const dupes = people.items.filter((i) => i.label === 'Authentication' || i.label === 'Security')
     expect(dupes).toHaveLength(0)
-    expect(endUsers.items.map((i) => i.label)).toEqual(['User Attributes'])
+    expect(people.items.map((i) => i.label)).toEqual(['People'])
   })
 })
