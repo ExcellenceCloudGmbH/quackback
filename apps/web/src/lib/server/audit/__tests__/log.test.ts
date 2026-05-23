@@ -114,10 +114,51 @@ describe('recordAuditEvent', () => {
     const row = mockInsertValues.mock.calls[0][0]
     expect(row.actorUserId).toBeNull()
   })
+
+  it('populates request_id from x-request-id header', async () => {
+    const headers = new Headers({ 'x-request-id': 'req_abc123' })
+    await recordAuditEvent({
+      event: 'portal.visibility.changed',
+      actor: { userId: 'user_1' as UserId },
+      headers,
+    })
+    const row = mockInsertValues.mock.calls[0][0]
+    expect(row.requestId).toBe('req_abc123')
+  })
+
+  it('falls back to x-correlation-id when x-request-id is absent', async () => {
+    const headers = new Headers({ 'x-correlation-id': 'corr_xyz' })
+    await recordAuditEvent({
+      event: 'portal.visibility.changed',
+      actor: { userId: 'user_1' as UserId },
+      headers,
+    })
+    const row = mockInsertValues.mock.calls[0][0]
+    expect(row.requestId).toBe('corr_xyz')
+  })
+
+  it('populates actor_type and auth_method when provided', async () => {
+    await recordAuditEvent({
+      event: 'auth.signin.success',
+      actor: { userId: 'user_1' as UserId, type: 'user', authMethod: 'sso' },
+    })
+    const row = mockInsertValues.mock.calls[0][0]
+    expect(row.actorType).toBe('user')
+    expect(row.authMethod).toBe('sso')
+  })
+
+  it('leaves request_id null when no headers are provided', async () => {
+    await recordAuditEvent({
+      event: 'portal.visibility.changed',
+      actor: { userId: 'user_1' as UserId },
+    })
+    const row = mockInsertValues.mock.calls[0][0]
+    expect(row.requestId).toBeNull()
+  })
 })
 
 describe('actorFromAuth', () => {
-  it('maps requireAuth output into an AuditActor', () => {
+  it('maps requireAuth output into an AuditActor including type', () => {
     const actor = actorFromAuth({
       user: { id: 'user_admin1' as never, email: 'admin@example.com', name: 'A', image: null },
       principal: { id: 'principal_admin1' as never, role: 'admin', type: 'user' },
@@ -128,6 +169,7 @@ describe('actorFromAuth', () => {
       userId: 'user_admin1',
       email: 'admin@example.com',
       role: 'admin',
+      type: 'user',
     })
   })
 })

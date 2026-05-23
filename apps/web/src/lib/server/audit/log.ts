@@ -78,10 +78,17 @@ export type AuditEventType =
 
 export type AuditEventOutcome = 'success' | 'failure'
 
+export type AuditActorType = 'user' | 'service' | 'anonymous' | 'system' | 'api_key'
+export type AuditAuthMethod = 'password' | 'sso' | 'magic_link' | 'ott' | 'api_key' | 'session'
+
 export interface AuditActor {
   userId?: UserId | null
   email?: string | null
   role?: string | null
+  /** Denormalised from principal.type at write time. */
+  type?: AuditActorType | null
+  /** Auth method for sign-in events; null for all others. */
+  authMethod?: AuditAuthMethod | null
 }
 
 export interface AuditTarget {
@@ -103,12 +110,21 @@ export interface RecordAuditEventInput {
 
 /** Map a requireAuth() result onto the audit row's denormalised actor fields. */
 export function actorFromAuth(auth: AuthContext): AuditActor {
-  return { userId: auth.user.id, email: auth.user.email, role: auth.principal.role }
+  return {
+    userId: auth.user.id,
+    email: auth.user.email,
+    role: auth.principal.role,
+    type: auth.principal.type as AuditActorType,
+    // authMethod is generally unknowable from a session-cookie context;
+    // sign-in events that DO know the method should set it explicitly.
+  }
 }
 
 export async function recordAuditEvent(input: RecordAuditEventInput): Promise<void> {
   const ip = input.headers ? getClientIp(input.headers) : null
   const userAgent = input.headers?.get('user-agent') ?? null
+  const requestId =
+    input.headers?.get('x-request-id') ?? input.headers?.get('x-correlation-id') ?? null
 
   try {
     await db.insert(auditLog).values({
@@ -119,6 +135,9 @@ export async function recordAuditEvent(input: RecordAuditEventInput): Promise<vo
       actorRole: input.actor.role ?? null,
       actorIp: ip === 'unknown' ? null : ip,
       actorUserAgent: userAgent,
+      requestId,
+      actorType: input.actor.type ?? null,
+      authMethod: input.actor.authMethod ?? null,
       targetType: input.target?.type ?? null,
       targetId: input.target?.id ?? null,
       beforeValue: input.before ?? null,
