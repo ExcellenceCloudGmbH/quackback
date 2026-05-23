@@ -53,6 +53,14 @@ interface WidgetShellProps {
   enabledTabs?: { feedback?: boolean; changelog?: boolean; help?: boolean }
   /** Portal access config used to decide whether to show the "Go to portal" CTA. */
   portalAccess?: PortalAccessProps
+  /**
+   * The portal's own origin (e.g. "https://feedback.example.com"), resolved
+   * server-side from BASE_URL. Used for the widget-handoff URL so the CTA
+   * always points at the portal host, not at the widget iframe's origin (which
+   * may differ in self-hosted setups where the widget is served from a
+   * separate domain).
+   */
+  portalOrigin?: string
   children: ReactNode
 }
 
@@ -63,6 +71,7 @@ export function WidgetShell({
   onBack,
   enabledTabs = { feedback: true, changelog: false, help: false },
   portalAccess,
+  portalOrigin,
   children,
 }: WidgetShellProps) {
   const intl = useIntl()
@@ -122,7 +131,11 @@ export function WidgetShell({
       setPortalCtaError(true)
       return
     }
-    const portalUrl = `${window.location.origin}/auth/widget-handoff?ott=${encodeURIComponent(ott)}`
+    // Prefer the server-resolved portal origin so the handoff URL targets the
+    // portal host — not the widget iframe's origin, which may differ in
+    // self-hosted setups where the widget is served from a separate domain.
+    const origin = portalOrigin || window.location.origin
+    const portalUrl = `${origin}/auth/widget-handoff?ott=${encodeURIComponent(ott)}`
     sendToHost({ type: 'quackback:navigate', url: portalUrl })
   }, [])
 

@@ -1029,7 +1029,10 @@ export const cancelInvitationFn = createServerFn({ method: 'POST' })
         throw new Error('Invitation not found')
       }
 
-      await db.update(invitation).set({ status: 'canceled' }).where(eq(invitation.id, invitationId))
+      await db
+        .update(invitation)
+        .set({ status: 'canceled' })
+        .where(and(eq(invitation.id, invitationId), eq(invitation.kind, 'team')))
 
       console.log(`[fn:admin] cancelInvitationFn: canceled`)
       return { invitationId }
@@ -1086,7 +1089,7 @@ export const resendInvitationFn = createServerFn({ method: 'POST' })
       await db
         .update(invitation)
         .set({ lastSentAt: new Date(), expiresAt: new Date(Date.now() + INVITATION_EXPIRY_MS) })
-        .where(eq(invitation.id, invitationId))
+        .where(and(eq(invitation.id, invitationId), eq(invitation.kind, 'team')))
 
       console.log(
         `[fn:admin] resendInvitationFn: ${result.sent ? 'resent' : 'regenerated (email not configured)'}`

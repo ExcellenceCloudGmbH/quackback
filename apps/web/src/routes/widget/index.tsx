@@ -40,6 +40,8 @@ export const Route = createFileRoute('/widget/')({
       new Set(portalData.votedPostIds)
     )
 
+    const { getBaseUrl } = await import('@/lib/server/config')
+
     return {
       posts: portalData.posts.items.map((p) => ({
         id: p.id,
@@ -85,6 +87,10 @@ export const Route = createFileRoute('/widget/')({
         isPrivate: settings?.publicPortalConfig?.portalAccess?.isPrivate ?? false,
         widgetSignIn: settings?.publicPortalConfig?.portalAccess?.widgetSignIn ?? false,
       },
+      // The portal's own origin (BASE_URL env), resolved server-side so the
+      // widget handoff URL always points at the portal host — not at the widget
+      // iframe origin, which may differ in self-hosted deployments.
+      portalOrigin: getBaseUrl(),
     }
   },
   component: WidgetPage,
@@ -120,6 +126,7 @@ function WidgetPage() {
     imageUploadsInWidget,
     defaultBoard,
     portalAccess,
+    portalOrigin,
   } = Route.useLoaderData()
   const { isIdentified, ensureSession } = useWidgetAuth()
   const canVote = isIdentified || features.anonymousVoting
@@ -259,6 +266,7 @@ function WidgetPage() {
       onBack={shellOnBack}
       enabledTabs={tabs}
       portalAccess={portalAccess}
+      portalOrigin={portalOrigin}
     >
       {view === 'changelog' && <WidgetChangelog onEntrySelect={handleChangelogEntrySelect} />}
 

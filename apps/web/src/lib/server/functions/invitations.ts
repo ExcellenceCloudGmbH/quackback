@@ -286,7 +286,7 @@ export const getInviteBrandingFn = createServerFn({ method: 'GET' })
       db.query.settings.findFirst(),
       db.query.invitation
         .findFirst({
-          where: eq(invitation.id, invitationId as InviteId),
+          where: and(eq(invitation.id, invitationId as InviteId), eq(invitation.kind, 'team')),
           with: { inviter: true },
         })
         .catch(() => null),
