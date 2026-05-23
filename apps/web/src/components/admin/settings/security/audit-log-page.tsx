@@ -63,7 +63,16 @@ const FILTER_EVENT_TYPES: FilterEventOption[] = [
   { label: 'Email sign-in disabled', value: 'auth.magic_link.disabled' },
   { label: 'Two-factor reset by admin', value: 'two_factor.reset_by_admin' },
   // Portal events
-  { group: 'Portal', label: 'Allowed domains changed', value: 'portal.allowed_domains.changed' },
+  {
+    group: 'Portal',
+    label: 'Allowed domains changed',
+    value: 'portal.allowed_domains.changed',
+  },
+  {
+    group: 'Portal',
+    label: 'Allowed segments changed',
+    value: 'portal.allowed_segments.changed',
+  },
   { group: 'Portal', label: 'Invite accepted', value: 'portal.invite.accepted' },
   { group: 'Portal', label: 'Invite link minted', value: 'portal.invite.link_minted' },
   { group: 'Portal', label: 'Invite resent', value: 'portal.invite.resent' },

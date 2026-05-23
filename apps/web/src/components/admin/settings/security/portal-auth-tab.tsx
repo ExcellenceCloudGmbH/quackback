@@ -1,4 +1,4 @@
-import { useState, useTransition, useRef } from 'react'
+import { useState, useTransition, useRef, useEffect } from 'react'
 import { useRouter } from '@tanstack/react-router'
 import {
   ArrowPathIcon,
@@ -32,6 +32,7 @@ import {
   fetchPortalInvitesFn,
   getPortalInviteLinkFn,
 } from '@/lib/server/functions/portal-invites'
+import { listSegmentsFn } from '@/lib/server/functions/admin'
 import { isPathManagedFromBootstrap } from '@/lib/client/config-file'
 import { useRouteContext } from '@tanstack/react-router'
 import { cn } from '@/lib/shared/utils'
@@ -125,6 +126,20 @@ export function PortalAuthTab({
   const widgetSignInRef = useRef(widgetSignIn)
   widgetSignInRef.current = widgetSignIn
 
+  const [allowedSegmentIds, setAllowedSegmentIds] = useState<string[]>(
+    (portalConfig.access as { allowedSegmentIds?: string[] } | undefined)?.allowedSegmentIds ?? []
+  )
+  const allowedSegmentIdsRef = useRef(allowedSegmentIds)
+  useEffect(() => {
+    allowedSegmentIdsRef.current = allowedSegmentIds
+  }, [allowedSegmentIds])
+
+  const segmentsQuery = useQuery({
+    queryKey: ['admin', 'segments'] as const,
+    queryFn: () => listSegmentsFn(),
+    staleTime: 60_000,
+  })
+
   const [accessBusy, setAccessBusy] = useState(false)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [pendingVisibility, setPendingVisibility] = useState<'public' | 'private' | null>(null)
@@ -146,17 +161,21 @@ export function PortalAuthTab({
   async function applyAccess(
     nextVisibility: 'public' | 'private',
     nextDomains: string[],
-    nextWidgetSignIn?: boolean
+    nextWidgetSignIn?: boolean,
+    nextSegmentIds?: string[]
   ) {
     const prevVisibility = visibilityRef.current
     const prevDomains = allowedDomainsRef.current
     const prevWidgetSignIn = widgetSignInRef.current
+    const prevSegmentIds = allowedSegmentIdsRef.current
     const resolvedWidgetSignIn = nextWidgetSignIn ?? prevWidgetSignIn
+    const resolvedSegmentIds = nextSegmentIds ?? prevSegmentIds
 
     // Optimistic update
     setVisibility(nextVisibility)
     setAllowedDomains(nextDomains)
     setWidgetSignIn(resolvedWidgetSignIn)
+    setAllowedSegmentIds(resolvedSegmentIds)
     setAccessBusy(true)
 
     try {
@@ -165,6 +184,7 @@ export function PortalAuthTab({
           visibility: nextVisibility,
           allowedDomains: nextDomains,
           widgetSignIn: resolvedWidgetSignIn,
+          allowedSegmentIds: resolvedSegmentIds,
         },
       })
       startTransition(() => {
@@ -175,6 +195,7 @@ export function PortalAuthTab({
       setVisibility(prevVisibility)
       setAllowedDomains(prevDomains)
       setWidgetSignIn(prevWidgetSignIn)
+      setAllowedSegmentIds(prevSegmentIds)
     } finally {
       setAccessBusy(false)
     }
@@ -427,7 +448,50 @@ export function PortalAuthTab({
             {/* Email invites — below domains, same private-only block */}
             <PortalInvitesSection />
 
-            {/* Widget sign-in — below invites, same private-only block */}
+            {/* Allowed segments — below invites, same private-only block */}
+            <div className="mt-6 border-t border-border/50 pt-6">
+              <div className="space-y-3">
+                <div>
+                  <h4 className="text-sm font-medium">Allowed segments</h4>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Members of these segments can access the private portal. Segments are defined on
+                    the People page.
+                  </p>
+                </div>
+
+                {segmentsQuery.isLoading ? (
+                  <p className="text-xs text-muted-foreground">Loading segments…</p>
+                ) : (segmentsQuery.data ?? []).length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    No segments defined yet. Create segments on the People page.
+                  </p>
+                ) : (
+                  <>
+                    <SegmentMultiSelect
+                      segments={segmentsQuery.data ?? []}
+                      value={allowedSegmentIds}
+                      onChange={(next) => {
+                        void applyAccess(
+                          visibilityRef.current,
+                          allowedDomainsRef.current,
+                          widgetSignInRef.current,
+                          next
+                        )
+                      }}
+                      disabled={isAccessBusy}
+                    />
+                    {allowedSegmentIds.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Members of {allowedSegmentIds.length} selected segment
+                        {allowedSegmentIds.length === 1 ? '' : 's'} can access this portal.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Widget sign-in — below segments, same private-only block */}
             <div className="mt-6 border-t border-border/50 pt-6 space-y-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -581,6 +645,72 @@ export function PortalAuthTab({
         />
       )}
     </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// SegmentMultiSelect
+// ---------------------------------------------------------------------------
+
+interface SegmentItem {
+  id: string
+  name: string
+  memberCount?: number
+}
+
+interface SegmentMultiSelectProps {
+  segments: SegmentItem[]
+  value: string[]
+  onChange: (next: string[]) => void
+  disabled?: boolean
+}
+
+/**
+ * Inline multi-select for segments — rendered as a list of checkboxes
+ * with segment names and optional member counts.
+ */
+function SegmentMultiSelect({ segments, value, onChange, disabled }: SegmentMultiSelectProps) {
+  const selected = new Set(value)
+
+  function toggle(id: string) {
+    if (disabled) return
+    const next = selected.has(id) ? value.filter((s) => s !== id) : [...value, id]
+    onChange(next)
+  }
+
+  return (
+    <ul className="space-y-1.5" role="list" aria-label="Segment allowlist">
+      {segments.map((seg) => {
+        const checked = selected.has(seg.id)
+        return (
+          <li key={seg.id}>
+            <label
+              className={cn(
+                'flex items-center gap-2.5 rounded-md border px-3 py-2 cursor-pointer transition-colors',
+                checked
+                  ? 'border-primary/30 bg-primary/5'
+                  : 'border-border/50 bg-muted/20 hover:bg-muted/40',
+                disabled && 'cursor-not-allowed opacity-60'
+              )}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={() => toggle(seg.id)}
+                disabled={disabled}
+                className="h-3.5 w-3.5 rounded border-border accent-primary"
+              />
+              <span className="flex-1 text-sm">{seg.name}</span>
+              {seg.memberCount !== undefined && (
+                <span className="text-xs text-muted-foreground">
+                  {seg.memberCount} member{seg.memberCount === 1 ? '' : 's'}
+                </span>
+              )}
+            </label>
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 
