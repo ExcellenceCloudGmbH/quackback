@@ -746,7 +746,7 @@ function InviteRow({ invite, onRevoke, onResend, revoking, resending }: InviteRo
 
 function parseEmailList(raw: string): string[] {
   return raw
-    .split(/[\s,;\n]+/)
+    .split(/[\s,;]+/)
     .map((s) => s.trim())
     .filter(Boolean)
 }

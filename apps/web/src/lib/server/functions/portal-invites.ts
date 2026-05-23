@@ -24,6 +24,9 @@ import { getSession } from '@/lib/server/auth/session'
 /** Portal invite lifetime — 14 days. */
 const PORTAL_INVITE_EXPIRY_MS = 14 * 24 * 60 * 60 * 1000
 
+/** Magic-link token lifetime — 10 minutes. */
+const PORTAL_INVITE_MAGIC_LINK_TTL_SECONDS = 10 * 60
+
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
@@ -39,10 +42,6 @@ const sendPortalInviteSchema = z.object({
 })
 
 const portalInviteByIdSchema = z.object({
-  inviteId: z.string(),
-})
-
-const portalInviteLinkSchema = z.object({
   inviteId: z.string(),
 })
 
@@ -63,13 +62,9 @@ async function mintPortalInviteMagicLink(
     // Portal invite links live for the invite's full lifetime; a 10-minute
     // magic-link token is enough since the invitee clicks it promptly after
     // receiving the email. The invite row itself governs long-term access.
-    expiresInSeconds: 10 * 60,
+    expiresInSeconds: PORTAL_INVITE_MAGIC_LINK_TTL_SECONDS,
   })
 }
-
-// ---------------------------------------------------------------------------
-// sendPortalInviteFn
-// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // sendOnePortalInvite — per-email helper used by sendPortalInviteFn
@@ -153,6 +148,7 @@ async function sendOnePortalInvite({
 
   await recordAuditEvent({
     event: 'portal.invite.sent',
+    outcome: 'success',
     actor,
     headers,
     target: { type: 'invitation', id: inviteId },
@@ -296,7 +292,7 @@ export const cancelPortalInviteFn = createServerFn({ method: 'POST' })
  *
  * The invite must be `kind='portal'`, `status='pending'`, and not expired.
  * Mints a fresh magic link, updates `lastSentAt`, and re-sends the email.
- * Records `portal.invite.sent` (re-use — a resend is another send).
+ * Records a `portal.invite.resent` audit event.
  */
 export const resendPortalInviteFn = createServerFn({ method: 'POST' })
   .inputValidator(portalInviteByIdSchema)
@@ -414,9 +410,10 @@ export const fetchPortalInvitesFn = createServerFn({ method: 'GET' }).handler(as
  * Records a `portal.invite.link_minted` audit event on success.
  */
 export const getPortalInviteLinkFn = createServerFn({ method: 'POST' })
-  .inputValidator(portalInviteLinkSchema)
+  .inputValidator(portalInviteByIdSchema)
   .handler(async ({ data }) => {
     const auth = await requireAuth({ roles: ['admin'] })
+    const headers = getRequestHeaders()
     const actor = actorFromAuth(auth)
 
     const inv = await db.query.invitation.findFirst({
@@ -427,18 +424,18 @@ export const getPortalInviteLinkFn = createServerFn({ method: 'POST' })
     if (inv.expiresAt && inv.expiresAt < new Date()) throw new Error('Invite has expired')
 
     const portalUrl = getBaseUrl()
-    const linkTtlSeconds = 10 * 60
     const inviteLink = await mintPortalInviteMagicLink(inv.email, inv.id, portalUrl)
 
     await recordAuditEvent({
       event: 'portal.invite.link_minted',
       outcome: 'success',
       actor,
+      headers,
       target: { type: 'invitation', id: inv.id },
       metadata: { email: inv.email },
     })
 
-    const expiresAt = new Date(Date.now() + linkTtlSeconds * 1000)
+    const expiresAt = new Date(Date.now() + PORTAL_INVITE_MAGIC_LINK_TTL_SECONDS * 1000)
     return { inviteLink, expiresAt }
   })
 

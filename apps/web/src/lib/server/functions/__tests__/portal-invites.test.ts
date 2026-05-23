@@ -773,3 +773,17 @@ describe('resendPortalInviteFn — extends expiresAt', () => {
     expect(setPayload.lastSentAt.getTime()).toBeLessThanOrEqual(after + 100)
   })
 })
+
+// ---------------------------------------------------------------------------
+// sendPortalInviteFn — empty emails array (handler-level)
+// ---------------------------------------------------------------------------
+
+describe('sendPortalInviteFn — empty emails array (handler-level)', () => {
+  it('returns an empty result set for an empty emails array (handler-level)', async () => {
+    // Bypasses the Zod .min(1) (test harness mocks createServerFn validation).
+    // Confirms the handler degrades gracefully — no per-email work, no audit emits.
+    const result = await sendHandler({ data: { emails: [] } })
+    expect((result as { results: unknown[] }).results).toEqual([])
+    expect(hoisted.mockSendPortalInviteEmail).not.toHaveBeenCalled()
+  })
+})
