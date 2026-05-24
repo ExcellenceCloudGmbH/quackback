@@ -21,8 +21,7 @@ import {
   useBoardSelection,
   type BoardTab,
 } from '@/components/admin/settings/boards/use-board-selection'
-import type { BoardId, PrincipalId, UserId } from '@quackback/ids'
-import { isAdmin } from '@/lib/shared/roles'
+import type { BoardId } from '@quackback/ids'
 
 /** Board data as returned from server functions (dates serialized as strings) */
 interface BoardForSettings {
@@ -41,21 +40,15 @@ const searchSchema = z.object({
 export const Route = createFileRoute('/admin/settings/boards/')({
   validateSearch: searchSchema,
   loader: async ({ context }) => {
-    const { queryClient, principal } = context
+    const { queryClient } = context
     await queryClient.ensureQueryData(adminQueries.boardsForSettings())
-    // Role gates the access-control form. Members see a read-only
-    // audience summary; admins see the editable form.
-    return {
-      currentMember: principal as { id: PrincipalId; role: 'admin' | 'member'; userId: UserId },
-    }
+    return {}
   },
   component: BoardsSettingsPage,
 })
 
 function BoardsSettingsPage() {
   const { data: boards } = useSuspenseQuery(adminQueries.boardsForSettings())
-  const { currentMember } = Route.useLoaderData()
-  const canEditAccess = isAdmin(currentMember.role)
   const { selectedBoardSlug, selectedTab, setSelectedBoard } = useBoardSelection()
 
   // Auto-select first board if none selected
@@ -88,7 +81,7 @@ function BoardsSettingsPage() {
         <BoardSettingsNav />
 
         <div className="flex-1 space-y-6">
-          <BoardTabContent board={currentBoard} tab={selectedTab} canEditAccess={canEditAccess} />
+          <BoardTabContent board={currentBoard} tab={selectedTab} />
         </div>
       </div>
     </div>
@@ -98,10 +91,9 @@ function BoardsSettingsPage() {
 interface BoardTabContentProps {
   board: BoardForSettings
   tab: BoardTab
-  canEditAccess: boolean
 }
 
-function BoardTabContent({ board, tab, canEditAccess }: BoardTabContentProps): ReactNode {
+function BoardTabContent({ board, tab }: BoardTabContentProps): ReactNode {
   switch (tab) {
     case 'general':
       return (
@@ -119,7 +111,7 @@ function BoardTabContent({ board, tab, canEditAccess }: BoardTabContentProps): R
     case 'access':
       return (
         <SettingsCard title="Access Control">
-          <BoardAccessForm key={board.id} board={board} canEdit={canEditAccess} />
+          <BoardAccessForm key={board.id} board={board} />
         </SettingsCard>
       )
 

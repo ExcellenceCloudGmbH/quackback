@@ -47,11 +47,6 @@ interface Board {
 
 interface BoardAccessFormProps {
   board: Board
-  /** When false (member role), render a read-only summary instead of
-   *  the interactive form. The server rejects audience changes from
-   *  non-admins (updateBoardAccessFn is isAdmin-gated), so showing the
-   *  editable controls would lead to a 403 on save. */
-  canEdit?: boolean
 }
 
 type RadioVisibility = 'public' | 'authenticated' | 'team' | 'segments'
@@ -94,9 +89,8 @@ function formValuesToAudience(values: FormValues): BoardAudience {
   }
 }
 
-/** Shared label/description/icon table — the source of truth for both
- *  the editable form and the read-only summary. Adding a new audience
- *  kind starts here; both views pick it up automatically. */
+/** Shared label/description/icon table — the source of truth for the
+ *  editable form. Adding a new audience kind starts here. */
 const AUDIENCE_META: Record<
   BoardAudience['kind'],
   {
@@ -131,14 +125,7 @@ const AUDIENCE_META: Record<
 
 const AUDIENCE_KINDS: RadioVisibility[] = ['public', 'authenticated', 'team', 'segments']
 
-export function BoardAccessForm({ board, canEdit = true }: BoardAccessFormProps) {
-  if (!canEdit) {
-    return <BoardAccessSummary audience={board.audience} />
-  }
-  return <BoardAccessFormInner board={board} />
-}
-
-function BoardAccessFormInner({ board }: { board: Board }) {
+export function BoardAccessForm({ board }: BoardAccessFormProps) {
   const mutation = useUpdateBoardAccess()
   const segmentsQuery = useSegments()
 
@@ -276,50 +263,9 @@ function BoardAccessFormInner({ board }: { board: Board }) {
   )
 }
 
-/** Read-only audience summary for non-admin viewers. Mirrors the same
- *  audience labels as the editable form so the two views stay legible
- *  side by side. Lists segment names for `segments` so members know
- *  WHICH segments without having to click into the People page. */
-function BoardAccessSummary({ audience }: { audience: BoardAudience }) {
-  const segmentsQuery = useSegments({ enabled: audience.kind === 'segments' })
-  const { icon: Icon, label, description } = AUDIENCE_META[audience.kind]
-
-  return (
-    <div className="space-y-4">
-      <div className="rounded-lg border bg-muted/30 p-4">
-        <div className="flex items-start gap-3">
-          <Icon className="h-4 w-4 mt-0.5" />
-          <div className="flex-1 space-y-1">
-            <p className="font-medium text-sm">{label}</p>
-            <p className="text-xs text-muted-foreground">{description}</p>
-          </div>
-        </div>
-        {audience.kind === 'segments' && (
-          <div className="mt-3 border-t pt-3">
-            <p className="text-xs font-medium mb-1.5">Allowed segments</p>
-            {segmentsQuery.isLoading ? (
-              <p className="text-xs text-muted-foreground">Loading segments…</p>
-            ) : (
-              <ul className="text-xs text-muted-foreground space-y-0.5">
-                {audience.segmentIds.map((segId) => {
-                  const seg = (segmentsQuery.data ?? []).find((s) => s.id === segId)
-                  return <li key={segId}>{seg?.name ?? segId}</li>
-                })}
-              </ul>
-            )}
-          </div>
-        )}
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Only admins can change board visibility. Ask an admin if you need it changed.
-      </p>
-    </div>
-  )
-}
-
 /** Single radio card — same visual treatment for all four kinds.
- *  Driven from AUDIENCE_META so the labels stay in lockstep with the
- *  read-only summary. */
+ *  Driven from AUDIENCE_META so adding a new kind only requires
+ *  updating that one table. */
 function AccessOption({
   value,
   meta,
