@@ -219,8 +219,3 @@ export const BUILTIN_FIELDS = [
 export const BUILTIN_FIELD_MAP: ReadonlyMap<string, BuiltinField> = new Map(
   BUILTIN_FIELDS.map((f) => [f.key, f])
 )
-
-/** Returns true when `key` matches a registered built-in field */
-export function isBuiltinField(key: string): boolean {
-  return BUILTIN_FIELD_MAP.has(key)
-}

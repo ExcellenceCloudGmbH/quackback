@@ -325,8 +325,6 @@ export const updatePortalVisibilitySchema = z.object({
   allowedSegmentIds: z.array(z.string()).optional(),
 })
 
-export type UpdatePortalVisibilityInput = z.infer<typeof updatePortalVisibilitySchema>
-
 // ---------------------------------------------------------------------------
 // Server function
 // ---------------------------------------------------------------------------

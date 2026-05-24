@@ -4,7 +4,6 @@ import {
   BUILTIN_FIELD_MAP,
   DEFAULT_OPERATORS,
   getFieldOperators,
-  isBuiltinField,
   type BuiltinField,
   type FieldOperator,
 } from '../segment-builtin-fields'
@@ -155,21 +154,6 @@ describe('BUILTIN_FIELD_MAP', () => {
     for (const field of BUILTIN_FIELDS) {
       expect(BUILTIN_FIELD_MAP.get(field.key)).toBe(field)
     }
-  })
-})
-
-describe('isBuiltinField', () => {
-  it('returns true for every key in the registry', () => {
-    for (const field of BUILTIN_FIELDS) {
-      expect(isBuiltinField(field.key), `isBuiltinField("${field.key}") should be true`).toBe(true)
-    }
-  })
-
-  it('returns false for unknown keys', () => {
-    expect(isBuiltinField('plan')).toBe(false)
-    expect(isBuiltinField('metadata_key')).toBe(false)
-    expect(isBuiltinField('nonexistent_field')).toBe(false)
-    expect(isBuiltinField('')).toBe(false)
   })
 })
 
