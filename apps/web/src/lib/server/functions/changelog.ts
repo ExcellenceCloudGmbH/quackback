@@ -48,7 +48,7 @@ export const createChangelogFn = createServerFn({ method: 'POST' })
       `[fn:changelog] createChangelogFn: title=${data.title}, publishState=${data.publishState}`
     )
     try {
-      const auth = await requireAuth({ roles: ['admin'] })
+      const auth = await requireAuth({ roles: ['admin', 'member'] })
 
       // Get author name from user via member
       const authorName = auth.user.name
@@ -87,7 +87,7 @@ export const updateChangelogFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     console.log(`[fn:changelog] updateChangelogFn: id=${data.id}`)
     try {
-      await requireAuth({ roles: ['admin'] })
+      await requireAuth({ roles: ['admin', 'member'] })
 
       const entry = await updateChangelog(data.id as ChangelogId, {
         title: data.title,
