@@ -120,7 +120,8 @@ export const Route = createFileRoute('/api/v1/changelog/$entryId')({
        */
       DELETE: async ({ request, params }) => {
         try {
-          await withApiKeyAuth(request, { role: 'admin' })
+          // Soft delete (deleteChangelog sets deletedAt) — team OK.
+          await withApiKeyAuth(request, { role: 'team' })
 
           const entryId = parseTypeId<ChangelogId>(
             params.entryId,

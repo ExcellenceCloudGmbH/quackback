@@ -29,12 +29,13 @@ function roleListFor(fnName: string): string[] | null {
 }
 
 describe('help-center server-fn roles', () => {
-  describe('article CREATE / UPDATE / publish toggle — members allowed', () => {
+  describe('article CRUD — members allowed (all soft-delete-based)', () => {
     it.each([
       ['createArticleFn'],
       ['updateArticleFn'],
       ['publishArticleFn'],
       ['unpublishArticleFn'],
+      ['deleteArticleFn'],
     ])('%s allows admin + member', (fnName) => {
       const roles = roleListFor(fnName)
       expect(roles, `${fnName} should be present with a requireAuth gate`).not.toBeNull()
@@ -42,16 +43,14 @@ describe('help-center server-fn roles', () => {
     })
   })
 
-  describe('destructive + structural ops — admin only', () => {
-    it.each([
-      ['deleteArticleFn'],
-      ['createCategoryFn'],
-      ['updateCategoryFn'],
-      ['deleteCategoryFn'],
-    ])('%s is admin-only', (fnName) => {
-      const roles = roleListFor(fnName)
-      expect(roles, `${fnName} should be present with a requireAuth gate`).not.toBeNull()
-      expect(roles).toEqual(['admin'])
-    })
+  describe('category structure — admin only (categories are organizational)', () => {
+    it.each([['createCategoryFn'], ['updateCategoryFn'], ['deleteCategoryFn']])(
+      '%s is admin-only',
+      (fnName) => {
+        const roles = roleListFor(fnName)
+        expect(roles, `${fnName} should be present with a requireAuth gate`).not.toBeNull()
+        expect(roles).toEqual(['admin'])
+      }
+    )
   })
 })

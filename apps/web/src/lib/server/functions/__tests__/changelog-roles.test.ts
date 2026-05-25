@@ -52,8 +52,8 @@ describe('changelog server-fn roles', () => {
     expect(fnRoleList('updateChangelogFn')).toEqual(expect.arrayContaining(['admin', 'member']))
   })
 
-  it('deleteChangelogFn is admin-only (destructive)', () => {
-    expect(fnRoleList('deleteChangelogFn')).toEqual(['admin'])
+  it('deleteChangelogFn allows admin + member (soft-delete)', () => {
+    expect(fnRoleList('deleteChangelogFn')).toEqual(expect.arrayContaining(['admin', 'member']))
   })
 })
 
@@ -66,7 +66,7 @@ describe('changelog REST roles', () => {
     expect(restRoleFor(restEntrySource, 'PATCH')).toBe('team')
   })
 
-  it('DELETE /api/v1/changelog/$entryId is admin-only', () => {
-    expect(restRoleFor(restEntrySource, 'DELETE')).toBe('admin')
+  it('DELETE /api/v1/changelog/$entryId allows team (soft-delete)', () => {
+    expect(restRoleFor(restEntrySource, 'DELETE')).toBe('team')
   })
 })

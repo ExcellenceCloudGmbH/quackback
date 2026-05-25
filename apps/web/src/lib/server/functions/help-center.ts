@@ -268,7 +268,8 @@ export const unpublishArticleFn = createServerFn({ method: 'POST' })
 export const deleteArticleFn = createServerFn({ method: 'POST' })
   .inputValidator(deleteArticleSchema)
   .handler(async ({ data }) => {
-    await requireAuth({ roles: ['admin'] })
+    // Soft delete (deleteArticle sets deletedAt) — team OK.
+    await requireAuth({ roles: ['admin', 'member'] })
     await deleteArticle(data.id as HelpCenterArticleId)
     return { success: true }
   })

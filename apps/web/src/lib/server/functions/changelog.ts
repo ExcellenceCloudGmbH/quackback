@@ -117,7 +117,8 @@ export const deleteChangelogFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     console.log(`[fn:changelog] deleteChangelogFn: id=${data.id}`)
     try {
-      await requireAuth({ roles: ['admin'] })
+      // Soft delete (sets deletedAt) — safe for members to perform.
+      await requireAuth({ roles: ['admin', 'member'] })
 
       await deleteChangelog(data.id as ChangelogId)
 
