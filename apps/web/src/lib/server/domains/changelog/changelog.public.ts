@@ -63,6 +63,7 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
           boardId: true,
           statusId: true,
           deletedAt: true,
+          moderationState: true,
         },
         with: {
           board: {
@@ -75,8 +76,12 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
     },
   })
 
-  // Exclude deleted posts from public changelog
-  const linkedPostRecords = allLinkedPostRecords.filter((lp) => !lp.post.deletedAt)
+  // Only published, non-deleted posts may be exposed publicly. A team
+  // member can link a post in any moderation state, but pending /
+  // spam / archived / closed posts are not for public consumption.
+  const linkedPostRecords = allLinkedPostRecords.filter(
+    (lp) => !lp.post.deletedAt && lp.post.moderationState === 'published'
+  )
 
   // Get status info for linked posts
   const statusIds = new Set<StatusId>()
@@ -173,6 +178,7 @@ export async function listPublicChangelogs(params: {
                 boardId: true,
                 statusId: true,
                 deletedAt: true,
+                moderationState: true,
               },
               with: {
                 board: {
@@ -185,7 +191,7 @@ export async function listPublicChangelogs(params: {
           },
         })
       : []
-  ).filter((lp) => !lp.post.deletedAt)
+  ).filter((lp) => !lp.post.deletedAt && lp.post.moderationState === 'published')
 
   // Group linked posts by changelog entry
   const linkedPostsMap = new Map<ChangelogId, typeof allLinkedPosts>()
