@@ -21,7 +21,8 @@
  *     account state to anonymous probes).
  */
 
-import { createAuthMiddleware } from 'better-auth/api'
+import { APIError, createAuthMiddleware } from 'better-auth/api'
+import { AUTH_BLOCK_MESSAGES } from './redirect-errors'
 import { getRequestHeaders } from '@tanstack/react-start/server'
 import { getClientIp } from '@/lib/server/domains/api/rate-limit'
 import {
@@ -208,7 +209,19 @@ export async function handleSignInPreCheck(ctx: {
     } catch (auditErr) {
       console.error('[handleSignInPreCheck] audit emit failed (rate-limit):', auditErr)
     }
-    throw ctx.redirect('/admin/login?error=rate_limited')
+    // 429 JSON instead of a 302 redirect: sign-in submits are XHR, and
+    // the redirect-then-detect pattern depends on `response.redirected`
+    // being set by the browser fetch. That's reliable in modern browsers
+    // but added one indirection between the server's intent ("rate limited")
+    // and the message the form displays ("Invalid email or password"
+    // fallback when something in that chain misfires). A direct 429 with
+    // `{ code, message }` is what Better-Auth's auth client surfaces as
+    // `result.error.message`, which the form already renders verbatim.
+    throw new APIError(
+      'TOO_MANY_REQUESTS',
+      { code: 'rate_limited', message: AUTH_BLOCK_MESSAGES.rate_limited },
+      rateLimitResult.retryAfter ? { 'Retry-After': String(rateLimitResult.retryAfter) } : undefined
+    )
   }
 
   const { getTenantSettings } = await import('@/lib/server/domains/settings/settings.service')
