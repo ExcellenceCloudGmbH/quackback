@@ -198,7 +198,7 @@ export function SegmentList() {
     return (
       <SettingsCard
         title="Segments"
-        description="Organize users into groups for filtering and analysis. Manual segments are assigned by hand; dynamic segments update automatically based on rules."
+        description="Organize portal users into groups for filtering and analysis. Manual segments are assigned by hand; dynamic segments update automatically based on rules."
       >
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
@@ -236,7 +236,7 @@ export function SegmentList() {
   return (
     <SettingsCard
       title="Segments"
-      description="Organize users into groups for filtering and analysis. Manual segments are assigned by hand; dynamic segments update automatically based on rules."
+      description="Organize portal users into groups for filtering and analysis. Manual segments are assigned by hand; dynamic segments update automatically based on rules."
       action={headerActions}
     >
       {/* Rows render directly into the SettingsCard — no nested

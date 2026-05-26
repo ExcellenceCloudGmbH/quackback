@@ -42,7 +42,7 @@ export type SegmentRuleAttribute =
   | 'plan'
   | 'metadata_key'
   | 'name'
-  | 'display_name'
+  | 'locale'
   | 'principal_type'
 
 export interface SegmentCondition {

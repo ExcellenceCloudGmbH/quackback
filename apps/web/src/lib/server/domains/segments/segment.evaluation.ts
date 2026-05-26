@@ -72,6 +72,8 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
       // name is NOT NULL — is_set is always true, is_not_set is never true
       case 'name':
         return isSet ? sql`TRUE` : sql`FALSE`
+      case 'locale':
+        return isSet ? sql`u.locale IS NOT NULL` : sql`u.locale IS NULL`
       // principal.type is always set — is_set is always true, is_not_set is never true
       case 'principal_type':
         return isSet ? sql`TRUE` : sql`FALSE`
@@ -103,6 +105,8 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
       }
       case 'name':
         return sql`u.name IN (${placeholders})`
+      case 'locale':
+        return sql`u.locale IN (${placeholders})`
       case 'principal_type':
         return sql`p.type IN (${placeholders})`
       default:
@@ -172,6 +176,15 @@ function buildConditionSql(condition: SegmentCondition): ReturnType<typeof sql> 
 
     case 'name': {
       const field = sql`u.name`
+      const strResult = stringOperatorSql(field, operator, value)
+      if (strResult) return strResult
+      const sqlOp = OPERATOR_SQL[operator]
+      if (!sqlOp) return null
+      return sql`${field} ${sql.raw(sqlOp)} ${String(value)}`
+    }
+
+    case 'locale': {
+      const field = sql`u.locale`
       const strResult = stringOperatorSql(field, operator, value)
       if (strResult) return strResult
       const sqlOp = OPERATOR_SQL[operator]

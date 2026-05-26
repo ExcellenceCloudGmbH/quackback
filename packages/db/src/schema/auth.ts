@@ -43,6 +43,9 @@ export const user = pgTable(
       .notNull(),
     // General user metadata (JSON)
     metadata: text('metadata'),
+    // BCP-47 locale claim from OIDC (e.g. "en", "en-US"); NULL for
+    // sign-up paths that don't carry one (magic-link, password).
+    locale: text('locale'),
     // Anonymous user flag (Better Auth anonymous plugin)
     isAnonymous: boolean('is_anonymous').default(false).notNull(),
     // Better-Auth twoFactor plugin — flips true once the user verifies

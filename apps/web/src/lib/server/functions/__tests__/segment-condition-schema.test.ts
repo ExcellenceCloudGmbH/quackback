@@ -47,6 +47,7 @@ describe('segmentConditionSchema — attribute allowlist', () => {
     'comment_count',
     'metadata_key',
     'name',
+    'locale',
     'principal_type',
   ])('accepts attribute "%s"', (attribute) => {
     const result = segmentConditionSchema.safeParse({ attribute, ...baseCondition })
@@ -90,6 +91,11 @@ describe('createSegmentSchema — new built-in field conditions', () => {
 
   it('accepts a segment with a "principal_type" condition', () => {
     const result = createSegmentSchema.safeParse(makePayload('principal_type'))
+    expect(result.success).toBe(true)
+  })
+
+  it('accepts a segment with a "locale" condition', () => {
+    const result = createSegmentSchema.safeParse(makePayload('locale'))
     expect(result.success).toBe(true)
   })
 

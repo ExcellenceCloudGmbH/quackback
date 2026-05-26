@@ -506,6 +506,10 @@ export function SegmentFormDialog({
                 Define conditions to automatically match users. Membership is refreshed when you
                 trigger evaluation.
               </p>
+              <p className="text-xs text-muted-foreground">
+                Heads up: segments only include your portal users. Your team and admins won't show
+                up here, even if they match the rules.
+              </p>
               <RuleBuilder
                 match={ruleMatch}
                 conditions={conditions}

@@ -61,6 +61,7 @@ describe('BUILTIN_FIELDS registry well-formedness', () => {
       'vote_count',
       'comment_count',
       'name',
+      'locale',
       'principal_type',
     ]
     for (const key of expected) {
@@ -103,15 +104,17 @@ describe('BUILTIN_FIELDS registry well-formedness', () => {
   })
 
   it('string fields have type string', () => {
-    for (const key of ['email', 'name', 'principal_type']) {
+    for (const key of ['email', 'name', 'locale', 'principal_type']) {
       const field = BUILTIN_FIELDS.find((f) => f.key === key)
       expect(field?.type, `"${key}" should be string`).toBe('string')
     }
   })
 
-  it('attribute-group fields are name, email, email_verified (genuine user attributes)', () => {
+  it('attribute-group fields are name, email, email_verified, locale (genuine user attributes)', () => {
     const attributeKeys = BUILTIN_FIELDS.filter((f) => f.group === 'attribute').map((f) => f.key)
-    expect(attributeKeys).toEqual(expect.arrayContaining(['name', 'email', 'email_verified']))
+    expect(attributeKeys).toEqual(
+      expect.arrayContaining(['name', 'email', 'email_verified', 'locale'])
+    )
     expect(attributeKeys).not.toContain('principal_type')
     expect(attributeKeys).not.toContain('post_count')
     expect(attributeKeys).not.toContain('vote_count')
@@ -237,6 +240,18 @@ describe('getFieldOperators', () => {
     const ops = getFieldOperators(field!).map((o) => o.value)
     // Should use string default — has contains
     expect(ops).toContain('contains')
+  })
+
+  it('locale uses the string type default (is_set/is_not_set are meaningful — locale is nullable)', () => {
+    const field = BUILTIN_FIELDS.find((f) => f.key === 'locale') as BuiltinField | undefined
+    expect(field).toBeDefined()
+    expect(field!.operators).toBeUndefined()
+    const ops = getFieldOperators(field!).map((o) => o.value)
+    expect(ops).toContain('eq')
+    expect(ops).toContain('contains')
+    expect(ops).toContain('starts_with')
+    expect(ops).toContain('is_set')
+    expect(ops).toContain('is_not_set')
   })
 
   it('post_count operators include is_set/is_not_set', () => {

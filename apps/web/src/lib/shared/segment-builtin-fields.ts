@@ -127,6 +127,15 @@ export const BUILTIN_FIELDS = [
     // evaluator: eq only (plus is_set/is_not_set) — matches boolean default
   },
   {
+    key: 'locale',
+    label: 'Locale',
+    type: 'string',
+    group: 'attribute',
+    description:
+      "BCP-47 locale from the user's identity provider (e.g. 'en', 'en-US'). Only set when SSO/OAuth supplies the claim.",
+    // evaluator: full string default — eq/neq/contains/starts_with/ends_with/is_set/is_not_set
+  },
+  {
     key: 'principal_type',
     label: 'Principal Type',
     type: 'string',

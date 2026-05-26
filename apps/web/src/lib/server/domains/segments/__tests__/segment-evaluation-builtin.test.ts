@@ -236,6 +236,48 @@ describe('evaluator — principal_type attribute', () => {
   })
 })
 
+describe('evaluator — locale attribute (nullable string from OIDC)', () => {
+  it('eq operator produces u.locale = value', async () => {
+    mockSegment = makeSegment([{ attribute: 'locale', operator: 'eq', value: 'en-US' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('u.locale')
+    expect(capturedSql).toContain('=')
+    expect(capturedSql).toContain('en-US')
+  })
+
+  it('contains operator produces u.locale ILIKE %value%', async () => {
+    mockSegment = makeSegment([{ attribute: 'locale', operator: 'contains', value: 'en' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('u.locale')
+    expect(capturedSql).toContain('ILIKE')
+    expect(capturedSql).toContain('%en%')
+  })
+
+  it('in operator produces u.locale IN (values)', async () => {
+    mockSegment = makeSegment([
+      { attribute: 'locale', operator: 'in', value: ['en', 'en-US', 'en-GB'] },
+    ])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('u.locale')
+    expect(capturedSql).toContain('IN')
+    expect(capturedSql).toContain('en-US')
+  })
+
+  it('is_set produces u.locale IS NOT NULL (nullable column — distinguishes signed-in-with-SSO)', async () => {
+    mockSegment = makeSegment([{ attribute: 'locale', operator: 'is_set' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('u.locale')
+    expect(capturedSql).toContain('IS NOT NULL')
+  })
+
+  it('is_not_set produces u.locale IS NULL', async () => {
+    mockSegment = makeSegment([{ attribute: 'locale', operator: 'is_not_set' }])
+    await evaluateDynamicSegment('segment_test' as never)
+    expect(capturedSql).toContain('u.locale')
+    expect(capturedSql).toContain('IS NULL')
+  })
+})
+
 describe('evaluator — email attribute (full address matching)', () => {
   it('eq operator produces u.email = value', async () => {
     mockSegment = makeSegment([{ attribute: 'email', operator: 'eq', value: 'alice@example.com' }])
