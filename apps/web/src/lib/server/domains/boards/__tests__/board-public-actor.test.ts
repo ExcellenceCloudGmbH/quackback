@@ -97,4 +97,27 @@ describe('getPublicBoardById — defensive policy check', () => {
     const result = await getPublicBoardById('brd_missing' as BoardId, actor())
     expect(result).toBeNull()
   })
+
+  it('filters soft-deleted boards in the SQL WHERE (parity with getPublicBoardBySlug)', async () => {
+    // Regression: the byId helper used to call `eq(boards.id, ...)` without
+    // an `isNull(boards.deletedAt)` predicate. Soft-deleted boards would then
+    // round-trip through canViewBoard and be returned to callers — most
+    // notably createPublicPostFn, which would happily accept new posts on a
+    // deleted board. The sibling getPublicBoardBySlug has had the guard for
+    // a long time; this test brings the byId variant in line.
+    mockFindFirst.mockResolvedValueOnce({ id: 'brd_x' as BoardId, audience: { kind: 'public' } })
+    const { getPublicBoardById } = await import('../board.public')
+    await getPublicBoardById('brd_x' as BoardId, actor())
+
+    expect(mockFindFirst).toHaveBeenCalledTimes(1)
+    const arg = mockFindFirst.mock.calls[0][0] as { where: unknown }
+    // The query must use `and(eq(id, ...), isNull(deletedAt))`, not bare eq.
+    expect(arg.where).toMatchObject({
+      kind: 'and',
+      parts: expect.arrayContaining([
+        expect.objectContaining({ kind: 'eq', col: 'boards.id' }),
+        expect.objectContaining({ kind: 'isNull', col: 'boards.deletedAt' }),
+      ]),
+    })
+  })
 })

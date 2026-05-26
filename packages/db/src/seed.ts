@@ -421,7 +421,7 @@ async function seed() {
         slug: b.slug,
         name: b.name,
         description: b.description,
-        isPublic: true,
+        audience: { kind: 'public' },
         createdAt: randomDate(60),
       })
       boardIds.push(boardId)

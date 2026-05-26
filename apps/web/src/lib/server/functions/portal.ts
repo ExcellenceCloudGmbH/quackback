@@ -258,10 +258,13 @@ export const fetchPublicPostDetail = createServerFn({ method: 'GET' })
       }
     }
 
-    // Fetch merge info for this post
+    // Fetch merge info for this post. Pass the same actor used to gate
+    // the post detail above so the canonical's audience check runs from
+    // the caller's perspective — without it, the canonical's title and
+    // board slug could leak through the merge banner.
     const postId = data.postId as PostId
     const [mergeInfo, mergedPostsList] = await Promise.all([
-      getPostMergeInfo(postId).then((info) =>
+      getPostMergeInfo(postId, actor).then((info) =>
         info ? { ...info, mergedAt: toISOString(info.mergedAt) } : null
       ),
       getMergedPosts(postId),

@@ -22,8 +22,12 @@ export async function getPublicBoardById(
   actor: Actor = ANONYMOUS_ACTOR
 ): Promise<Board | null> {
   try {
+    // Filter soft-deleted rows at the SQL level — mirrors the slug
+    // sibling so the two helpers behave the same way. Without this,
+    // createPublicPostFn (which uses this lookup) would happily insert
+    // new posts into a board the admin deleted.
     const board = await db.query.boards.findFirst({
-      where: eq(boards.id, boardId),
+      where: and(eq(boards.id, boardId), isNull(boards.deletedAt)),
     })
 
     if (!board) return null

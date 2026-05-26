@@ -776,10 +776,20 @@ export const findSimilarPostsFn = createServerFn({ method: 'GET' })
         return []
       }
 
-      const { db, posts, boards, postStatuses, and, isNull, desc, sql, inArray } =
+      const { db, posts, boards, postStatuses, eq, and, isNull, desc, sql, inArray } =
         await import('@/lib/server/db')
       const { generateEmbedding } =
         await import('@/lib/server/domains/embeddings/embedding.service')
+      const { postViewFilter } = await import('@/lib/server/policy')
+
+      // Resolve the actor so the audience + moderation filter applies the
+      // caller's view rules. Without this, the search returned matches
+      // from team-only / segment-restricted boards and pending posts to
+      // every caller — title-level leak even when the portal gate allowed
+      // them through on the public-portal channel.
+      const auth = await getOptionalAuth()
+      const actor = await policyActorFromAuth(auth)
+      const visibilityFilter = postViewFilter(actor)
 
       const searchQuery = data.title.trim()
       const limit = data.limit ?? 5
@@ -800,10 +810,13 @@ export const findSimilarPostsFn = createServerFn({ method: 'GET' })
             ),
         })
         .from(posts)
+        .innerJoin(boards, eq(posts.boardId, boards.id))
         .where(
           and(
             isNull(posts.deletedAt),
             isNull(posts.canonicalPostId),
+            isNull(boards.deletedAt),
+            visibilityFilter,
             sql`${posts.searchVector} @@ plainto_tsquery('english', ${searchQuery})`
           )
         )
@@ -830,10 +843,13 @@ export const findSimilarPostsFn = createServerFn({ method: 'GET' })
               score: sql<number>`1 - (${posts.embedding} <=> ${vectorStr}::vector)`.as('score'),
             })
             .from(posts)
+            .innerJoin(boards, eq(posts.boardId, boards.id))
             .where(
               and(
                 isNull(posts.deletedAt),
                 isNull(posts.canonicalPostId),
+                isNull(boards.deletedAt),
+                visibilityFilter,
                 sql`${posts.embedding} IS NOT NULL`,
                 sql`1 - (${posts.embedding} <=> ${vectorStr}::vector) >= 0.35`
               )

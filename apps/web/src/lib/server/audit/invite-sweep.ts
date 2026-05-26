@@ -13,8 +13,7 @@
  *    update — the status update is the more important correctness property.
  *  - Returns the number of invites swept so callers can log / monitor.
  */
-import { and, eq, lt, inArray } from 'drizzle-orm'
-import { db, invitation } from '@/lib/server/db'
+import { db, invitation, and, eq, lt, inArray } from '@/lib/server/db'
 import { recordAuditEvent } from './log'
 
 export async function sweepExpiredPortalInvites(): Promise<number> {
@@ -47,13 +46,23 @@ export async function sweepExpiredPortalInvites(): Promise<number> {
   }
 
   // Single bulk UPDATE — idempotent, never re-sweeps the same row.
+  //
+  // The WHERE pins `status='pending'` (in addition to the id-list) to close
+  // the TOCTOU window between the SELECT above and this UPDATE: if an
+  // invitee accepts their link in that gap, the row flips to 'accepted'
+  // and must not be silently overwritten to 'expired'. Every sister write
+  // (cancelPortalInviteFn, resendPortalInviteFn, acceptPortalInviteFn)
+  // pins the same predicate for the same reason.
   await db
     .update(invitation)
     .set({ status: 'expired' })
     .where(
-      inArray(
-        invitation.id,
-        stale.map((i) => i.id)
+      and(
+        inArray(
+          invitation.id,
+          stale.map((i) => i.id)
+        ),
+        eq(invitation.status, 'pending')
       )
     )
 

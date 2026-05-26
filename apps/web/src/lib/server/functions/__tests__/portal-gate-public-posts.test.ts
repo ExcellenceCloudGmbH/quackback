@@ -101,7 +101,10 @@ vi.mock('@/lib/server/functions/auth-helpers', () => ({
 }))
 
 vi.mock('@/lib/server/functions/workspace', () => ({ getSettings: vi.fn() }))
-vi.mock('@/lib/server/policy', () => ({ canViewBoard: vi.fn() }))
+vi.mock('@/lib/server/policy', () => ({
+  canViewBoard: vi.fn(),
+  postViewFilter: vi.fn(() => 'POST_VIEW_FILTER_SQL'),
+}))
 vi.mock('@/lib/server/domains/posts/post.service', () => ({ createPost: vi.fn() }))
 vi.mock('@/lib/server/domains/posts/post.voting', () => ({ voteOnPost: vi.fn() }))
 vi.mock('@/lib/server/utils/anon-rate-limit', () => ({ checkAnonVoteRateLimit: vi.fn() }))
@@ -117,10 +120,19 @@ vi.mock('@/lib/server/sanitize-tiptap', () => ({ sanitizeTiptapContent: (v: unkn
 
 // findSimilarPostsFn uses a dynamic import of the db — stub the whole module
 // so the handler can be exercised without a real DB connection.
+// `innerJoin` is included so the audience-filter JOIN can be exercised
+// (G4 regression: similar-search must JOIN boards to apply postViewFilter).
+const mockInnerJoin = vi.fn()
+mockInnerJoin.mockReturnValue({
+  where: vi.fn().mockReturnValue({
+    orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
+  }),
+})
 vi.mock('@/lib/server/db', () => ({
   db: {
     select: vi.fn().mockReturnValue({
       from: vi.fn().mockReturnValue({
+        innerJoin: mockInnerJoin,
         where: vi.fn().mockReturnValue({
           orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
         }),
@@ -137,7 +149,13 @@ vi.mock('@/lib/server/db', () => ({
   and: vi.fn(),
   isNull: vi.fn(),
   desc: vi.fn(),
-  sql: vi.fn(),
+  // sql is used as a tagged template AND as a function (sql<T>(...).as(...)).
+  // Return a chainable stub with .as() so callers like `sql\`…\`.as('score')`
+  // don't blow up the audience-filter path.
+  sql: Object.assign(
+    vi.fn(() => ({ as: vi.fn() })),
+    { raw: vi.fn(), join: vi.fn() }
+  ),
 }))
 
 vi.mock('@/lib/server/domains/embeddings/embedding.service', () => ({
@@ -401,5 +419,24 @@ describe('findSimilarPostsFn — portal-visibility gate', () => {
 
     // Gate passed — result is an array (possibly empty from the stub DB).
     expect(Array.isArray(result)).toBe(true)
+  })
+
+  it('joins boards on the FTS search so postViewFilter can resolve audience (G4)', async () => {
+    // Regression: similar-search previously filtered only on
+    // `isNull(deletedAt) AND isNull(canonicalPostId)`, leaking titles
+    // from team-only / segment-restricted boards and pending posts.
+    // The fix joins boards into the query so postViewFilter can apply
+    // audience + moderationState rules.
+    mockResolvePortalAccess.mockResolvedValue({ granted: true, reason: 'public' })
+    mockInnerJoin.mockClear()
+
+    await publicPostsHandlers[FIND_SIMILAR_POSTS]({
+      data: { title: 'something', limit: 5 },
+    })
+
+    // The FTS path must JOIN boards. (Vector search short-circuits when
+    // generateEmbedding returns null in this mock, so only the FTS chain
+    // runs end-to-end here.)
+    expect(mockInnerJoin).toHaveBeenCalled()
   })
 })

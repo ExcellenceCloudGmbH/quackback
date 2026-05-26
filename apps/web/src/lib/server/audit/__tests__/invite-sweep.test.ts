@@ -114,6 +114,29 @@ describe('sweepExpiredPortalInvites', () => {
     expect(mockDbUpdate).not.toHaveBeenCalled()
   })
 
+  it('pins the bulk UPDATE WHERE to status=pending (TOCTOU guard)', async () => {
+    // Regression: without the pin, an invite accepted between SELECT and
+    // UPDATE gets stamped 'expired', locking out a user who just clicked
+    // their magic link. The WHERE clause must include both inArray(ids)
+    // AND eq(status, 'pending') so only still-pending rows are swept.
+    mockFindMany.mockResolvedValueOnce([
+      fakeInvite('invite_1', 'a@x.com'),
+      fakeInvite('invite_2', 'b@x.com'),
+    ])
+
+    await sweepExpiredPortalInvites()
+
+    expect(mockDbWhere).toHaveBeenCalledTimes(1)
+    const whereArg = mockDbWhere.mock.calls[0][0] as { and?: unknown[] }
+    expect(whereArg).toHaveProperty('and')
+    expect(whereArg.and).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ inArray: ['id', ['invite_1', 'invite_2']] }),
+        expect.objectContaining({ eq: ['status', 'pending'] }),
+      ])
+    )
+  })
+
   it('still updates status even when an audit emit fails (best-effort)', async () => {
     mockFindMany.mockResolvedValueOnce([fakeInvite('invite_1', 'a@x.com')])
     mockRecordAuditEvent.mockRejectedValueOnce(new Error('audit store down'))

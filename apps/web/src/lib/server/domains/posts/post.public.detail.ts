@@ -20,7 +20,13 @@ import { buildCommentTree, toStatusChange } from '@/lib/shared'
 import type { PublicPostDetail, PublicComment, PinnedComment } from './post.types'
 import { resolveAvatarUrl, parseJson, parseAvatarData } from './post.public'
 import { getExecuteRows } from '@/lib/server/utils'
-import { canViewPost, isTeamActor, ANONYMOUS_ACTOR, type Actor } from '@/lib/server/policy'
+import {
+  canViewBoard,
+  canViewPost,
+  isTeamActor,
+  ANONYMOUS_ACTOR,
+  type Actor,
+} from '@/lib/server/policy'
 import { hydrateMentions } from './hydrate-mentions'
 import type { TiptapContent } from '@/lib/shared/db-types'
 import type { JSONContent } from '@tiptap/core'
@@ -38,6 +44,36 @@ import type { JSONContent } from '@tiptap/core'
  * accidentally pass an admin actor with `includePrivateComments=false`
  * and silently hide rows that should appear.
  */
+/**
+ * Per-actor allowlist of post ids that have been merged into a given
+ * canonical and whose board the actor is entitled to view.
+ *
+ * The post-detail comments query unions in comments from every merged
+ * source — without this filter, a team-only post merged into a public
+ * canonical would leak its comments under the canonical's public detail.
+ * Callers (currently only `getPublicPostDetail`) pre-compute the allowed
+ * id list and pass it into the comments IN-clause directly.
+ */
+export async function listViewableMergedSourceIds(
+  canonicalPostId: PostId,
+  actor: Actor
+): Promise<string[]> {
+  const rows = await db
+    .select({ id: posts.id, audience: boards.audience })
+    .from(posts)
+    .innerJoin(boards, eq(posts.boardId, boards.id))
+    .where(
+      and(
+        eq(posts.canonicalPostId, canonicalPostId),
+        isNull(posts.deletedAt),
+        isNull(boards.deletedAt)
+      )
+    )
+  return rows
+    .filter((r) => canViewBoard(actor, { audience: r.audience }).allowed)
+    .map((r) => String(r.id))
+}
+
 export async function getPublicPostDetail(
   postId: PostId,
   actor: Actor = ANONYMOUS_ACTOR
@@ -46,8 +82,12 @@ export async function getPublicPostDetail(
   const principalId = (actor.principalId ?? undefined) as PrincipalId | undefined
   const includePrivateComments = isTeamActor(actor)
 
-  // Run post and comments queries in parallel (2 queries total)
-  const [postResults, commentsWithReactions] = await Promise.all([
+  // Pre-compute which merged-source posts the actor is entitled to see.
+  // Runs in parallel with the post + comments fetch so we don't pay an
+  // extra round-trip. Team actors trivially get every id. Without this
+  // filter, the canonical's public detail would leak comments posted on
+  // team-only or segment-restricted boards that were later merged in.
+  const [postResults, commentsWithReactions, viewableMergedSourceIds] = await Promise.all([
     // Query 1: Post with embedded tags, roadmaps, and author avatar
     db
       .select({
@@ -154,17 +194,76 @@ export async function getPublicPostDetail(
       LEFT JOIN ${commentReactions} cr ON cr.comment_id = c.id
       LEFT JOIN ${postStatuses} scf ON scf.id = c.status_change_from_id
       LEFT JOIN ${postStatuses} sct ON sct.id = c.status_change_to_id
-      WHERE c.post_id IN (
-        SELECT ${postUuid}::uuid
-        UNION ALL
-        SELECT p.id FROM ${posts} p
-        WHERE p.canonical_post_id = ${postUuid}::uuid AND p.deleted_at IS NULL
-      )
+      WHERE c.post_id = ${postUuid}::uuid
       ${includePrivateComments ? sql`` : sql`AND c.is_private = false`}
       GROUP BY c.id, m.display_name, m.avatar_key, m.avatar_url, scf.name, scf.color, sct.name, sct.color
       ORDER BY c.created_at ASC
     `),
+
+    // Query 3: Per-actor merged-source allowlist. Computed in parallel so
+    // we don't pay an extra round-trip; results are unioned into the
+    // comments set after the awaits resolve. Returns [] when this isn't
+    // a canonical or no sources survive the audience check.
+    listViewableMergedSourceIds(postId, actor),
   ])
+
+  // Union merged-source comments into the canonical's set. We re-query in
+  // the rare case there are any allowed sources — typical detail views
+  // have none, and the canonical-only query above is by far the common
+  // case. Splitting the two avoids paying for a UNION-ALL subquery on
+  // every detail load.
+  let mergedCommentsRows: typeof commentsWithReactions | null = null
+  if (viewableMergedSourceIds.length > 0) {
+    const sourceUuids = viewableMergedSourceIds.map((id) => toUuid(id as PostId))
+    mergedCommentsRows = await db.execute<{
+      id: string
+      post_id: string
+      parent_id: string | null
+      principal_id: string
+      author_name: string | null
+      content: string
+      content_json: unknown
+      is_team_member: boolean
+      is_private: boolean
+      created_at: Date | string
+      updated_at: Date | string | null
+      deleted_at: Date | string | null
+      deleted_by_principal_id: string | null
+      avatar_key: string | null
+      avatar_url: string | null
+      reactions_json: string
+      sc_from_name: string | null
+      sc_from_color: string | null
+      sc_to_name: string | null
+      sc_to_color: string | null
+    }>(sql`
+      SELECT
+        c.id, c.post_id, c.parent_id, c.principal_id,
+        m.display_name as author_name,
+        c.content, c.content_json, c.is_team_member, c.is_private,
+        c.created_at, c.updated_at, c.deleted_at, c.deleted_by_principal_id,
+        m.avatar_key, m.avatar_url,
+        COALESCE(
+          json_agg(json_build_object('emoji', cr.emoji, 'principalId', cr.principal_id))
+          FILTER (WHERE cr.id IS NOT NULL),
+          '[]'
+        ) as reactions_json,
+        scf.name as sc_from_name, scf.color as sc_from_color,
+        sct.name as sc_to_name, sct.color as sc_to_color
+      FROM ${comments} c
+      INNER JOIN ${principalTable} m ON c.principal_id = m.id
+      LEFT JOIN ${commentReactions} cr ON cr.comment_id = c.id
+      LEFT JOIN ${postStatuses} scf ON scf.id = c.status_change_from_id
+      LEFT JOIN ${postStatuses} sct ON sct.id = c.status_change_to_id
+      WHERE c.post_id IN (${sql.join(
+        sourceUuids.map((u) => sql`${u}::uuid`),
+        sql`, `
+      )})
+      ${includePrivateComments ? sql`` : sql`AND c.is_private = false`}
+      GROUP BY c.id, m.display_name, m.avatar_key, m.avatar_url, scf.name, scf.color, sct.name, sct.color
+      ORDER BY c.created_at ASC
+    `)
+  }
 
   const postResult = postResults[0]
   if (!postResult) {
@@ -194,7 +293,10 @@ export async function getPublicPostDetail(
   const authorAvatarUrl = parseAvatarData(postResult.authorAvatarData)
 
   // Extract rows from execute result (handles both postgres-js and neon-http formats)
-  const commentsRaw = getExecuteRows<{
+  // Combine canonical-post comments with merged-source comments the actor
+  // is entitled to see. Re-sort by created_at to preserve the chronological
+  // tree the buildCommentTree pass expects.
+  type CommentRow = {
     id: string
     post_id: string
     parent_id: string | null
@@ -215,7 +317,17 @@ export async function getPublicPostDetail(
     sc_from_color: string | null
     sc_to_name: string | null
     sc_to_color: string | null
-  }>(commentsWithReactions)
+  }
+  const canonicalCommentsRaw = getExecuteRows<CommentRow>(commentsWithReactions)
+  const mergedCommentsRaw = mergedCommentsRows ? getExecuteRows<CommentRow>(mergedCommentsRows) : []
+  const commentsRaw =
+    mergedCommentsRaw.length === 0
+      ? canonicalCommentsRaw
+      : [...canonicalCommentsRaw, ...mergedCommentsRaw].sort((a, b) => {
+          const at = a.created_at instanceof Date ? a.created_at : new Date(a.created_at)
+          const bt = b.created_at instanceof Date ? b.created_at : new Date(b.created_at)
+          return at.getTime() - bt.getTime()
+        })
 
   // Helper to ensure Date objects (raw SQL may return strings depending on driver)
   const ensureDate = (value: Date | string): Date =>

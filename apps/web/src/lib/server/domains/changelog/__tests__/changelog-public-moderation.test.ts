@@ -51,6 +51,11 @@ function linkedPost(opts: {
   id: string
   moderationState: 'published' | 'pending' | 'spam' | 'archived' | 'closed'
   deletedAt?: Date | null
+  audience?:
+    | { kind: 'public' }
+    | { kind: 'authenticated' }
+    | { kind: 'team' }
+    | { kind: 'segments'; segmentIds: string[] }
 }) {
   return {
     changelogEntryId: 'cl_1' as ChangelogId,
@@ -62,7 +67,7 @@ function linkedPost(opts: {
       statusId: null,
       deletedAt: opts.deletedAt ?? null,
       moderationState: opts.moderationState,
-      board: { slug: 'feedback' },
+      board: { slug: 'feedback', audience: opts.audience ?? { kind: 'public' } },
     },
   }
 }
@@ -162,5 +167,76 @@ describe('listPublicChangelogs — moderation state filter', () => {
     const entry2 = result.items.find((e) => e.id === ('cl_2' as ChangelogId))!
     expect(entry1.linkedPosts.map((p) => p.id)).toEqual(['p_pub_1'])
     expect(entry2.linkedPosts.map((p) => p.id)).toEqual(['p_pub_2'])
+  })
+})
+
+describe('public changelog — board audience filter', () => {
+  // Regression: a team-only post linked into a published changelog entry
+  // would leak its title + board slug to anonymous viewers because the
+  // filter only checked moderationState/deletedAt, not the linked post's
+  // board audience. Same shape as the moderation leak above, on the
+  // audience axis.
+
+  it('getPublicChangelogById: hides linked posts whose board audience is not public', async () => {
+    const { getPublicChangelogById } = await import('../changelog.public')
+    mockEntryFindFirst.mockResolvedValueOnce({
+      id: 'cl_1' as ChangelogId,
+      title: 'Release Notes',
+      content: '',
+      contentJson: null,
+      publishedAt: new Date('2026-01-01'),
+    })
+    mockLinkedPostsFindMany.mockResolvedValueOnce([
+      linkedPost({ id: 'post_pub', moderationState: 'published' }),
+      linkedPost({
+        id: 'post_team',
+        moderationState: 'published',
+        audience: { kind: 'team' },
+      }),
+      linkedPost({
+        id: 'post_auth',
+        moderationState: 'published',
+        audience: { kind: 'authenticated' },
+      }),
+      linkedPost({
+        id: 'post_seg',
+        moderationState: 'published',
+        audience: { kind: 'segments', segmentIds: ['seg_a'] },
+      }),
+    ])
+
+    const result = await getPublicChangelogById('cl_1' as ChangelogId)
+    expect(result.linkedPosts.map((p) => p.id)).toEqual(['post_pub'])
+  })
+
+  it('listPublicChangelogs: hides non-public-audience linked posts across entries', async () => {
+    const { listPublicChangelogs } = await import('../changelog.public')
+    mockEntryFindMany.mockResolvedValueOnce([
+      {
+        id: 'cl_1' as ChangelogId,
+        title: 'Release 1',
+        content: '',
+        contentJson: null,
+        publishedAt: new Date('2026-01-02'),
+      },
+    ])
+    mockLinkedPostsFindMany.mockResolvedValueOnce([
+      {
+        ...linkedPost({ id: 'p_pub', moderationState: 'published' }),
+        changelogEntryId: 'cl_1' as ChangelogId,
+      },
+      {
+        ...linkedPost({
+          id: 'p_team',
+          moderationState: 'published',
+          audience: { kind: 'team' },
+        }),
+        changelogEntryId: 'cl_1' as ChangelogId,
+      },
+    ])
+
+    const result = await listPublicChangelogs({})
+    const entry = result.items.find((e) => e.id === ('cl_1' as ChangelogId))!
+    expect(entry.linkedPosts.map((p) => p.id)).toEqual(['p_pub'])
   })
 })

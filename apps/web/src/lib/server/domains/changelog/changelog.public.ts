@@ -51,7 +51,8 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
     )
   }
 
-  // Get linked posts with board slugs and status
+  // Get linked posts with board slugs, board audience, and status.
+  // `board.audience` is needed for the public-audience filter below.
   const allLinkedPostRecords = await db.query.changelogEntryPosts.findMany({
     where: eq(changelogEntryPosts.changelogEntryId, id),
     with: {
@@ -69,6 +70,7 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
           board: {
             columns: {
               slug: true,
+              audience: true,
             },
           },
         },
@@ -76,11 +78,20 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
     },
   })
 
-  // Only published, non-deleted posts may be exposed publicly. A team
-  // member can link a post in any moderation state, but pending /
-  // spam / archived / closed posts are not for public consumption.
+  // Only published, non-deleted posts from public-audience boards may be
+  // exposed through the public changelog. Three independent guards:
+  //   1. moderationState='published' — a team member can link a post in
+  //      any moderation state, but pending/spam/archived/closed posts
+  //      are not for public consumption.
+  //   2. !deletedAt — a soft-deleted post must not leak.
+  //   3. board.audience.kind='public' — linking a team-only or
+  //      segment-restricted post must not promote it into the public
+  //      changelog feed.
   const linkedPostRecords = allLinkedPostRecords.filter(
-    (lp) => !lp.post.deletedAt && lp.post.moderationState === 'published'
+    (lp) =>
+      !lp.post.deletedAt &&
+      lp.post.moderationState === 'published' &&
+      lp.post.board?.audience?.kind === 'public'
   )
 
   // Get status info for linked posts
@@ -184,6 +195,7 @@ export async function listPublicChangelogs(params: {
                 board: {
                   columns: {
                     slug: true,
+                    audience: true,
                   },
                 },
               },
@@ -191,7 +203,15 @@ export async function listPublicChangelogs(params: {
           },
         })
       : []
-  ).filter((lp) => !lp.post.deletedAt && lp.post.moderationState === 'published')
+  ).filter(
+    // Same three-guard filter as getPublicChangelogById — see the comment
+    // there. The audience check keeps team-only / segment-restricted
+    // posts out of the public changelog feed.
+    (lp) =>
+      !lp.post.deletedAt &&
+      lp.post.moderationState === 'published' &&
+      lp.post.board?.audience?.kind === 'public'
+  )
 
   // Group linked posts by changelog entry
   const linkedPostsMap = new Map<ChangelogId, typeof allLinkedPosts>()
