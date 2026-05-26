@@ -335,10 +335,11 @@ export const resendPortalInviteFn = createServerFn({ method: 'POST' })
     const resendNow = new Date()
     const freshExpiresAt = new Date(resendNow.getTime() + PORTAL_INVITE_EXPIRY_MS)
     // Mirror the acceptPortalInviteFn TOCTOU fix: pin status='pending'
-    // in the WHERE clause so a concurrent accept/cancel/expiry sweep
-    // can't see this expiry-extension bring the row back to life.
-    // .returning() surfaces the zero-row race; we treat it as a terminal
-    // state collision and skip the audit event.
+    // AND expires_at > now() in the WHERE clause so neither a concurrent
+    // accept/cancel nor an expiry that landed during the email-send window
+    // can be silently rescued by this expiry-extension. .returning()
+    // surfaces the zero-row race; we treat it as a terminal state
+    // collision and skip the audit event.
     const updated = await db
       .update(invitation)
       .set({ lastSentAt: resendNow, expiresAt: freshExpiresAt })
@@ -346,7 +347,8 @@ export const resendPortalInviteFn = createServerFn({ method: 'POST' })
         and(
           eq(invitation.id, inviteId),
           eq(invitation.kind, 'portal'),
-          eq(invitation.status, 'pending')
+          eq(invitation.status, 'pending'),
+          gt(invitation.expiresAt, resendNow)
         )
       )
       .returning()

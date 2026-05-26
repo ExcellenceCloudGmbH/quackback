@@ -559,6 +559,39 @@ describe('resendPortalInviteFn — TOCTOU resilience', () => {
   // UPDATE. Without a status='pending' predicate, the expiry extension
   // would silently bring an accepted/canceled/expired row back into
   // 'has a fresh deadline' territory and emit a misleading audit event.
+  // The expiresAt > now() predicate covers the second race: an invite
+  // that read as in-date but expired during the email-send window
+  // must not be silently rescued by the expiry-extension.
+
+  it('UPDATE WHERE pins both status=pending AND expiresAt > now()', async () => {
+    const futureDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
+    hoisted.mockDbQuery.invitation.findFirst.mockResolvedValue({
+      id: 'invite_1',
+      kind: 'portal',
+      status: 'pending',
+      email: 'user@example.com',
+      expiresAt: futureDate,
+    })
+    hoisted.mockSendPortalInviteEmail.mockResolvedValue({ sent: true })
+
+    await resendHandler({ data: { inviteId: 'invite_1' } })
+
+    // mockDbUpdate captures the args passed to .where(). The handler builds
+    // its predicate via and(...), and our `and` mock returns its args as an
+    // array. So calls[0][0] is the array of predicate objects.
+    expect(hoisted.mockDbUpdate).toHaveBeenCalled()
+    const whereArgs = hoisted.mockDbUpdate.mock.calls[0][0] as Array<{
+      col: string
+      val: unknown
+    }>
+    // status=pending predicate
+    expect(whereArgs).toContainEqual(expect.objectContaining({ col: 'status', val: 'pending' }))
+    // expires_at > now() predicate (regression: ensures the expiry race
+    // can never silently rescue an invite that expired mid-flight)
+    const expiresAtPredicate = whereArgs.find((p) => p.col === 'expiresAt')
+    expect(expiresAtPredicate, 'resend UPDATE must pin expiresAt > now()').toBeDefined()
+    expect(expiresAtPredicate!.val).toBeInstanceOf(Date)
+  })
 
   it('throws when the UPDATE affects zero rows (lost the race)', async () => {
     const futureDate = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
