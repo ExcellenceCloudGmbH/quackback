@@ -1,8 +1,9 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useForm } from 'react-hook-form'
 import { Link } from '@tanstack/react-router'
-import { GlobeAltIcon, LockClosedIcon, TagIcon, UsersIcon } from '@heroicons/react/24/solid'
+import { GlobeAltIcon, LockClosedIcon, ShieldCheckIcon, UsersIcon } from '@heroicons/react/24/solid'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import { FormError } from '@/components/shared/form-error'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
@@ -18,23 +19,28 @@ import { SegmentMultiSelect } from '@/components/admin/segments/segment-multi-se
 import { useUpdateBoardAccess } from '@/lib/client/mutations'
 import { useSegments } from '@/lib/client/hooks/use-segments-queries'
 import type { BoardId } from '@quackback/ids'
-import type { BoardAudience } from '@/lib/shared/db-types'
+import {
+  ACCESS_TIER_RANK,
+  type AccessTier,
+  type BoardAccess,
+  DEFAULT_BOARD_ACCESS,
+} from '@/lib/shared/db-types'
+import { TierSelect } from './tier-select'
 
 /**
- * Board visibility form. Backed by `audience` (BoardAudience union).
+ * Per-board access matrix form. Backed by the BoardAccess shape
+ * (view / comment / submit tiers + segmentIds + approval flags).
  *
- * Exposes all four audience kinds as radio buttons:
- *   - public          anyone, signed-in or not
- *   - authenticated   any signed-in portal user
- *   - team            admins and members only
- *   - segments        members of one or more named segments
- *
- * When `segments` is selected the SegmentMultiSelect appears below the
- * radio group, preselected from the board's current `segmentIds` if any.
- * Save is disabled while the selection is empty (server requires at
- * least one segment) — explicit, no silent fallback to a different kind.
- *
- * Post moderation is workspace-wide (Settings → Moderation), not per-board.
+ * Layout (top to bottom):
+ *  1. Quick presets card grid — Public / Auth-only / Team / Custom.
+ *     Selecting a preset fills the tier row; Custom auto-selects when
+ *     the form drifts from any known preset.
+ *  2. View tier picker (full 4-option TierSelect).
+ *  3. Comment tier picker — minTier = view so it can't be more permissive.
+ *  4. Submit tier picker — same rank invariant.
+ *  5. Segments multi-select — only rendered when any tier is 'segments'.
+ *  6. Approval card — two checkboxes (hold posts / hold comments).
+ *  7. Save button — disabled while segments are required but unselected.
  *
  * Submit calls `updateBoardAccessFn` (admin-only, audited) — distinct from
  * the general board update path so members can't change board visibility.
@@ -42,133 +48,116 @@ import type { BoardAudience } from '@/lib/shared/db-types'
 
 interface Board {
   id: BoardId
-  audience: BoardAudience
+  access: BoardAccess
 }
 
 interface BoardAccessFormProps {
   board: Board
 }
 
-type RadioVisibility = 'public' | 'authenticated' | 'team' | 'segments'
+type PresetName = 'public' | 'authenticated' | 'team' | 'custom'
 
-interface FormValues {
-  visibility: RadioVisibility
-  segmentIds: string[]
-}
-
-/** Exhaustiveness guard — if BoardAudience gains a new kind, the
- *  switch below produces a compile error rather than silently
- *  returning undefined and crashing the form at mount. */
-function assertNever(x: never): never {
-  throw new Error(`Unhandled BoardAudience variant: ${JSON.stringify(x)}`)
-}
-
-function audienceToFormValues(audience: BoardAudience): FormValues {
-  switch (audience.kind) {
-    case 'public':
-    case 'authenticated':
-    case 'team':
-      return { visibility: audience.kind, segmentIds: [] }
-    case 'segments':
-      return { visibility: 'segments', segmentIds: audience.segmentIds }
-    default:
-      return assertNever(audience)
-  }
-}
-
-function formValuesToAudience(values: FormValues): BoardAudience {
-  switch (values.visibility) {
-    case 'public':
-    case 'authenticated':
-    case 'team':
-      return { kind: values.visibility }
-    case 'segments':
-      return { kind: 'segments', segmentIds: values.segmentIds }
-    default:
-      return assertNever(values.visibility)
-  }
-}
-
-/** Shared label/description/icon table — the source of truth for the
- *  editable form. Adding a new audience kind starts here. */
-const AUDIENCE_META: Record<
-  BoardAudience['kind'],
+const PRESET_META: Record<
+  Exclude<PresetName, 'custom'>,
   {
     label: string
     description: string
     icon: React.ComponentType<{ className?: string }>
+    tiers: Pick<BoardAccess, 'view' | 'comment' | 'submit'>
   }
 > = {
   public: {
     label: 'Public',
-    description:
-      'Anyone can view this board on your portal, including unsigned visitors. Signed-in users can vote, comment, and submit feedback.',
+    description: 'Anyone can view, vote, comment, and submit feedback.',
     icon: GlobeAltIcon,
+    tiers: { view: 'anonymous', comment: 'anonymous', submit: 'anonymous' },
   },
   authenticated: {
-    label: 'Authenticated',
-    description:
-      'Any signed-in portal user can view this board. Hidden from anonymous visitors and search indexes.',
+    label: 'Auth-only',
+    description: 'Sign in to see anything.',
     icon: UsersIcon,
+    tiers: {
+      view: 'authenticated',
+      comment: 'authenticated',
+      submit: 'authenticated',
+    },
   },
   team: {
     label: 'Team only',
-    description: 'Only admins and team members can view this board.',
+    description: 'Hidden from the portal.',
     icon: LockClosedIcon,
-  },
-  segments: {
-    label: 'Specific segments',
-    description: 'Only members of the segments you pick can view this board.',
-    icon: TagIcon,
+    tiers: { view: 'team', comment: 'team', submit: 'team' },
   },
 }
 
-const AUDIENCE_KINDS: RadioVisibility[] = ['public', 'authenticated', 'team', 'segments']
+/** Find the preset the current form values correspond to, if any.
+ *  We require tier match + approval flags both off; for the segments-bearing
+ *  case (which today no preset uses) we also require segmentIds to be empty
+ *  so picked segments don't silently survive a preset switch. */
+function detectPreset(access: BoardAccess): PresetName {
+  for (const [name, meta] of Object.entries(PRESET_META) as [
+    Exclude<PresetName, 'custom'>,
+    (typeof PRESET_META)[Exclude<PresetName, 'custom'>],
+  ][]) {
+    const tiersMatch =
+      access.view === meta.tiers.view &&
+      access.comment === meta.tiers.comment &&
+      access.submit === meta.tiers.submit
+    const approvalOff = !access.approval.posts && !access.approval.comments
+    const segmentsAlignWithTier = meta.tiers.view !== 'segments' || access.segmentIds.length === 0
+    if (tiersMatch && approvalOff && segmentsAlignWithTier) {
+      return name
+    }
+  }
+  return 'custom'
+}
+
+function applyPreset(name: Exclude<PresetName, 'custom'>, current: BoardAccess): BoardAccess {
+  const tiers = PRESET_META[name].tiers
+  return {
+    ...current,
+    view: tiers.view,
+    comment: tiers.comment,
+    submit: tiers.submit,
+    approval: { posts: false, comments: false },
+  }
+}
 
 export function BoardAccessForm({ board }: BoardAccessFormProps) {
   const mutation = useUpdateBoardAccess()
   const segmentsQuery = useSegments()
 
-  const form = useForm<FormValues>({
-    // Preserves the board's existing segmentIds when it's already on a
-    // segments audience so admins editing aren't surprised by an empty
-    // selection. Switching back from another kind starts empty.
-    defaultValues: audienceToFormValues(board.audience),
+  const form = useForm<BoardAccess>({
+    defaultValues: board.access ?? DEFAULT_BOARD_ACCESS,
   })
 
-  // Keep the form in lockstep with the server's view of board.audience.
-  // - Successful save: cache updates → board.audience matches → no-op
-  //   visible change but isDirty gets cleared.
-  // - Failed save: cache is rolled back by the mutation's onError → the
-  //   board.audience prop snaps back to its pre-mutate value → the form
-  //   must follow so the radios stop lying about what the server has.
-  // - Background refetch: same story.
-  // Serialized audience powers the dependency check because deep-eq on
-  // arrays is the source-of-truth comparison here.
-  const audienceKey = JSON.stringify(board.audience)
+  // Sync form state when the server-side board.access changes (e.g. successful
+  // save + cache update, or rollback on error). Serialized access powers the
+  // dep check because deep-eq on the nested object is the source of truth.
+  const accessKey = JSON.stringify(board.access)
   useEffect(() => {
-    form.reset(audienceToFormValues(board.audience))
-  }, [audienceKey, board.audience, form])
+    form.reset(board.access ?? DEFAULT_BOARD_ACCESS)
+  }, [accessKey, board.access, form])
 
-  const visibility = form.watch('visibility')
-  const segmentIds = form.watch('segmentIds')
+  const values = form.watch()
+  const anySegments = useMemo(
+    () =>
+      values.view === 'segments' || values.comment === 'segments' || values.submit === 'segments',
+    [values.view, values.comment, values.submit]
+  )
+  const needsSegments = anySegments && values.segmentIds.length === 0
+  const preset = detectPreset(values)
 
-  const isSegments = visibility === 'segments'
-  const noSegmentsSelected = isSegments && segmentIds.length === 0
-
-  async function onSubmit(values: FormValues) {
-    // Belt-and-braces: the disabled Save button covers the click path,
-    // but an Enter-key submit from a focused input bypasses `disabled`.
-    // Re-check the same condition here so neither channel can land an
-    // empty allowlist on the server (the schema also rejects this, but
-    // we'd rather not round-trip an obviously-invalid payload).
-    if (values.visibility === 'segments' && values.segmentIds.length === 0) {
+  async function onSubmit(next: BoardAccess) {
+    // Defense-in-depth: the button is disabled when segments are required
+    // but empty; this re-check covers Enter-key submit from a focused input.
+    if (
+      (next.view === 'segments' || next.comment === 'segments' || next.submit === 'segments') &&
+      next.segmentIds.length === 0
+    ) {
       return
     }
-    mutation.mutate({
-      boardId: board.id,
-      audience: formValuesToAudience(values),
-    })
+    mutation.mutate({ boardId: board.id, access: next })
   }
 
   return (
@@ -176,44 +165,145 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         {mutation.isError && <FormError message={mutation.error?.message ?? 'An error occurred'} />}
 
+        {/* ────────── Quick presets ────────── */}
+        <div className="space-y-3">
+          <div>
+            <FormLabel className="text-base">Quick presets</FormLabel>
+            <FormDescription>
+              Start from a common configuration. Custom is selected automatically when you tweak
+              anything below.
+            </FormDescription>
+          </div>
+          <RadioGroup
+            value={preset}
+            onValueChange={(p) => {
+              if (p !== 'custom') {
+                const next = applyPreset(p as Exclude<PresetName, 'custom'>, values)
+                form.reset(next)
+              }
+            }}
+            className="grid grid-cols-2 gap-2 sm:grid-cols-4"
+          >
+            {(['public', 'authenticated', 'team'] as const).map((name) => {
+              const meta = PRESET_META[name]
+              const id = `preset-${name}`
+              const Icon = meta.icon
+              return (
+                <Label
+                  key={name}
+                  htmlFor={id}
+                  className="flex items-start gap-2 rounded-lg border p-3 cursor-pointer hover:bg-muted/50 [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5"
+                >
+                  <RadioGroupItem value={name} id={id} className="mt-0.5" />
+                  <div className="flex-1 space-y-0.5">
+                    <div className="flex items-center gap-1.5">
+                      <Icon className="h-3.5 w-3.5" />
+                      <span className="text-sm font-medium">{meta.label}</span>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground leading-tight">
+                      {meta.description}
+                    </p>
+                  </div>
+                </Label>
+              )
+            })}
+            <Label
+              htmlFor="preset-custom"
+              className="flex items-start gap-2 rounded-lg border p-3 cursor-pointer hover:bg-muted/50 [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5"
+            >
+              <RadioGroupItem value="custom" id="preset-custom" className="mt-0.5" />
+              <div className="flex-1 space-y-0.5">
+                <span className="text-sm font-medium">Custom</span>
+                <p className="text-[11px] text-muted-foreground leading-tight">Per-action tiers.</p>
+              </div>
+            </Label>
+          </RadioGroup>
+        </div>
+
+        {/* ────────── View ────────── */}
         <FormField
           control={form.control}
-          name="visibility"
+          name="view"
           render={({ field }) => (
-            <FormItem className="space-y-4">
+            <FormItem className="space-y-3">
               <div>
-                <FormLabel className="text-base">Board Visibility</FormLabel>
-                <FormDescription>Control who can see this board on your portal</FormDescription>
+                <FormLabel className="text-base">Who can view the board and vote?</FormLabel>
+                <FormDescription>
+                  Voting follows the same rule as viewing. To gate voting separately, use the
+                  workspace anonymous-voting toggle in Moderation.
+                </FormDescription>
               </div>
               <FormControl>
-                <RadioGroup
-                  // Keep segmentIds in form state when leaving 'segments' so
-                  // a return trip (segments → other → segments) preserves
-                  // the original selection. The submit path only includes
-                  // segmentIds when the active kind is 'segments' (see
-                  // formValuesToAudience), so a stale array can't sneak
-                  // into a non-segments payload.
-                  onValueChange={field.onChange}
-                  value={field.value}
-                  className="grid gap-3"
-                >
-                  {AUDIENCE_KINDS.map((kind) => (
-                    <AccessOption key={kind} value={kind} meta={AUDIENCE_META[kind]} />
-                  ))}
-                </RadioGroup>
+                <TierSelect
+                  value={field.value as AccessTier}
+                  onChange={(v) => field.onChange(v)}
+                  ariaLabel="View tier"
+                />
               </FormControl>
             </FormItem>
           )}
         />
 
-        {isSegments && (
+        {/* ────────── Comment ────────── */}
+        <FormField
+          control={form.control}
+          name="comment"
+          render={({ field }) => (
+            <FormItem className="space-y-3">
+              <div>
+                <FormLabel className="text-base">Who can comment?</FormLabel>
+              </div>
+              <FormControl>
+                <TierSelect
+                  value={field.value as AccessTier}
+                  onChange={(v) => {
+                    // Rank invariant: comment can't be more permissive than view.
+                    if (ACCESS_TIER_RANK[v] >= ACCESS_TIER_RANK[values.view]) {
+                      field.onChange(v)
+                    }
+                  }}
+                  minTier={values.view}
+                  ariaLabel="Comment tier"
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        {/* ────────── Submit ────────── */}
+        <FormField
+          control={form.control}
+          name="submit"
+          render={({ field }) => (
+            <FormItem className="space-y-3">
+              <div>
+                <FormLabel className="text-base">Who can submit new posts?</FormLabel>
+              </div>
+              <FormControl>
+                <TierSelect
+                  value={field.value as AccessTier}
+                  onChange={(v) => {
+                    if (ACCESS_TIER_RANK[v] >= ACCESS_TIER_RANK[values.view]) {
+                      field.onChange(v)
+                    }
+                  }}
+                  minTier={values.view}
+                  ariaLabel="Submit tier"
+                />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+
+        {/* ────────── Segments (conditional) ────────── */}
+        {anySegments && (
           <FormField
             control={form.control}
             name="segmentIds"
             render={({ field }) => (
               <FormItem className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <FormLabel className="text-sm">Allowed segments</FormLabel>
+                  <FormLabel className="text-base">Segments</FormLabel>
                   <Link
                     to="/admin/settings/people"
                     className="text-xs font-medium text-primary hover:underline"
@@ -221,6 +311,9 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
                     Manage segments →
                   </Link>
                 </div>
+                <FormDescription>
+                  Used wherever &quot;Segments&quot; is selected above.
+                </FormDescription>
                 {segmentsQuery.isLoading ? (
                   <p className="text-xs text-muted-foreground">Loading segments…</p>
                 ) : segmentsQuery.isError ? (
@@ -243,7 +336,7 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
                     disabled={mutation.isPending}
                   />
                 )}
-                {noSegmentsSelected && (segmentsQuery.data ?? []).length > 0 && (
+                {needsSegments && (segmentsQuery.data ?? []).length > 0 && (
                   <p className="text-xs text-muted-foreground">
                     Pick at least one segment to save.
                   </p>
@@ -253,41 +346,66 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
           />
         )}
 
+        {/* ────────── Approval ────────── */}
+        <div className="space-y-3 rounded-lg border bg-card p-4">
+          <div className="flex items-center gap-2">
+            <ShieldCheckIcon className="h-4 w-4 text-muted-foreground" />
+            <FormLabel className="text-base">Approval</FormLabel>
+          </div>
+          <FormDescription>
+            Hold new submissions for review before they go live. For finer rules (e.g. only
+            anonymous), use the workspace default in{' '}
+            <Link to="/admin/settings/moderation" className="text-primary hover:underline">
+              Moderation
+            </Link>
+            .
+          </FormDescription>
+          <FormField
+            control={form.control}
+            name="approval.posts"
+            render={({ field }) => (
+              <FormItem className="flex items-center gap-2 space-y-0">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={(v) => field.onChange(v === true)}
+                  />
+                </FormControl>
+                <FormLabel className="text-sm font-normal cursor-pointer">
+                  Hold new posts for review
+                </FormLabel>
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="approval.comments"
+            render={({ field }) => (
+              <FormItem className="flex items-center gap-2 space-y-0">
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={(v) => field.onChange(v === true)}
+                  />
+                </FormControl>
+                <FormLabel className="text-sm font-normal cursor-pointer">
+                  Hold new comments for review
+                </FormLabel>
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <div className="space-y-2 text-xs text-muted-foreground">
+          <p>Team members and admins always have full access.</p>
+        </div>
+
         <div className="flex justify-end">
-          <Button type="submit" disabled={mutation.isPending || noSegmentsSelected}>
+          <Button type="submit" disabled={mutation.isPending || needsSegments}>
             {mutation.isPending ? 'Saving...' : 'Save changes'}
           </Button>
         </div>
       </form>
     </Form>
-  )
-}
-
-/** Single radio card — same visual treatment for all four kinds.
- *  Driven from AUDIENCE_META so adding a new kind only requires
- *  updating that one table. */
-function AccessOption({
-  value,
-  meta,
-}: {
-  value: RadioVisibility
-  meta: (typeof AUDIENCE_META)[RadioVisibility]
-}) {
-  const id = `visibility-${value}`
-  const Icon = meta.icon
-  return (
-    <Label
-      htmlFor={id}
-      className="flex items-start gap-3 rounded-lg border p-4 cursor-pointer hover:bg-muted/50 [&:has([data-state=checked])]:border-primary [&:has([data-state=checked])]:bg-primary/5"
-    >
-      <RadioGroupItem value={value} id={id} className="mt-0.5" />
-      <div className="flex-1 space-y-1">
-        <div className="flex items-center gap-2">
-          <Icon className="h-4 w-4" />
-          <span className="font-medium">{meta.label}</span>
-        </div>
-        <p className="text-xs text-muted-foreground">{meta.description}</p>
-      </div>
-    </Label>
   )
 }

@@ -30,6 +30,7 @@ interface BoardForSettings {
   slug: string
   description: string | null
   audience: import('@/lib/shared/db-types').BoardAudience
+  access: import('@/lib/shared/db-types').BoardAccess
 }
 
 const searchSchema = z.object({
