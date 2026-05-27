@@ -112,7 +112,11 @@ function detectPreset(access: BoardAccess): PresetName {
       access.comment === meta.tiers.comment &&
       access.submit === meta.tiers.submit
     const approvalOff = !access.approval.posts && !access.approval.comments
-    const segmentsAlignWithTier = meta.tiers.view !== 'segments' || access.segmentIds.length === 0
+    // For a non-segments preset, segmentIds must be empty (preset-clean state).
+    // For the segments preset there is no preset card right now (only Public/Auth/Team
+    // have entries in PRESET_META), so this branch is the only one we exercise.
+    const segmentsAlignWithTier =
+      meta.tiers.view === 'segments' ? true : access.segmentIds.length === 0
     if (tiersMatch && approvalOff && segmentsAlignWithTier) {
       return name
     }
@@ -122,11 +126,16 @@ function detectPreset(access: BoardAccess): PresetName {
 
 function applyPreset(name: Exclude<PresetName, 'custom'>, current: BoardAccess): BoardAccess {
   const tiers = PRESET_META[name].tiers
+  // If the target preset doesn't use the 'segments' tier anywhere, drop any
+  // stale segmentIds so a preset switch fully resets the selection state.
+  const anyTargetSegments =
+    tiers.view === 'segments' || tiers.comment === 'segments' || tiers.submit === 'segments'
   return {
     ...current,
     view: tiers.view,
     comment: tiers.comment,
     submit: tiers.submit,
+    segmentIds: anyTargetSegments ? current.segmentIds : [],
     approval: { posts: false, comments: false },
   }
 }
@@ -274,7 +283,19 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
               <FormControl>
                 <TierSelect
                   value={field.value as AccessTier}
-                  onChange={(v) => field.onChange(v)}
+                  onChange={(v) => {
+                    field.onChange(v)
+                    // Rank invariant: if comment/submit are now more permissive
+                    // than the new view tier, clamp them up so Save doesn't
+                    // produce an invariant violation the server would reject.
+                    const newRank = ACCESS_TIER_RANK[v]
+                    if (ACCESS_TIER_RANK[values.comment] < newRank) {
+                      form.setValue('comment', v, { shouldDirty: true })
+                    }
+                    if (ACCESS_TIER_RANK[values.submit] < newRank) {
+                      form.setValue('submit', v, { shouldDirty: true })
+                    }
+                  }}
                   ariaLabel="View tier"
                 />
               </FormControl>

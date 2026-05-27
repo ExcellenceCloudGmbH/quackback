@@ -251,3 +251,55 @@ describe('<BoardAccessForm> save', () => {
     expect(mutate).not.toHaveBeenCalled()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Tier-rank invariant: raising view auto-clamps comment/submit
+// ---------------------------------------------------------------------------
+
+describe('BoardAccessForm — tier rank invariant', () => {
+  it('raising view tier auto-clamps comment and submit to match', () => {
+    // Start with all anonymous
+    renderForm({
+      view: 'anonymous',
+      comment: 'anonymous',
+      submit: 'anonymous',
+      segmentIds: [],
+      approval: { posts: false, comments: false },
+    })
+    // Click "Team only" in the View tier radio group
+    const viewGroup = screen.getByRole('radiogroup', { name: /view tier/i })
+    fireEvent.click(within(viewGroup).getByRole('radio', { name: /team only/i }))
+    // Both Comment and Submit groups should now show Team only as checked
+    const commentGroup = screen.getByRole('radiogroup', { name: /comment tier/i })
+    const submitGroup = screen.getByRole('radiogroup', { name: /submit tier/i })
+    expect(within(commentGroup).getByRole('radio', { name: /team only/i })).toBeChecked()
+    expect(within(submitGroup).getByRole('radio', { name: /team only/i })).toBeChecked()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Preset segmentIds cleanup
+// ---------------------------------------------------------------------------
+
+describe('BoardAccessForm — preset segmentIds cleanup', () => {
+  it('clicking Public preset clears stale segmentIds', async () => {
+    renderForm({
+      view: 'segments',
+      comment: 'segments',
+      submit: 'segments',
+      segmentIds: ['seg_alpha'],
+      approval: { posts: false, comments: false },
+    })
+    const publicPresetRadio = document.getElementById('preset-public') as HTMLElement
+    fireEvent.click(publicPresetRadio)
+    // Saving now should send empty segmentIds
+    fireEvent.submit(screen.getByRole('button', { name: /save changes/i }).closest('form')!)
+    await waitFor(() => {
+      expect(mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          access: expect.objectContaining({ segmentIds: [] }),
+        })
+      )
+    })
+  })
+})
