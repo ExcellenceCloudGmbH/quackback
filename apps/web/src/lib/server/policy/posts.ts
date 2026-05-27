@@ -5,10 +5,11 @@
  * isn't visible, and create is always denied when view is denied.
  */
 import { and, eq, or, sql, type SQL } from 'drizzle-orm'
-import { posts, type BoardAccess, type ModerationState } from '@/lib/server/db'
+import { posts, type AccessTier, type BoardAccess, type ModerationState } from '@/lib/server/db'
 import type { PrincipalId } from '@quackback/ids'
 import { allowDecision, denyDecision, isTeamActor, type Actor, type Decision } from './types'
 import { canViewBoard, boardViewFilter } from './boards'
+import { tierAllows } from './access'
 
 /** The workspace moderation policy. Boards no longer have a per-board override. */
 export type RequireApproval = 'none' | 'anonymous' | 'authenticated' | 'all'
@@ -84,25 +85,43 @@ export type CreateDecision =
   | { allowed: true; requiresApproval: boolean }
   | { allowed: false; reason: string }
 
+function submitDenyMessage(tier: AccessTier): string {
+  switch (tier) {
+    case 'anonymous':
+      // Unreachable in practice — tierAllows('anonymous', …) always passes.
+      return 'Submissions are not accepted on this board'
+    case 'authenticated':
+      return 'Sign in to submit on this board'
+    case 'segments':
+      return 'Only specific groups can submit on this board'
+    case 'team':
+      return 'Only team members can submit on this board'
+  }
+}
+
 export function canCreatePost(
   actor: Actor,
   board: BoardShape,
-  globalDefault: RequireApproval | undefined
+  workspaceApproval: RequireApproval | undefined
 ): CreateDecision {
-  const view = canViewBoard(actor, board)
-  if (!view.allowed) return { allowed: false, reason: view.reason }
+  // Submit is its own decision — a board can be public to view but
+  // team-only to submit (admin-curated roadmap pattern). Gate on
+  // access.submit directly rather than delegating to canViewBoard.
+  if (!tierAllows(actor, board.access.submit, board.access.segmentIds)) {
+    return { allowed: false, reason: submitDenyMessage(board.access.submit) }
+  }
 
   // Team always bypasses the moderation queue.
   if (isTeam(actor)) {
     return { allowed: true, requiresApproval: false }
   }
 
-  // Approval is driven purely by the workspace-wide moderation policy.
-  const requireApproval = globalDefault ?? 'none'
-  const requires =
+  // Approval is the OR of the workspace policy and the per-board override.
+  const requireApproval = workspaceApproval ?? 'none'
+  const wsRequires =
     requireApproval === 'all' ||
     (requireApproval === 'anonymous' && actor.principalType !== 'user') ||
     (requireApproval === 'authenticated' && actor.principalType === 'user')
 
-  return { allowed: true, requiresApproval: requires }
+  return { allowed: true, requiresApproval: wsRequires || board.access.approval.posts }
 }

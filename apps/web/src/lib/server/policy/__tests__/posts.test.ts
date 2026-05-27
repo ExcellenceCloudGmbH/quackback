@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest'
 import { canViewPost, canCreatePost, canCreateComment } from '../posts'
 import { ANONYMOUS_ACTOR, type Actor } from '../types'
 import type { SegmentId, PrincipalId } from '@quackback/ids'
-import type { BoardAccess, ModerationState } from '@/lib/server/db'
+import type { AccessTier, BoardAccess, ModerationState } from '@/lib/server/db'
 import { MODERATION_STATES } from '@/lib/server/db'
 
 // ----------------------------------------------------------------------
@@ -359,6 +359,92 @@ describe('canCreatePost — global default treated as none when undefined', () =
   it('an anonymous submitter with an absent policy is not gated', () => {
     const decision = canCreatePost(anon, publicBoard, undefined)
     expect(decision).toEqual({ allowed: true, requiresApproval: false })
+  })
+})
+
+describe('canCreatePost — board.approval.posts composes OR with workspace requireApproval', () => {
+  const adminAccess = (overrides: Partial<BoardAccess['approval']> = {}) => ({
+    access: {
+      view: 'anonymous' as AccessTier,
+      comment: 'anonymous' as AccessTier,
+      submit: 'anonymous' as AccessTier,
+      segmentIds: [],
+      approval: { posts: false, comments: false, ...overrides },
+    } satisfies BoardAccess,
+  })
+
+  it('board.approval.posts=true holds posts even when workspace=none', () => {
+    const decision = canCreatePost(portal, adminAccess({ posts: true }), 'none')
+    expect(decision).toEqual({ allowed: true, requiresApproval: true })
+  })
+
+  it('board.approval.posts=false defers to workspace=anonymous (anon held)', () => {
+    const decision = canCreatePost(anon, adminAccess({ posts: false }), 'anonymous')
+    expect(decision).toEqual({ allowed: true, requiresApproval: true })
+  })
+
+  it('board.approval.posts=true does NOT hold team submissions', () => {
+    const decision = canCreatePost(admin, adminAccess({ posts: true }), 'none')
+    expect(decision).toEqual({ allowed: true, requiresApproval: false })
+  })
+
+  it('board.approval.posts=false + workspace=none does not hold', () => {
+    const decision = canCreatePost(portal, adminAccess({ posts: false }), 'none')
+    expect(decision).toEqual({ allowed: true, requiresApproval: false })
+  })
+})
+
+describe('canCreatePost — board.access.submit tier gates submission independent of view', () => {
+  it('rejects portal user when submit=team but view=anonymous (admin-curated board)', () => {
+    const board = {
+      access: {
+        view: 'anonymous',
+        comment: 'anonymous',
+        submit: 'team',
+        segmentIds: [],
+        approval: { posts: false, comments: false },
+      } satisfies BoardAccess,
+    }
+    expect(canCreatePost(portal, board, 'none').allowed).toBe(false)
+  })
+
+  it('rejects anonymous when submit=authenticated but view=anonymous', () => {
+    const board = {
+      access: {
+        view: 'anonymous',
+        comment: 'anonymous',
+        submit: 'authenticated',
+        segmentIds: [],
+        approval: { posts: false, comments: false },
+      } satisfies BoardAccess,
+    }
+    expect(canCreatePost(anon, board, 'none').allowed).toBe(false)
+  })
+
+  it('admits portal user when submit=authenticated', () => {
+    const board = {
+      access: {
+        view: 'anonymous',
+        comment: 'anonymous',
+        submit: 'authenticated',
+        segmentIds: [],
+        approval: { posts: false, comments: false },
+      } satisfies BoardAccess,
+    }
+    expect(canCreatePost(portal, board, 'none').allowed).toBe(true)
+  })
+
+  it('rejects portal user not in segment when submit=segments', () => {
+    const board = {
+      access: {
+        view: 'anonymous',
+        comment: 'anonymous',
+        submit: 'segments',
+        segmentIds: ['segment_x'],
+        approval: { posts: false, comments: false },
+      } satisfies BoardAccess,
+    }
+    expect(canCreatePost(portal, board, 'none').allowed).toBe(false)
   })
 })
 
