@@ -29,8 +29,14 @@ UPDATE "boards" SET "access" = jsonb_build_object(
       WHEN 'segments'      THEN 'segments'
       ELSE 'anonymous'
     END,
+  -- Defensive: only copy segmentIds when it is actually a JSON array.
+  -- Malformed legacy rows (object, string, number, etc.) fall back to []
+  -- so downstream string[] consumers can't trip on bad shapes.
   'segmentIds',
-    COALESCE(audience->'segmentIds', '[]'::jsonb),
+    CASE
+      WHEN jsonb_typeof(audience->'segmentIds') = 'array' THEN audience->'segmentIds'
+      ELSE '[]'::jsonb
+    END,
   'approval',
     '{"posts":false,"comments":false}'::jsonb
 );
