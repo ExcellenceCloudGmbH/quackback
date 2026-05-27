@@ -36,7 +36,7 @@
  *     widget sessions (HMAC not required) never reach the portal via this path.
  */
 import { createFileRoute, redirect } from '@tanstack/react-router'
-import { createServerFn } from '@tanstack/react-start'
+import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
 import { getRequestHeaders, setResponseHeader } from '@tanstack/react-start/server'
 import { z } from 'zod'
 import { isSafeCallbackUrl } from '@/lib/shared/routing'
@@ -62,19 +62,21 @@ import type { UserId } from '@quackback/ids'
  * so this file stays client-bundle-safe (the route file ends up in
  * the client bundle via routeTree.gen.ts).
  */
-export async function isWidgetSessionHmacVerified(sessionId: string): Promise<boolean> {
-  try {
-    const { db, widgetIdentifiedSession, eq } = await import('@/lib/server/db')
-    const row = await db.query.widgetIdentifiedSession.findFirst({
-      where: eq(widgetIdentifiedSession.sessionId, sessionId),
-      columns: { hmacVerified: true },
-    })
-    return row?.hmacVerified === true
-  } catch (err) {
-    console.error('[route:widget-handoff] provenance lookup failed:', err)
-    return false
+export const isWidgetSessionHmacVerified = createServerOnlyFn(
+  async (sessionId: string): Promise<boolean> => {
+    try {
+      const { db, widgetIdentifiedSession, eq } = await import('@/lib/server/db')
+      const row = await db.query.widgetIdentifiedSession.findFirst({
+        where: eq(widgetIdentifiedSession.sessionId, sessionId),
+        columns: { hmacVerified: true },
+      })
+      return row?.hmacVerified === true
+    } catch (err) {
+      console.error('[route:widget-handoff] provenance lookup failed:', err)
+      return false
+    }
   }
-}
+)
 
 // ---------------------------------------------------------------------------
 // Search schema
