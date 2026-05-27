@@ -25,7 +25,6 @@ import { announcePublishedPost } from '@/lib/server/domains/posts/post.announce'
 const ApproveInput = z.object({ postId: z.string() })
 const RejectInput = z.object({ postId: z.string(), reason: z.string().max(500).optional() })
 const ApproveCommentInput = z.object({ commentId: z.string() })
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- consumed by rejectCommentFn in T4; declared here to keep the input section coherent
 const RejectCommentInput = z.object({
   commentId: z.string(),
   reason: z.string().max(500).optional(),
@@ -157,6 +156,44 @@ export const approveCommentFn = createServerFn({ method: 'POST' })
       target: { type: 'comment', id: data.commentId },
       before: { moderationState: before.moderationState },
       after: { moderationState: 'published' },
+    })
+    return { ok: true }
+  })
+
+export const rejectCommentFn = createServerFn({ method: 'POST' })
+  .inputValidator(RejectCommentInput.parse)
+  .handler(async ({ data }) => {
+    const auth = await requireAuth()
+    if (!isTeamMember(auth.principal.role)) {
+      throw new ForbiddenError('FORBIDDEN', 'Team only')
+    }
+    const before = await db.query.comments.findFirst({
+      where: eq(comments.id, data.commentId as never),
+    })
+    if (!before) throw new NotFoundError('COMMENT_NOT_FOUND', `Comment ${data.commentId}`)
+    const deletedAt = new Date()
+    const updated = await db
+      .update(comments)
+      .set({ deletedAt })
+      .where(
+        and(
+          eq(comments.id, data.commentId as never),
+          eq(comments.moderationState, 'pending'),
+          isNull(comments.deletedAt)
+        )
+      )
+      .returning({ id: comments.id })
+    if (updated.length === 0) {
+      throw new ConflictError('COMMENT_NOT_PENDING', 'Comment is not awaiting review')
+    }
+    await recordAuditEvent({
+      event: 'comment.moderation.rejected',
+      actor: actorFromAuth(auth),
+      headers: getRequestHeaders(),
+      target: { type: 'comment', id: data.commentId },
+      before: { moderationState: before.moderationState, deletedAt: null },
+      after: { moderationState: before.moderationState, deletedAt },
+      metadata: { reason: data.reason ?? null },
     })
     return { ok: true }
   })

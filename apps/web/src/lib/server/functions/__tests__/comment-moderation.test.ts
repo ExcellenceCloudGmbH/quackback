@@ -36,3 +36,21 @@ describe('approveCommentFn — input shape', () => {
     return expect(fn({ data: { commentId: 'comment_test' } })).rejects.toBeDefined()
   })
 })
+
+describe('rejectCommentFn — input shape', () => {
+  it('accepts commentId + optional reason', () => {
+    const fn = moderation.rejectCommentFn as unknown as (args: {
+      data: unknown
+    }) => Promise<unknown>
+    return expect(fn({ data: { commentId: 'comment_test', reason: 'spam' } })).rejects.toBeDefined()
+  })
+
+  it('rejects a reason >500 chars', () => {
+    const fn = moderation.rejectCommentFn as unknown as (args: {
+      data: unknown
+    }) => Promise<unknown>
+    return expect(
+      fn({ data: { commentId: 'comment_test', reason: 'x'.repeat(501) } })
+    ).rejects.toThrow()
+  })
+})
