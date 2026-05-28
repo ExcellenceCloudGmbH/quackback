@@ -27,23 +27,35 @@
 -- migration 0000), so each read casts through `::jsonb` and each write
 -- casts back to `::text`. `boards.access` is native `jsonb`.
 --
--- The CTE materialises the old flags from the single-tenant settings
--- row. Absent keys are defaulted to MATCH the pre-0084
--- DEFAULT_PORTAL_CONFIG.features and the in-app deep-merge fallback:
+-- FAIL-CLOSED on an unmaterialised config. `portal_config` is a NULLABLE
+-- text column, and NULL/empty is a live state (config-file installs,
+-- half-onboarded rows, and the dev/test seed all leave it unset). The
+-- backfill must NOT key off `portal_config IS NOT NULL`: doing so skips
+-- both passes for those tenants, so default-anonymous boards stay open
+-- and the runtime resolves `allowAnonymous` to its fail-open default —
+-- silently re-opening anonymous comment/submit on upgrade. Instead the
+-- flags resolve to the pre-0084 in-app defaults whenever a key (or the
+-- whole config, or the whole settings row) is absent:
 --   anonymousVoting     -> true  (base default true; read as `?? true`)
 --   anonymousCommenting -> false (base default false; deep-merge fallback)
 --   anonymousPosting    -> false (base default false; read as `!...` => blocked)
 -- Defaulting commenting/posting to `true` here would silently re-open
 -- anonymous interaction on upgrade for any tenant whose stored config
 -- predates these keys.
-WITH old_features AS (
-  SELECT
-    COALESCE(((portal_config::jsonb)->'features'->>'anonymousVoting')::boolean, true) AS allow_vote,
-    COALESCE(((portal_config::jsonb)->'features'->>'anonymousCommenting')::boolean, false) AS allow_comment,
-    COALESCE(((portal_config::jsonb)->'features'->>'anonymousPosting')::boolean, false) AS allow_submit
+WITH settings_row AS (
+  -- NULLIF guards an empty-string config from `::jsonb` (which would error).
+  SELECT NULLIF(portal_config, '')::jsonb AS pc
   FROM "settings"
-  WHERE portal_config IS NOT NULL
   LIMIT 1
+),
+old_features AS (
+  -- No FROM clause → always exactly one row, even when the settings table
+  -- is empty or portal_config is NULL/empty. Each scalar subquery returns
+  -- NULL in those cases, so COALESCE falls back to the fail-closed default.
+  SELECT
+    COALESCE((SELECT (pc->'features'->>'anonymousVoting')::boolean FROM settings_row), true) AS allow_vote,
+    COALESCE((SELECT (pc->'features'->>'anonymousCommenting')::boolean FROM settings_row), false) AS allow_comment,
+    COALESCE((SELECT (pc->'features'->>'anonymousPosting')::boolean FROM settings_row), false) AS allow_submit
 )
 UPDATE "boards" SET "access" = (
   SELECT
@@ -73,21 +85,28 @@ UPDATE "boards" SET "access" = (
       END
     )
   FROM old_features
-)
-WHERE EXISTS (SELECT 1 FROM old_features);
+);
 --> statement-breakpoint
--- Step 2: rewrite the settings row's `features` object. The `#-`
--- operator strips each legacy key (no-op if absent); `jsonb_set` with
--- `create_missing=true` then writes the new master flag at
--- `{features,allowAnonymous}`. Cast through jsonb then back to text
--- since `portal_config` is text-typed JSON.
+-- Step 2: materialise the master switch on the single settings row. Build
+-- the features object from COALESCE(config, '{}') so a NULL/empty
+-- portal_config is synthesised into a real object rather than left for the
+-- runtime fail-open default to decide. Rebuild `features` explicitly —
+-- drop the three legacy keys with the `-` operator, then merge
+-- `allowAnonymous=true` via `||` — and write it back at the top-level
+-- `{features}` path (jsonb_set with create_missing=true creates `features`
+-- when absent; it could not create it via a nested `{features,...}` path).
+-- This is safe because step 1 has already encoded any prior restriction in
+-- the per-board tiers. No-ops when no settings row exists (fresh installs
+-- materialise their config with proper defaults during onboarding).
 UPDATE "settings"
 SET "portal_config" = jsonb_set(
-  (portal_config::jsonb) #- '{features,anonymousVoting}'
-                         #- '{features,anonymousCommenting}'
-                         #- '{features,anonymousPosting}',
-  '{features,allowAnonymous}',
-  'true'::jsonb,
+  COALESCE(NULLIF(portal_config, '')::jsonb, '{}'::jsonb),
+  '{features}',
+  (
+    COALESCE(NULLIF(portal_config, '')::jsonb -> 'features', '{}'::jsonb)
+      - 'anonymousVoting'
+      - 'anonymousCommenting'
+      - 'anonymousPosting'
+  ) || '{"allowAnonymous": true}'::jsonb,
   true
-)::text
-WHERE portal_config IS NOT NULL;
+)::text;

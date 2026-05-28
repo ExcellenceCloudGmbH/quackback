@@ -857,6 +857,14 @@ describe('resolveModerationRule', () => {
         expect(resolveModerationRule('off', ws, 'comments')).toBe('off')
       }
     )
+
+    it('on/off short-circuit fires before workspace is coalesced (undefined workspace)', () => {
+      // The override branch must return before the `?? 'none'` coalescing, so
+      // an undefined workspace policy never reaches an explicit rule.
+      expect(resolveModerationRule('on', undefined, 'comments')).toBe('on')
+      expect(resolveModerationRule('on', undefined, 'anonPosts')).toBe('on')
+      expect(resolveModerationRule('off', undefined, 'signedPosts')).toBe('off')
+    })
   })
 
   describe('inherit resolution per axis', () => {
@@ -888,5 +896,365 @@ describe('resolveModerationRule', () => {
       expect(resolveModerationRule('inherit', undefined, 'signedPosts')).toBe('off')
       expect(resolveModerationRule('inherit', undefined, 'comments')).toBe('off')
     })
+  })
+})
+
+// ======================================================================
+// Audit gap-fill — the `service` principal class and gate-precedence /
+// ownership edges the canonical matrices above leave unpinned. Reuses the
+// admin/member/portal/trustedPortal/anon/service fixtures + mkAccess.
+// ======================================================================
+
+describe('canViewPost — service principal is non-team', () => {
+  it('sees published on a viewable board', () => {
+    expect(
+      canViewPost(
+        service,
+        { moderationState: 'published', principalId: 'p_other' as PrincipalId },
+        publicBoard
+      ).allowed
+    ).toBe(true)
+  })
+
+  it('sees its OWN pending (author escape hatch applies — service has a non-null principalId)', () => {
+    expect(
+      canViewPost(
+        service,
+        { moderationState: 'pending', principalId: service.principalId },
+        publicBoard
+      ).allowed
+    ).toBe(true)
+  })
+
+  it("does NOT see another author's pending (value-equality, not blanket pending visibility)", () => {
+    expect(
+      canViewPost(
+        service,
+        { moderationState: 'pending', principalId: 'p_other' as PrincipalId },
+        publicBoard
+      ).allowed
+    ).toBe(false)
+  })
+
+  it.each(['spam', 'archived', 'closed', 'deleted'] as ModerationState[])(
+    'does NOT see its own %s (only pending qualifies for the hatch)',
+    (state) => {
+      expect(
+        canViewPost(
+          service,
+          { moderationState: state, principalId: service.principalId },
+          publicBoard
+        ).allowed
+      ).toBe(false)
+    }
+  )
+
+  it('is denied on an authenticated-view board regardless of moderationState (board denies first)', () => {
+    expect(
+      canViewPost(
+        service,
+        { moderationState: 'published', principalId: service.principalId },
+        authBoard
+      ).allowed
+    ).toBe(false)
+  })
+})
+
+describe('canViewPost — ownership edges', () => {
+  it("segment member does NOT see another author's pending on a segments board", () => {
+    expect(
+      canViewPost(
+        trustedPortal,
+        { moderationState: 'pending', principalId: 'p_other' as PrincipalId },
+        segBoard
+      ).allowed
+    ).toBe(false)
+  })
+
+  it("team member sees another author's pending (team visibility is ownership-independent)", () => {
+    expect(
+      canViewPost(
+        member,
+        { moderationState: 'pending', principalId: 'p_other' as PrincipalId },
+        teamBoard
+      ).allowed
+    ).toBe(true)
+  })
+})
+
+describe('canVotePost — service principal + composition edges', () => {
+  const publishedOther = {
+    moderationState: 'published' as ModerationState,
+    principalId: 'p_other' as PrincipalId,
+  }
+  const authVoteBoard = {
+    access: {
+      view: 'anonymous',
+      vote: 'authenticated',
+      comment: 'anonymous',
+      submit: 'authenticated',
+      segments: { view: [], vote: [], comment: [], submit: [] },
+      moderation: { anonPosts: 'inherit', signedPosts: 'inherit', comments: 'inherit' },
+    } satisfies BoardAccess,
+  }
+  const segVoteBoard = (ids: string[]) => ({
+    access: {
+      view: 'anonymous',
+      vote: 'segments',
+      comment: 'anonymous',
+      submit: 'anonymous',
+      segments: { view: [], vote: ids, comment: [], submit: [] },
+      moderation: { anonPosts: 'inherit', signedPosts: 'inherit', comments: 'inherit' },
+    } satisfies BoardAccess,
+  })
+
+  it('denies a service principal on board.vote=authenticated', () => {
+    const d = canVotePost(service, publishedOther, authVoteBoard)
+    expect(d.allowed).toBe(false)
+    if (!d.allowed) expect(d.reason).toBe('Sign in to vote on this board')
+  })
+
+  it('allows a service principal on board.vote=anonymous', () => {
+    expect(canVotePost(service, publishedOther, publicBoard)).toEqual({ allowed: true })
+  })
+
+  it('denies a service principal on board.vote=segments even with a matching segment id', () => {
+    const d = canVotePost(
+      { ...service, segmentIds: new Set(['segment_trusted' as SegmentId]) },
+      publishedOther,
+      segVoteBoard(['segment_trusted'])
+    )
+    expect(d.allowed).toBe(false)
+    if (!d.allowed) expect(d.reason).toBe('Only specific groups can vote on this board')
+  })
+
+  it('denies a non-team actor when board.vote=segments but the vote list is empty (fail closed)', () => {
+    const d = canVotePost(trustedPortal, publishedOther, segVoteBoard([]))
+    expect(d.allowed).toBe(false)
+    if (!d.allowed) expect(d.reason).toBe('Only specific groups can vote on this board')
+  })
+
+  it('allows the author to vote on their OWN pending post (own-pending view composes with vote tier)', () => {
+    expect(
+      canVotePost(
+        portal,
+        { moderationState: 'pending', principalId: portal.principalId },
+        publicBoard
+      )
+    ).toEqual({ allowed: true })
+  })
+
+  it('denies anonymous voting on an anonymous-authored pending post (null !== null guard)', () => {
+    const d = canVotePost(anon, { moderationState: 'pending', principalId: null }, publicBoard)
+    expect(d.allowed).toBe(false)
+    if (!d.allowed) expect(d.reason).toBe('Post is not yet visible')
+  })
+
+  it('denies a team actor from voting on a deleted post (view composition denies before vote tier)', () => {
+    const d = canVotePost(
+      admin,
+      { moderationState: 'deleted', principalId: 'p_other' as PrincipalId },
+      publicBoard
+    )
+    expect(d.allowed).toBe(false)
+    if (!d.allowed) expect(d.reason).toBe('Post was removed')
+  })
+})
+
+describe('canCreateComment — service principal + precedence edges', () => {
+  const published = {
+    moderationState: 'published' as ModerationState,
+    principalId: 'p_other' as PrincipalId,
+    isCommentsLocked: false,
+  }
+  const commentTierBoard = (
+    comment: BoardAccess['comment'],
+    moderationComments: BoardAccess['moderation']['comments'] = 'inherit'
+  ) => ({
+    access: {
+      view: 'anonymous',
+      vote: 'anonymous',
+      comment,
+      submit: 'anonymous',
+      segments: { view: [], vote: [], comment: [], submit: [] },
+      moderation: { anonPosts: 'inherit', signedPosts: 'inherit', comments: moderationComments },
+    } satisfies BoardAccess,
+  })
+
+  it('service can comment when the comment tier is anonymous', () => {
+    expect(canCreateComment(service, published, publicBoard, 'none')).toEqual({
+      allowed: true,
+      requiresApproval: false,
+    })
+  })
+
+  it('service is denied when the comment tier is authenticated', () => {
+    const d = canCreateComment(service, published, commentTierBoard('authenticated'), 'none')
+    expect(d.allowed).toBe(false)
+    if (!d.allowed) expect(d.reason).toMatch(/sign in/i)
+  })
+
+  it("service comment is held when moderation.comments='on'", () => {
+    expect(
+      canCreateComment(service, published, commentTierBoard('anonymous', 'on'), 'none')
+    ).toEqual({
+      allowed: true,
+      requiresApproval: true,
+    })
+  })
+
+  it("lock beats approval: a non-team comment on a locked post is DENIED even when moderation.comments='on'", () => {
+    const locked = { ...published, isCommentsLocked: true }
+    const d = canCreateComment(portal, locked, commentTierBoard('anonymous', 'on'), 'none')
+    expect(d.allowed).toBe(false)
+    if (!d.allowed) expect(d.reason).toMatch(/locked/i)
+  })
+
+  it('comment tier-deny beats the lock reason (tier check precedes the lock check)', () => {
+    const locked = { ...published, isCommentsLocked: true }
+    const d = canCreateComment(portal, locked, commentTierBoard('team'), 'none')
+    expect(d.allowed).toBe(false)
+    if (!d.allowed) {
+      expect(d.reason).not.toMatch(/locked/i)
+      expect(d.reason).toMatch(/team members/i)
+    }
+  })
+
+  it('view-deny reason wins over the comment-tier reason on a non-viewable board', () => {
+    const d = canCreateComment(anon, published, authBoard, 'none')
+    expect(d.allowed).toBe(false)
+    if (!d.allowed) expect(d.reason).not.toMatch(/comment/i)
+  })
+
+  it.each(['deleted', 'spam', 'archived', 'closed'] as ModerationState[])(
+    "non-team cannot comment on another author's %s post (view gate)",
+    (state) => {
+      const d = canCreateComment(
+        portal,
+        { moderationState: state, principalId: 'p_other' as PrincipalId, isCommentsLocked: false },
+        publicBoard,
+        'none'
+      )
+      expect(d.allowed).toBe(false)
+    }
+  )
+
+  it("author can comment on their OWN pending post and it is held when moderation.comments='on'", () => {
+    const ownPending = {
+      moderationState: 'pending' as ModerationState,
+      principalId: portal.principalId,
+      isCommentsLocked: false,
+    }
+    expect(
+      canCreateComment(portal, ownPending, commentTierBoard('anonymous', 'on'), 'none')
+    ).toEqual({
+      allowed: true,
+      requiresApproval: true,
+    })
+  })
+
+  it("anonymous comment is held when moderation.comments='on'", () => {
+    expect(canCreateComment(anon, published, commentTierBoard('anonymous', 'on'), 'none')).toEqual({
+      allowed: true,
+      requiresApproval: true,
+    })
+  })
+
+  it('segment member can comment on their own pending post in a segments board', () => {
+    const ownPending = {
+      moderationState: 'pending' as ModerationState,
+      principalId: trustedPortal.principalId,
+      isCommentsLocked: false,
+    }
+    expect(canCreateComment(trustedPortal, ownPending, segBoard, 'none').allowed).toBe(true)
+  })
+
+  it("member (non-admin) comment is never held even with moderation.comments='on' and workspace='all'", () => {
+    expect(canCreateComment(member, published, commentTierBoard('anonymous', 'on'), 'all')).toEqual(
+      {
+        allowed: true,
+        requiresApproval: false,
+      }
+    )
+  })
+
+  it('portal comment with inherit + undefined workspace is not held', () => {
+    expect(canCreateComment(portal, published, publicBoard, undefined)).toEqual({
+      allowed: true,
+      requiresApproval: false,
+    })
+  })
+})
+
+describe('canCreatePost — service principal + submit-tier edges', () => {
+  const submitTierBoard = (
+    submit: BoardAccess['submit'],
+    segmentsSubmit: string[] = [],
+    moderation: Partial<BoardAccess['moderation']> = {}
+  ) => ({
+    access: {
+      view: 'anonymous',
+      vote: 'anonymous',
+      comment: 'anonymous',
+      submit,
+      segments: { view: [], vote: [], comment: [], submit: segmentsSubmit },
+      moderation: {
+        anonPosts: 'inherit',
+        signedPosts: 'inherit',
+        comments: 'inherit',
+        ...moderation,
+      },
+    } satisfies BoardAccess,
+  })
+
+  it('denies a service principal on submit=authenticated', () => {
+    expect(canCreatePost(service, submitTierBoard('authenticated'), 'none').allowed).toBe(false)
+  })
+
+  it('denies an anonymous actor on submit=segments', () => {
+    expect(canCreatePost(anon, submitTierBoard('segments', ['segment_x']), 'none').allowed).toBe(
+      false
+    )
+  })
+
+  it("member can submit and bypass moderation on a fully-private board with rules 'on' + workspace='all'", () => {
+    const board = {
+      access: {
+        view: 'team',
+        vote: 'team',
+        comment: 'team',
+        submit: 'team',
+        segments: { view: [], vote: [], comment: [], submit: [] },
+        moderation: { anonPosts: 'on', signedPosts: 'on', comments: 'on' },
+      } satisfies BoardAccess,
+    }
+    expect(canCreatePost(member, board, 'all')).toEqual({ allowed: true, requiresApproval: false })
+  })
+
+  it('submit deny reasons are the submit-specific hints', () => {
+    const d1 = canCreatePost(anon, submitTierBoard('authenticated'), 'none')
+    const d2 = canCreatePost(portal, submitTierBoard('segments', ['segment_x']), 'none')
+    const d3 = canCreatePost(portal, submitTierBoard('team'), 'none')
+    expect(d1.allowed).toBe(false)
+    if (!d1.allowed) expect(d1.reason).toMatch(/sign in to submit/i)
+    expect(d2.allowed).toBe(false)
+    if (!d2.allowed) expect(d2.reason).toMatch(/specific groups/i)
+    expect(d3.allowed).toBe(false)
+    if (!d3.allowed) expect(d3.reason).toMatch(/team members/i)
+  })
+
+  it('service honors per-board anonPosts overrides (maps to the anonPosts axis — DESIGN PIN)', () => {
+    const held = canCreatePost(
+      service,
+      submitTierBoard('anonymous', [], { anonPosts: 'on' }),
+      'none'
+    )
+    expect(held).toEqual({ allowed: true, requiresApproval: true })
+    const free = canCreatePost(
+      service,
+      submitTierBoard('anonymous', [], { anonPosts: 'off' }),
+      'all'
+    )
+    expect(free).toEqual({ allowed: true, requiresApproval: false })
   })
 })

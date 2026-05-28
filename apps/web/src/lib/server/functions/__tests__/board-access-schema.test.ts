@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { boardAccessSchema } from '../boards'
+import { accessForPreset } from '@/lib/shared/schemas/boards'
+import { DEFAULT_BOARD_ACCESS } from '@/lib/shared/db-types'
 
 const baseValid = {
   view: 'anonymous' as const,
@@ -192,5 +194,80 @@ describe('boardAccessSchema — vote action invariants', () => {
 describe('boardAccessSchema — tier enum invariants', () => {
   it('rejects unknown tier name', () => {
     expect(() => boardAccessSchema.parse({ ...baseValid, view: 'admin' as never })).toThrow()
+  })
+})
+
+// ----------------------------------------------------------------------
+// Audit gap-fill — the spec requires that the preset outputs and the
+// column default actually PARSE through the validator that gates every
+// write (not just that their field values look right), plus the cap
+// boundary and the view-only segments rejection.
+// ----------------------------------------------------------------------
+
+describe('boardAccessSchema — preset + default consistency', () => {
+  it("accessForPreset('public') passes the schema (view=anonymous, vote/comment/submit=authenticated)", () => {
+    expect(() => boardAccessSchema.parse(accessForPreset('public'))).not.toThrow()
+  })
+
+  it("accessForPreset('private') passes the schema (all-team, equal top-tier ranks accepted)", () => {
+    expect(() => boardAccessSchema.parse(accessForPreset('private'))).not.toThrow()
+  })
+
+  it('DEFAULT_BOARD_ACCESS passes the schema (the column default must be internally consistent)', () => {
+    expect(() => boardAccessSchema.parse(DEFAULT_BOARD_ACCESS)).not.toThrow()
+  })
+})
+
+describe('boardAccessSchema — boundary + isolation cases', () => {
+  it('accepts exactly 50 segments in a per-action list (cap boundary, guards .max(50) → .max(49))', () => {
+    const fifty = Array.from({ length: 50 }, (_, i) => `seg_${i}`)
+    expect(() =>
+      boardAccessSchema.parse({
+        ...baseValid,
+        view: 'segments',
+        vote: 'segments',
+        comment: 'segments',
+        submit: 'segments',
+        segments: { view: fifty, vote: ['seg_a'], comment: ['seg_a'], submit: ['seg_a'] },
+      })
+    ).not.toThrow()
+  })
+
+  it('rejects view=segments with an empty segments.view list (isolates the view action)', () => {
+    // Existing tests isolate vote/comment/submit empty-list rejection; this
+    // pins the view action specifically — an empty view allowlist would hide
+    // the board from everyone.
+    expect(() =>
+      boardAccessSchema.parse({
+        ...baseValid,
+        view: 'segments',
+        vote: 'segments',
+        comment: 'segments',
+        submit: 'segments',
+        segments: { view: [], vote: ['seg_a'], comment: ['seg_a'], submit: ['seg_a'] },
+      })
+    ).toThrow(/view/i)
+  })
+
+  it('accepts vote=team while view=anonymous (maximal vote-above-view gap)', () => {
+    expect(() =>
+      boardAccessSchema.parse({ ...baseValid, view: 'anonymous', vote: 'team' })
+    ).not.toThrow()
+  })
+
+  it('CHARACTERIZATION: an empty-string segment id is currently accepted (count-only check)', () => {
+    // The schema constrains list COUNT and non-emptiness, not element content.
+    // If a z.string().min(1) tightening is later added, flip this to .toThrow
+    // so the change is deliberate and test-backed.
+    expect(() =>
+      boardAccessSchema.parse({
+        ...baseValid,
+        view: 'segments',
+        vote: 'segments',
+        comment: 'segments',
+        submit: 'segments',
+        segments: { view: [''], vote: ['seg_a'], comment: ['seg_a'], submit: ['seg_a'] },
+      })
+    ).not.toThrow()
   })
 })

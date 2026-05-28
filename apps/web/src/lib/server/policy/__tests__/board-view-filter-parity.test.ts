@@ -75,6 +75,11 @@ const accessShapes: AccessCase[] = [
   { name: 'segments_alpha', access: mkAccess('segments', [SEGMENT_ALPHA]) },
   { name: 'segments_beta', access: mkAccess('segments', [SEGMENT_BETA]) },
   { name: 'segments_alpha_beta', access: mkAccess('segments', [SEGMENT_ALPHA, SEGMENT_BETA]) },
+  // Empty board segment list: in-memory canViewBoard pins this fail-closed
+  // (boards.test.ts A.segmentEmpty), but the SQL path — jsonb_array_elements_text
+  // over an empty array yielding 0 rows — was only proven structurally. This
+  // closes the execution-level parity gap for the empty-list collapse.
+  { name: 'segments_empty', access: mkAccess('segments', []) },
 ]
 
 function buildActor(overrides: Partial<Actor>): Actor {

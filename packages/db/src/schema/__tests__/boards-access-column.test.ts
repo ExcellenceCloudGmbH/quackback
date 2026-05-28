@@ -31,4 +31,24 @@ describe('boards.access column', () => {
     expect(m).not.toBeNull()
     expect(JSON.parse(m![1])).toEqual(DEFAULT_BOARD_ACCESS)
   })
+
+  it('the 0084 migration does NOT introduce a competing SET DEFAULT (0083 stays authoritative)', () => {
+    // 0084 backfills data; it must not re-set the column default, or the
+    // default literal could drift out of sync with DEFAULT_BOARD_ACCESS.
+    const sql = readFileSync(
+      join(__dirname, '../../../drizzle/0084_workspace_allow_anonymous_master.sql'),
+      'utf8'
+    )
+    expect(sql.match(/SET DEFAULT/)).toBeNull()
+  })
+
+  it('the legacy audience column is dropped (0080) and absent from the schema', () => {
+    const sql = readFileSync(
+      join(__dirname, '../../../drizzle/0080_drop_board_audience.sql'),
+      'utf8'
+    )
+    expect(sql).toMatch(/DROP COLUMN "audience"/)
+    const cols = getTableColumns(boards)
+    expect((cols as Record<string, unknown>).audience).toBeUndefined()
+  })
 })
