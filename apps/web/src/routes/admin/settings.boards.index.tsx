@@ -4,6 +4,7 @@ import { useSuspenseQuery } from '@tanstack/react-query'
 import { useEffect } from 'react'
 import { z } from 'zod'
 import { adminQueries } from '@/lib/client/queries/admin'
+import { settingsQueries } from '@/lib/client/queries/settings'
 import { Squares2X2Icon, ChatBubbleLeftIcon } from '@heroicons/react/24/solid'
 import { EmptyState } from '@/components/shared/empty-state'
 import { PageHeader } from '@/components/shared/page-header'
@@ -42,7 +43,14 @@ export const Route = createFileRoute('/admin/settings/boards/')({
   validateSearch: searchSchema,
   loader: async ({ context }) => {
     const { queryClient } = context
-    await queryClient.ensureQueryData(adminQueries.boardsForSettings())
+    // Warm both queries the board forms read so they render with real data
+    // on first paint (no flash). portalConfig backs the Moderation tab's
+    // inherit-from-workspace pills and the Access tab's workspace ceiling;
+    // without prefetch the moderation pills flicker Off -> the real default.
+    await Promise.all([
+      queryClient.ensureQueryData(adminQueries.boardsForSettings()),
+      queryClient.ensureQueryData(settingsQueries.portalConfig()),
+    ])
     return {}
   },
   component: BoardsSettingsPage,
