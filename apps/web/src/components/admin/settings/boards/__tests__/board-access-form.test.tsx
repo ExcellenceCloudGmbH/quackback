@@ -69,30 +69,15 @@ vi.mock('@/lib/client/hooks/use-segments-queries', () => ({
 // before the render to drive workspace-ceiling behaviour. The
 // `requireApproval` field powers the Moderation tab's "Inherit" sub-pill.
 //
-// After M1 the workspace-level toggles collapsed into a single
-// `allowAnonymous` master switch (migration 0084). The per-action knobs
-// here mirror the master flag so the existing tests keep their original
-// intent — flipping any of them off effectively flips the master off,
-// which is what BoardAccessForm now sees.
+// M2: the form drives off `features.allowAnonymous` directly, so the
+// mock exposes that single bit instead of mirroring three legacy
+// per-action toggles.
 const wsFlagsState = {
-  anonymousVoting: true,
-  anonymousCommenting: true,
-  anonymousPosting: true,
+  allowAnonymous: true,
   requireApproval: 'none' as 'none' | 'anonymous' | 'authenticated' | 'all',
 }
 function setWsFlags(next: Partial<typeof wsFlagsState>) {
   Object.assign(wsFlagsState, next)
-}
-
-function deriveAllowAnonymous(): boolean {
-  // The master switch is off if *any* of the legacy knobs is off — the
-  // M1 form blocks all three rows together. Tests that flipped a single
-  // legacy knob to false therefore still observe the row being disabled.
-  return (
-    wsFlagsState.anonymousVoting &&
-    wsFlagsState.anonymousCommenting &&
-    wsFlagsState.anonymousPosting
-  )
 }
 
 vi.mock('@/lib/client/queries/settings', () => ({
@@ -101,7 +86,7 @@ vi.mock('@/lib/client/queries/settings', () => ({
       queryKey: ['settings', 'portalConfig'],
       queryFn: async () => ({
         features: {
-          allowAnonymous: deriveAllowAnonymous(),
+          allowAnonymous: wsFlagsState.allowAnonymous,
           allowEditAfterEngagement: false,
           allowDeleteAfterEngagement: false,
           showPublicEditHistory: false,
@@ -160,9 +145,7 @@ const PUBLIC_ACCESS: BoardAccess = {
 beforeEach(() => {
   mutate.mockReset()
   setWsFlags({
-    anonymousVoting: true,
-    anonymousCommenting: true,
-    anonymousPosting: true,
+    allowAnonymous: true,
     requireApproval: 'none',
   })
 })
@@ -308,13 +291,13 @@ describe('<BoardAccessForm> tier hierarchy', () => {
 // ---------------------------------------------------------------------------
 
 describe('<BoardAccessForm> workspace ceiling', () => {
-  it('disables Anyone cell on a row whose workspace flag is off', async () => {
-    setWsFlags({ anonymousVoting: false })
+  it('disables Anyone cell on Vote/Comment/Submit rows when master switch is off', async () => {
+    setWsFlags({ allowAnonymous: false })
     renderForm({
       view: 'anonymous',
       vote: 'authenticated',
-      comment: 'anonymous',
-      submit: 'anonymous',
+      comment: 'authenticated',
+      submit: 'authenticated',
       segments: { view: [], vote: [], comment: [], submit: [] },
       moderation: { anonPosts: 'inherit', signedPosts: 'inherit', comments: 'inherit' },
     })
@@ -323,29 +306,31 @@ describe('<BoardAccessForm> workspace ceiling', () => {
       expect(voteAnon).toBeDisabled()
       expect(voteAnon.getAttribute('data-disabled-reason')).toBe('workspace')
     })
+    const commentAnon = screen.getByRole('button', { name: 'Comment: Anyone' })
+    expect(commentAnon).toBeDisabled()
+    expect(commentAnon.getAttribute('data-disabled-reason')).toBe('workspace')
+    const submitAnon = screen.getByRole('button', { name: 'Submit posts: Anyone' })
+    expect(submitAnon).toBeDisabled()
+    expect(submitAnon.getAttribute('data-disabled-reason')).toBe('workspace')
     // View row's Anyone cell is unaffected — view has no workspace ceiling.
     expect(screen.getByRole('button', { name: 'View: Anyone' })).not.toBeDisabled()
   })
 
-  it('shows the workspace-policy banner listing each blocked action', async () => {
-    setWsFlags({ anonymousVoting: false, anonymousCommenting: false })
+  it('shows the workspace-policy banner listing all three blocked actions together', async () => {
+    setWsFlags({ allowAnonymous: false })
     renderForm(PUBLIC_ACCESS)
     await waitFor(() => {
       const banner = screen.getByText(/Workspace policy disables the/i)
       expect(banner).toBeInTheDocument()
       expect(banner.textContent).toMatch(/Vote/)
       expect(banner.textContent).toMatch(/Comment/)
+      expect(banner.textContent).toMatch(/Submit/)
       expect(banner.textContent).not.toMatch(/\bView\b/)
     })
   })
 
-  it('auto-bumps Anonymous cells when the workspace master switch is off', async () => {
-    // M1: workspace anonymous toggles collapsed into a single
-    // `allowAnonymous` master switch. Flipping any of the legacy mock
-    // knobs off here is equivalent to flipping the master off — every
-    // anonymous row auto-bumps to "Signed-in" together. M2 will reshape
-    // the ceiling-check logic in BoardAccessForm itself.
-    setWsFlags({ anonymousVoting: false })
+  it('auto-bumps Anonymous cells on all three rows when the master switch flips off', async () => {
+    setWsFlags({ allowAnonymous: false })
     renderForm({
       view: 'anonymous',
       vote: 'anonymous',

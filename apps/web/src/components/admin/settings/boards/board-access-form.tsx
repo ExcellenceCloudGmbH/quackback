@@ -165,26 +165,17 @@ const PRESET_META: readonly PresetMeta[] = [
   },
 ] as const
 
-// ─── Workspace anonymous feature flags ────────────────────────────────
+// ─── Workspace anonymous feature flag ─────────────────────────────────
 
 /**
- * Per-action workspace ceiling. `view` is intentionally always allowed —
- * "anyone can view a public board" is the definition of public access;
- * the workspace anonymous-* toggles only gate the write actions.
+ * Workspace-wide anonymous-interaction ceiling. After M1 the legacy trio
+ * of per-action toggles collapsed into a single `features.allowAnonymous`
+ * master switch — flipping it off blocks the `anonymous` tier on
+ * vote/comment/submit together. View has no ceiling: "anyone can view a
+ * public board" is the definition of public access.
  */
-interface WsAnonFlags {
-  view: true
-  vote: boolean
-  comment: boolean
-  submit: boolean
-}
-
-const DEFAULT_WS_ANON: WsAnonFlags = {
-  view: true,
-  vote: true,
-  comment: true,
-  submit: true,
-}
+const ANON_CEILING_ACTIONS = ['vote', 'comment', 'submit'] as const
+type AnonCeilingAction = (typeof ANON_CEILING_ACTIONS)[number]
 
 // ─── Form shape ───────────────────────────────────────────────────────
 
@@ -264,26 +255,10 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
 
   // Portal feature flags — workspace ceiling for anonymous access. The query
   // is non-suspense so the form keeps rendering when the cache is empty
-  // (e.g. in tests). The default falls back to "everything allowed" so we
-  // don't accidentally disable cells before we know better.
+  // (e.g. in tests). The default falls back to "allowed" so we don't
+  // accidentally disable cells before we know better.
   const portalConfigQuery = useQuery({ ...settingsQueries.portalConfig(), retry: false })
-  const wsAnon: WsAnonFlags = useMemo(() => {
-    const f = portalConfigQuery.data?.features
-    if (!f) return DEFAULT_WS_ANON
-    // M1: the legacy per-action trio collapsed into a single workspace-
-    // wide `allowAnonymous` master switch. Until M2 reshapes the
-    // ceiling-check logic, mirror the master flag across all three
-    // action keys so existing cell-blocking + auto-bump behaviour keeps
-    // working — flipping `allowAnonymous` off now disables anonymous
-    // on every row at once, which matches the new product semantics.
-    const allow = !!f.allowAnonymous
-    return {
-      view: true,
-      vote: allow,
-      comment: allow,
-      submit: allow,
-    }
-  }, [portalConfigQuery.data])
+  const wsAllowAnonymous: boolean = portalConfigQuery.data?.features?.allowAnonymous ?? true
   const workspaceApproval: RequireApproval =
     portalConfigQuery.data?.moderationDefault?.requireApproval ?? 'none'
 
@@ -305,20 +280,22 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
 
   const values = form.watch()
 
-  // Auto-bump: when a workspace anonymous-* flag flips off, any action on
-  // this board that's currently set to 'anonymous' for that flag gets
-  // bumped up to 'authenticated'. The bumped form is dirty so the user
-  // sees the save dock and can confirm or discard. We read the current
-  // tier via `form.getValues()` so the effect doesn't have to depend on
-  // `values` (which would re-fire on every keystroke / cell click).
+  // Auto-bump: when the workspace `allowAnonymous` master switch flips
+  // off, any of vote/comment/submit currently set to 'anonymous' gets
+  // bumped to 'authenticated' together. The bumped form is dirty so the
+  // user sees the save dock and can confirm or discard. We read the
+  // current tier via `form.getValues()` so the effect doesn't have to
+  // depend on `values` (which would re-fire on every keystroke / cell
+  // click).
   useEffect(() => {
-    ;(['vote', 'comment', 'submit'] as const).forEach((id) => {
-      if (!wsAnon[id] && form.getValues(id) === 'anonymous') {
+    if (wsAllowAnonymous) return
+    ANON_CEILING_ACTIONS.forEach((id) => {
+      if (form.getValues(id) === 'anonymous') {
         form.setValue(id, 'authenticated', { shouldDirty: true })
         form.setValue(`segments.${id}`, [], { shouldDirty: true })
       }
     })
-  }, [wsAnon.vote, wsAnon.comment, wsAnon.submit, form])
+  }, [wsAllowAnonymous, form])
 
   const activePreset = useMemo(() => deriveActivePreset(values), [values])
 
@@ -331,11 +308,17 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
     [values]
   )
 
-  // Actions whose anonymous tier is workspace-blocked — drives the banner
-  // under the matrix.
+  // Actions whose anonymous tier is workspace-blocked. After M1 these are
+  // always the same three — vote/comment/submit move together — but the
+  // banner still renders the list explicitly so the copy stays unambiguous.
   const wsBlockedActions = useMemo(
-    () => ACTIONS.filter((a) => a.id !== 'view' && !wsAnon[a.id]),
-    [wsAnon]
+    () =>
+      wsAllowAnonymous
+        ? []
+        : ACTIONS.filter((a): a is ActionMeta =>
+            ANON_CEILING_ACTIONS.includes(a.id as AnonCeilingAction)
+          ),
+    [wsAllowAnonymous]
   )
 
   const dirty = form.formState.isDirty
@@ -366,9 +349,16 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
       if (actionId !== 'view' && ACCESS_TIER_RANK[tierId] < ACCESS_TIER_RANK[values.view]) {
         return
       }
-      // Workspace ceiling: anonymous is gated by workspace-wide flags
-      // (view always allowed, vote/comment/submit gated).
-      if (tierId === 'anonymous' && !wsAnon[actionId]) return
+      // Workspace ceiling: anonymous is gated by the workspace-wide
+      // `allowAnonymous` master switch (view is always allowed,
+      // vote/comment/submit move together).
+      if (
+        tierId === 'anonymous' &&
+        !wsAllowAnonymous &&
+        ANON_CEILING_ACTIONS.includes(actionId as AnonCeilingAction)
+      ) {
+        return
+      }
 
       form.setValue(actionId, tierId, { shouldDirty: true })
 
@@ -393,7 +383,7 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
         setOpenPicker(null)
       }
     },
-    [form, openPicker, values, wsAnon]
+    [form, openPicker, values, wsAllowAnonymous]
   )
 
   const handleSegsChange = useCallback(
@@ -447,7 +437,7 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
         <TabsContent value="access" className="space-y-4">
           <AccessTab
             values={values}
-            wsAnon={wsAnon}
+            wsAllowAnonymous={wsAllowAnonymous}
             wsBlockedActions={wsBlockedActions}
             activePreset={activePreset}
             segments={segments}
@@ -484,7 +474,7 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
 
 interface AccessTabProps {
   values: FormShape
-  wsAnon: WsAnonFlags
+  wsAllowAnonymous: boolean
   wsBlockedActions: ReadonlyArray<ActionMeta>
   activePreset: PresetName
   segments: ReadonlyArray<SegmentItem>
@@ -499,7 +489,7 @@ interface AccessTabProps {
 
 function AccessTab({
   values,
-  wsAnon,
+  wsAllowAnonymous,
   wsBlockedActions,
   activePreset,
   segments,
@@ -545,7 +535,7 @@ function AccessTab({
 
           <Matrix
             values={values}
-            wsAnon={wsAnon}
+            wsAllowAnonymous={wsAllowAnonymous}
             segments={segments}
             segmentsLoading={segmentsLoading}
             openPicker={openPicker}
@@ -555,7 +545,7 @@ function AccessTab({
             onSegsChange={onSegsChange}
           />
 
-          {wsBlockedActions.length > 0 && (
+          {!wsAllowAnonymous && (
             <div className="mt-2.5 flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-[11.5px] text-muted-foreground">
               <GlobeAltIcon className="h-3 w-3 shrink-0" />
               <span>
@@ -873,7 +863,7 @@ function CustomStatusCard({ active }: CustomStatusCardProps) {
 
 interface MatrixProps {
   values: FormShape
-  wsAnon: WsAnonFlags
+  wsAllowAnonymous: boolean
   segments: ReadonlyArray<SegmentItem>
   segmentsLoading: boolean
   openPicker: ActionId | null
@@ -885,7 +875,7 @@ interface MatrixProps {
 
 function Matrix({
   values,
-  wsAnon,
+  wsAllowAnonymous,
   segments,
   segmentsLoading,
   openPicker,
@@ -926,7 +916,7 @@ function Matrix({
           key={action.id}
           action={action}
           values={values}
-          wsAnon={wsAnon}
+          wsAllowAnonymous={wsAllowAnonymous}
           isLast={idx === ACTIONS.length - 1}
           segments={segments}
           segmentsLoading={segmentsLoading}
@@ -944,7 +934,7 @@ function Matrix({
 interface MatrixRowProps {
   action: ActionMeta
   values: FormShape
-  wsAnon: WsAnonFlags
+  wsAllowAnonymous: boolean
   isLast: boolean
   segments: MatrixProps['segments']
   segmentsLoading: boolean
@@ -958,7 +948,7 @@ interface MatrixRowProps {
 function MatrixRow({
   action,
   values,
-  wsAnon,
+  wsAllowAnonymous,
   isLast,
   segments,
   segmentsLoading,
@@ -997,12 +987,16 @@ function MatrixRow({
       {TIERS.map((tier) => {
         const isSelected = selectedTier === tier.id
         const hierarchyBlocked = ACCESS_TIER_RANK[tier.id] < minRank
-        const wsBlocked = tier.id === 'anonymous' && !wsAnon[action.id]
+        // Workspace ceiling: vote/comment/submit's `anonymous` cell moves
+        // as a single unit, gated by the workspace allowAnonymous switch.
+        // View has no ceiling.
+        const isAnonCeilingAction = ANON_CEILING_ACTIONS.includes(action.id as AnonCeilingAction)
+        const wsBlocked = tier.id === 'anonymous' && isAnonCeilingAction && !wsAllowAnonymous
         const disabled = hierarchyBlocked || wsBlocked
         const isSegmentsCell = tier.id === 'segments'
 
         const tooltip = wsBlocked
-          ? `Anonymous ${action.label.toLowerCase()} is disabled workspace-wide. Manage in Workspace → Access.`
+          ? 'Anonymous interaction is disabled workspace-wide. Manage in Workspace → Access.'
           : hierarchyBlocked
             ? `Can't be more open than View (${TIERS.find((x) => ACCESS_TIER_RANK[x.id] === minRank)?.label}).`
             : undefined
