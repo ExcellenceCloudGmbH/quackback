@@ -103,9 +103,11 @@ vi.mock('@/lib/server/functions/auth-helpers', () => ({
 }))
 
 vi.mock('@/lib/server/functions/workspace', () => ({ getSettings: vi.fn() }))
+const mockCanVotePost = vi.fn(() => ({ allowed: true }) as { allowed: boolean; reason?: string })
 vi.mock('@/lib/server/policy', () => ({
   canViewBoard: vi.fn(),
   postViewFilter: vi.fn(() => 'POST_VIEW_FILTER_SQL'),
+  canVotePost: (...a: unknown[]) => mockCanVotePost(...(a as [])),
 }))
 vi.mock('@/lib/server/domains/posts/post.service', () => ({ createPost: vi.fn() }))
 vi.mock('@/lib/server/domains/posts/post.voting', () => ({ voteOnPost: vi.fn() }))
@@ -125,9 +127,15 @@ vi.mock('@/lib/server/sanitize-tiptap', () => ({ sanitizeTiptapContent: (v: unkn
 // `innerJoin` is included so the audience-filter JOIN can be exercised
 // (G4 regression: similar-search must JOIN boards to apply postViewFilter).
 const mockInnerJoin = vi.fn()
+// getVoteSidebarDataFn's per-board vote query terminates at .limit(1);
+// the FTS similar-search path uses .orderBy().limit(). Both shapes
+// resolve to an empty array by default — individual tests override the
+// resolution where they care.
+const mockBoardRowLimit = vi.fn().mockResolvedValue([])
 mockInnerJoin.mockReturnValue({
   where: vi.fn().mockReturnValue({
     orderBy: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
+    limit: mockBoardRowLimit,
   }),
 })
 vi.mock('@/lib/server/db', () => ({
@@ -547,6 +555,74 @@ describe('getVoteSidebarDataFn — portal-visibility gate', () => {
 
     expect(result.canVote).toBe(false)
     expect(result.hasVoted).toBe(false)
+  })
+
+  // Regression: getVoteSidebarDataFn used to decide canVote from the
+  // workspace anonymousVoting flag alone, ignoring board.access.vote.
+  // On the modern "Public" preset (view=anonymous, vote=authenticated)
+  // an anonymous caller would see canVote=true and only learn the truth
+  // on click. Fix: compose canVotePost as a per-board ceiling — and
+  // keep the workspace flag as a separate ceiling on top.
+
+  it('returns canVote=false when board.vote denies even though workspace anonymousVoting is ON', async () => {
+    mockResolvePortalAccess.mockResolvedValue({ granted: true, reason: 'public' })
+    // No session cookie → handler resolves canVote without ctx.
+    const { hasAuthCredentials } = await import('../auth-helpers')
+    vi.mocked(hasAuthCredentials).mockReturnValueOnce(false)
+    // Board row is fetched and returns an access object — content is
+    // opaque to this test (canVotePost is mocked); the fact that a row
+    // exists is what gates the canVote computation.
+    mockBoardRowLimit.mockResolvedValueOnce([{ access: { vote: 'authenticated' } }])
+    // anonymousVoting flag returns true (workspace ON)
+    const { getSettings } = await import('../workspace')
+    vi.mocked(getSettings).mockResolvedValueOnce({
+      portalConfig: { features: { anonymousVoting: true } },
+    } as never)
+    // Vote tier denies anonymous
+    mockCanVotePost.mockReturnValueOnce({ allowed: false, reason: 'Sign in to vote on this board' })
+
+    const result = (await publicPostsHandlers[GET_VOTE_SIDEBAR_DATA]({
+      data: { postId: 'pst_x' },
+    })) as { isMember: boolean; canVote: boolean; hasVoted: boolean }
+
+    expect(result.canVote).toBe(false)
+  })
+
+  it('returns canVote=true when both workspace anonymousVoting and board.vote allow', async () => {
+    mockResolvePortalAccess.mockResolvedValue({ granted: true, reason: 'public' })
+    const { hasAuthCredentials } = await import('../auth-helpers')
+    vi.mocked(hasAuthCredentials).mockReturnValueOnce(false)
+    mockBoardRowLimit.mockResolvedValueOnce([{ access: { vote: 'anonymous' } }])
+    const { getSettings } = await import('../workspace')
+    vi.mocked(getSettings).mockResolvedValueOnce({
+      portalConfig: { features: { anonymousVoting: true } },
+    } as never)
+    mockCanVotePost.mockReturnValueOnce({ allowed: true })
+
+    const result = (await publicPostsHandlers[GET_VOTE_SIDEBAR_DATA]({
+      data: { postId: 'pst_x' },
+    })) as { canVote: boolean }
+
+    expect(result.canVote).toBe(true)
+  })
+
+  it('returns canVote=false when workspace anonymousVoting is OFF even on board.vote=anonymous', async () => {
+    // The workspace flag is the ceiling — a board can't override it.
+    mockResolvePortalAccess.mockResolvedValue({ granted: true, reason: 'public' })
+    const { hasAuthCredentials } = await import('../auth-helpers')
+    vi.mocked(hasAuthCredentials).mockReturnValueOnce(false)
+    mockBoardRowLimit.mockResolvedValueOnce([{ access: { vote: 'anonymous' } }])
+    const { getSettings } = await import('../workspace')
+    vi.mocked(getSettings).mockResolvedValueOnce({
+      portalConfig: { features: { anonymousVoting: false } },
+    } as never)
+    mockCanVotePost.mockReturnValueOnce({ allowed: true })
+
+    const result = (await publicPostsHandlers[GET_VOTE_SIDEBAR_DATA]({
+      data: { postId: 'pst_x' },
+    })) as { canVote: boolean }
+
+    expect(result.canVote).toBe(false)
   })
 })
 

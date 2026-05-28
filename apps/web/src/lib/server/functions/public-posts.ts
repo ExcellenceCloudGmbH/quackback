@@ -706,10 +706,10 @@ export const getVoteSidebarDataFn = createServerFn({ method: 'GET' })
       // probing a post on a team-only / segment-restricted board. Treat
       // a NotFound from assertPostViewable as denial (same shape — the
       // sidebar UI degrades to the read-only state).
+      const probeAuth = await getOptionalAuth()
+      const probeActor = await policyActorFromAuth(probeAuth)
       try {
         const { assertPostViewable } = await import('@/lib/server/domains/posts/post.access')
-        const probeAuth = await getOptionalAuth()
-        const probeActor = await policyActorFromAuth(probeAuth)
         await assertPostViewable(postId, probeActor)
       } catch (err) {
         if (err instanceof Error && err.name === 'NotFoundError') {
@@ -719,7 +719,38 @@ export const getVoteSidebarDataFn = createServerFn({ method: 'GET' })
         throw err
       }
 
-      // No session cookie — check if anonymous voting is enabled
+      // Per-board vote tier gate: a board can be public-to-view but
+      // authenticated-only-to-vote (modern "Public" preset). Resolve the
+      // board.access alongside the post and run canVotePost so the UI
+      // can render the right CTA (sign-in prompt vs. enabled button)
+      // instead of letting an anonymous click learn the truth on submit.
+      // The workspace anonymousVoting flag is composed below as a ceiling.
+      const { db, eq, and, isNull, posts, boards } = await import('@/lib/server/db')
+      const { canVotePost } = await import('@/lib/server/policy')
+      const boardRow = await db
+        .select({ access: boards.access })
+        .from(posts)
+        .innerJoin(boards, eq(posts.boardId, boards.id))
+        .where(and(eq(posts.id, postId), isNull(posts.deletedAt), isNull(boards.deletedAt)))
+        .limit(1)
+
+      if (boardRow.length === 0) {
+        // Race: post or board deleted between assertPostViewable and now.
+        console.log(`[fn:public-posts] getVoteSidebarDataFn: post/board vanished mid-call`)
+        return denied
+      }
+
+      // canVotePost composes canViewPost internally, but assertPostViewable
+      // already proved view-allowed for this actor; pass moderationState=
+      // 'published' here so the inner view check is a no-op and the
+      // decision reflects the vote tier specifically.
+      const voteDecision = canVotePost(
+        probeActor,
+        { moderationState: 'published', principalId: null },
+        { access: boardRow[0].access }
+      )
+
+      // No session cookie — check if anonymous voting is enabled (workspace ceiling)
       if (!hasAuthCredentials()) {
         const settings = await getSettings()
         const parsed =
@@ -727,10 +758,13 @@ export const getVoteSidebarDataFn = createServerFn({ method: 'GET' })
             ? JSON.parse(settings.portalConfig)
             : settings?.portalConfig
         const anonEnabled = parsed?.features?.anonymousVoting ?? true
-        console.log(`[fn:public-posts] getVoteSidebarDataFn: no session, canVote=${anonEnabled}`)
+        const canVote = anonEnabled && voteDecision.allowed
+        console.log(
+          `[fn:public-posts] getVoteSidebarDataFn: no session, canVote=${canVote} (anonEnabled=${anonEnabled}, voteAllowed=${voteDecision.allowed})`
+        )
         return {
           isMember: false,
-          canVote: anonEnabled,
+          canVote,
           hasVoted: false,
           subscriptionStatus: noSub,
         }
@@ -746,14 +780,15 @@ export const getVoteSidebarDataFn = createServerFn({ method: 'GET' })
       const isAnonymous = ctx.principal.type === 'anonymous'
 
       // Re-check anonymousVoting setting for existing anonymous sessions
-      let canVote = true
+      let canVote = voteDecision.allowed
       if (isAnonymous) {
         const settings = await getSettings()
         const parsed =
           typeof settings?.portalConfig === 'string'
             ? JSON.parse(settings.portalConfig)
             : settings?.portalConfig
-        canVote = parsed?.features?.anonymousVoting ?? true
+        const anonEnabled = parsed?.features?.anonymousVoting ?? true
+        canVote = anonEnabled && voteDecision.allowed
       }
 
       const { hasVoted, subscription } = await getVoteAndSubscriptionStatus(
@@ -762,7 +797,7 @@ export const getVoteSidebarDataFn = createServerFn({ method: 'GET' })
       )
 
       console.log(
-        `[fn:public-posts] getVoteSidebarDataFn: isMember=${!isAnonymous}, hasVoted=${hasVoted}`
+        `[fn:public-posts] getVoteSidebarDataFn: isMember=${!isAnonymous}, hasVoted=${hasVoted}, canVote=${canVote}`
       )
       return {
         isMember: !isAnonymous,
