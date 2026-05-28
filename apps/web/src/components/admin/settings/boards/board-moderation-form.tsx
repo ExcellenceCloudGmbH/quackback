@@ -153,9 +153,9 @@ export function BoardModerationForm({ board }: BoardModerationFormProps) {
       {mutation.isError && <FormError message={mutation.error?.message ?? 'An error occurred'} />}
 
       {/* Inheritance banner */}
-      <div className="flex items-center gap-2.5 rounded-lg border bg-muted/30 px-3 py-2.5">
-        <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
-          <ShieldCheckIcon className="h-2.5 w-2.5" />
+      <div className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+        <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
+          <ShieldCheckIcon className="h-3.5 w-3.5" />
         </span>
         <div className="flex-1 text-xs text-foreground/90">
           {anyOverridden ? (
@@ -169,7 +169,7 @@ export function BoardModerationForm({ board }: BoardModerationFormProps) {
         </div>
         <Link
           to="/admin/settings/moderation"
-          className="text-[11.5px] text-primary hover:underline whitespace-nowrap"
+          className="text-xs text-primary hover:underline whitespace-nowrap"
         >
           Workspace moderation →
         </Link>
@@ -189,7 +189,7 @@ export function BoardModerationForm({ board }: BoardModerationFormProps) {
         ))}
       </div>
 
-      <p className="flex items-center gap-2 text-[11px] text-muted-foreground">
+      <p className="flex items-center gap-2 text-xs text-muted-foreground">
         <InformationCircleIcon className="h-3 w-3" />
         Held posts and comments appear in the <span className="text-foreground">review queue</span>.
       </p>
@@ -218,7 +218,12 @@ function ModerationRuleRow({
 }: ModerationRuleRowProps) {
   const overridden = value !== 'inherit'
   return (
-    <div className={cn('flex items-center gap-3.5 py-3.5', !isLast && 'border-b border-border')}>
+    <div
+      className={cn(
+        'flex flex-col gap-3 py-3.5 sm:flex-row sm:items-center sm:gap-3',
+        !isLast && 'border-b border-border'
+      )}
+    >
       <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border bg-muted/40 text-muted-foreground">
         <rule.icon className="h-3.5 w-3.5" />
       </span>
@@ -226,12 +231,12 @@ function ModerationRuleRow({
         <div className="flex items-center gap-2">
           <span className="text-sm font-medium">{rule.label}</span>
           {overridden && (
-            <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wider text-primary">
+            <span className="rounded border border-primary/30 bg-primary/10 px-1.5 py-px text-xs font-semibold uppercase tracking-wider text-primary">
               Override
             </span>
           )}
         </div>
-        <div className="mt-0.5 text-[11.5px] leading-snug text-muted-foreground">{rule.sub}</div>
+        <div className="mt-0.5 text-xs leading-snug text-muted-foreground">{rule.sub}</div>
       </div>
       <SegmentedTri
         value={value}
@@ -277,7 +282,7 @@ function SegmentedTri({ value, onChange, workspaceDefault, ruleLabel }: Segmente
             aria-label={`${ruleLabel}: ${o.label}`}
             onClick={() => onChange(o.id)}
             className={cn(
-              'inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors',
+              'inline-flex items-center gap-1.5 rounded px-2.5 py-1.5 text-xs transition-colors',
               on
                 ? 'border border-primary/40 bg-primary/10 font-medium text-foreground'
                 : 'border border-transparent text-muted-foreground hover:text-foreground'
@@ -287,7 +292,7 @@ function SegmentedTri({ value, onChange, workspaceDefault, ruleLabel }: Segmente
             {o.sub && (
               <span
                 className={cn(
-                  'rounded px-1 py-px text-[10px]',
+                  'rounded px-1 py-px text-xs',
                   on ? 'bg-muted text-muted-foreground' : 'text-muted-foreground/70'
                 )}
               >
@@ -320,7 +325,7 @@ function SaveDock({ dirty, saving, onDiscard }: SaveDockProps) {
         dirty ? 'translate-y-0' : 'pointer-events-none translate-y-full'
       )}
     >
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-3 sm:pl-72">
+      <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-4 py-3 sm:px-6">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span
             className="inline-block h-2 w-2 rounded-full bg-primary"
