@@ -232,8 +232,12 @@ export const createBoardsBatchFn = createServerFn({ method: 'POST' })
       const board = await createBoard({
         name: boardInput.name,
         description: boardInput.description,
-        // Onboarding-batch boards default to public; admins can lock them
-        // down later via updateBoardAccessFn.
+        // Onboarding-batch boards default to the Public preset
+        // (view=anonymous, vote/comment/submit=authenticated). Admins can
+        // lock them down later via updateBoardAccessFn. Without this the
+        // column default (all 'anonymous') would apply, which is more
+        // permissive than the create-modal's Public tile.
+        access: accessForPreset('public'),
       })
       createdBoards.push(serializeBoard(board))
     }

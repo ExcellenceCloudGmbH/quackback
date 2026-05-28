@@ -108,6 +108,12 @@ describe('board mutations cache invalidation', () => {
     expect(result[0]).toMatchObject({
       name: 'Feature Requests',
       slug: 'feature-requests',
+      access: expect.objectContaining({
+        view: 'anonymous',
+        vote: 'authenticated',
+        comment: 'authenticated',
+        submit: 'authenticated',
+      }),
     })
   })
 
