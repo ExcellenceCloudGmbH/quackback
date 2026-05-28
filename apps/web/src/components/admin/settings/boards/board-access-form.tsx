@@ -327,12 +327,17 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
       form.setValue(actionId, tierId, { shouldDirty: true })
 
       // Cascade: raising view tier may force comment/vote/submit up to
-      // keep the invariant rank(other) >= rank(view).
+      // keep the invariant rank(other) >= rank(view). Clear the bumped
+      // action's segment list too — a non-'segments' tier must not carry
+      // a stale allowlist (matches the workspace auto-bump effect).
       if (actionId === 'view') {
         const vRank = ACCESS_TIER_RANK[tierId]
         ;(['vote', 'comment', 'submit'] as const).forEach((a) => {
           if (ACCESS_TIER_RANK[values[a]] < vRank) {
             form.setValue(a, tierId, { shouldDirty: true })
+            if (tierId !== 'segments') {
+              form.setValue(`segments.${a}`, [], { shouldDirty: true })
+            }
           }
         })
       }

@@ -414,6 +414,29 @@ describe('<BoardAccessForm> save', () => {
     expect(isCellSelected('Comment', 'Team only')).toBe(false)
   })
 
+  it('raising view to team clears stale segment lists on cascaded actions', async () => {
+    renderForm(PUBLIC_ACCESS)
+    // 1. set Submit posts -> Segments; the empty-list picker opens.
+    clickTierCell('Submit posts', 'Segments')
+    // 2. pick a segment from the open picker so submit.segments is non-empty.
+    const alphaOption = screen.getByText('Alpha').closest('button')!
+    fireEvent.click(alphaOption)
+    // 3. raise View -> Team only (cascades vote/comment/submit up to team).
+    clickTierCell('View', 'Team only')
+    // 4. save and assert the cascaded submit dropped its stale segment list.
+    fireEvent.click(screen.getByRole('button', { name: /save changes/i }))
+    await waitFor(() =>
+      expect(mutate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          access: expect.objectContaining({
+            submit: 'team',
+            segments: expect.objectContaining({ submit: [] }),
+          }),
+        })
+      )
+    )
+  })
+
   it('clicking a preset clears stale segment selections', async () => {
     renderForm({
       view: 'segments',
