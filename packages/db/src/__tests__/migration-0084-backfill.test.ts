@@ -4,11 +4,19 @@ import { join } from 'node:path'
 import { sql } from 'drizzle-orm'
 import { createDb, type Database } from '../client'
 
-// 0084 collapses the 3 workspace anon toggles into allowAnonymous and
-// bumps per-board anonymous tiers where the old workspace flag was off.
-// The regression this guards: a tenant whose stored `features` lacks the
-// anon keys must still have anonymous comment/submit boards bumped to
-// 'authenticated' — because the pre-0084 in-app default for those was OFF.
+// 0084 collapses the three workspace anon toggles into a single `allowAnonymous`
+// master switch, and bumps per-board anonymous tiers where the old workspace
+// flag was off — so defaulting allowAnonymous=true does not re-open anonymous
+// interaction on boards the admin had locked down.
+//
+// This is a one-time data migration, so we keep a SINGLE regression pin rather
+// than an exhaustive per-branch suite: the fail-open the access-matrix audit
+// found. The original SQL gated both passes on `portal_config IS NOT NULL`, so a
+// tenant whose single settings row had a NULL/empty portal_config (config-file
+// installs, half-onboarded rows, the dev/test seed) got neither the per-board
+// tier bump nor an allowAnonymous write — and the runtime then resolved
+// allowAnonymous to its fail-open default, silently re-opening anonymous
+// comment/submit on upgrade. This pins the NULL edge fail-closed.
 
 const MIGRATION_SQL = readFileSync(
   join(__dirname, '../../drizzle/0084_workspace_allow_anonymous_master.sql'),
@@ -24,12 +32,11 @@ const dbAvailable = !!DB_URL
 if (DB_URL) db = createDb(DB_URL, { max: 1 })
 
 afterAll(async () => {
-  // createDb pools; close if the client exposes end(). Best-effort.
   // @ts-expect-error optional teardown
   await db?.$client?.end?.()
 })
 
-const ACCESS_SUBMIT_ANON = {
+const ACCESS_ANON = {
   view: 'anonymous',
   vote: 'anonymous',
   comment: 'anonymous',
@@ -39,51 +46,52 @@ const ACCESS_SUBMIT_ANON = {
 }
 
 describe.skipIf(!dbAvailable)('migration 0084 backfill', () => {
-  it('bumps anonymous comment/submit to authenticated when features lack the anon keys', async () => {
+  it('fails closed when portal_config is NULL: bumps anon comment/submit and writes allowAnonymous (P1 regression pin)', async () => {
     if (!db) return
     await db
       .transaction(async (tx) => {
-        // Seed a settings row whose features object is MISSING the three anon
-        // keys (simulates a tenant persisted before the keys existed). The
-        // `voting` key is a real, unrelated flag — present only to prove the
-        // backfill keys off absence of the three `anonymous*` keys, not on an
-        // empty features object.
+        // Deterministic setup: a single settings row with a NULL portal_config
+        // (the edge the original SQL skipped). Nothing FK-references settings,
+        // so resetting it is safe; the whole tx rolls back afterwards.
+        await tx.execute(sql`DELETE FROM "settings"`)
         await tx.execute(sql`
-          UPDATE "settings"
-          SET "portal_config" = jsonb_set(
-            COALESCE(NULLIF(portal_config, '')::jsonb, '{}'::jsonb),
-            '{features}', '{"voting":true}'::jsonb, true
-          )::text
-          WHERE portal_config IS NOT NULL
+          INSERT INTO "settings" (id, name, slug, created_at, portal_config)
+          VALUES (gen_random_uuid(), 'M0084', 'm0084-test', now(), NULL)
         `)
-        // Seed a board whose every action is anonymous. `boards.id` is a
-        // uuid column with no DB-level default (the TypeID default is applied
-        // at the app layer), so let Postgres mint one and read it back.
+        // boards.id is a uuid column with no DB-level default (the TypeID
+        // default is applied at the app layer), so let Postgres mint one.
         const inserted = await tx.execute<{ id: string }>(sql`
           INSERT INTO "boards" (id, slug, name, access)
-          VALUES (gen_random_uuid(), 'm0084-test', 'M0084 Test', ${JSON.stringify(ACCESS_SUBMIT_ANON)}::jsonb)
+          VALUES (gen_random_uuid(), 'm0084-board', 'M0084 Board', ${JSON.stringify(
+            ACCESS_ANON
+          )}::jsonb)
           RETURNING id
         `)
         const boardId = (inserted as unknown as { id: string }[])[0].id
 
-        // Run the migration statements.
         for (const stmt of MIGRATION_SQL) {
           await tx.execute(sql.raw(stmt))
         }
 
-        // Assert: comment + submit bumped to authenticated; view untouched.
-        // postgres-js returns rows directly as an array (not `.rows`).
-        const rows = await tx.execute<{ access: typeof ACCESS_SUBMIT_ANON }>(sql`
+        // postgres-js returns rows directly as an array and parses jsonb.
+        const boardRows = await tx.execute<{ access: typeof ACCESS_ANON }>(sql`
           SELECT access FROM "boards" WHERE id = ${boardId}
         `)
-        const access = (rows as unknown as { access: typeof ACCESS_SUBMIT_ANON }[])[0].access
+        const access = (boardRows as unknown as { access: typeof ACCESS_ANON }[])[0].access
         expect(access.view).toBe('anonymous') // view has no workspace ceiling
-        expect(access.comment).toBe('authenticated')
-        expect(access.submit).toBe('authenticated')
-        // vote: base default for anonymousVoting is true -> NOT bumped.
-        expect(access.vote).toBe('anonymous')
+        expect(access.comment).toBe('authenticated') // anonymousCommenting default false -> bumped
+        expect(access.submit).toBe('authenticated') // anonymousPosting default false -> bumped
+        expect(access.vote).toBe('anonymous') // anonymousVoting default true -> not bumped
 
-        throw new Error('__ROLLBACK__') // abort the tx so dev data is untouched
+        const settingsRows = await tx.execute<{ features: Record<string, unknown> | null }>(sql`
+          SELECT (portal_config::jsonb)->'features' AS features FROM "settings" LIMIT 1
+        `)
+        const features = (
+          settingsRows as unknown as { features: Record<string, unknown> | null }[]
+        )[0].features
+        expect(features?.allowAnonymous).toBe(true) // master flag materialized, not left to runtime default
+
+        throw new Error('__ROLLBACK__') // abort the tx so dev/test data is untouched
       })
       .catch((e) => {
         if (!(e instanceof Error) || e.message !== '__ROLLBACK__') throw e
