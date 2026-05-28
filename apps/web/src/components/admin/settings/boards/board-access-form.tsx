@@ -42,6 +42,7 @@ import {
   type BoardAccess,
   DEFAULT_BOARD_ACCESS,
 } from '@/lib/shared/db-types'
+import { accessForPreset } from '@/lib/shared/schemas/boards'
 
 /**
  * Per-board access form (R3 design).
@@ -130,27 +131,32 @@ interface PresetMeta {
   tiers: Record<ActionId, AccessTier>
 }
 
+// The tier mapping per preset is the SERVER source of truth
+// (`accessForPreset`, shared by the create server-fn + optimistic insert).
+// Picking the four tier fields off it here keeps the preset header in this
+// form provably in sync with what create actually persists — a one-sided
+// edit can no longer make a fresh Public board render as "Custom".
+function tiersForPreset(id: Exclude<PresetName, 'custom'>): Record<ActionId, AccessTier> {
+  const a = accessForPreset(id)
+  return { view: a.view, vote: a.vote, comment: a.comment, submit: a.submit }
+}
+
 // Public — anyone can read; sign-in for any action.
 // Private — internal/team boards, hidden from the portal.
-const PRESET_META: readonly PresetMeta[] = [
+export const PRESET_META: readonly PresetMeta[] = [
   {
     id: 'public',
     label: 'Public',
     description: 'Anyone can view. Sign-in is required to vote, comment, or submit.',
     icon: GlobeAltIcon,
-    tiers: {
-      view: 'anonymous',
-      vote: 'authenticated',
-      comment: 'authenticated',
-      submit: 'authenticated',
-    },
+    tiers: tiersForPreset('public'),
   },
   {
     id: 'private',
     label: 'Private',
     description: 'Only workspace members can access this board. Hidden from the portal.',
     icon: LockClosedIcon,
-    tiers: { view: 'team', vote: 'team', comment: 'team', submit: 'team' },
+    tiers: tiersForPreset('private'),
   },
 ] as const
 

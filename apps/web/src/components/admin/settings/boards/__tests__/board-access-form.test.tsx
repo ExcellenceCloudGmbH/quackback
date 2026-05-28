@@ -21,8 +21,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { BoardAccessForm } from '../board-access-form'
+import { BoardAccessForm, PRESET_META } from '../board-access-form'
 import { DEFAULT_BOARD_ACCESS, type BoardAccess } from '@/lib/shared/db-types'
+import { accessForPreset } from '@/lib/shared/schemas/boards'
 import type { BoardId } from '@quackback/ids'
 
 // ---------------------------------------------------------------------------
@@ -439,4 +440,24 @@ describe('<BoardAccessForm> save', () => {
       )
     )
   })
+})
+
+describe('PRESET_META ↔ accessForPreset agreement (round-trip guard)', () => {
+  // The UI preset tiles (PRESET_META, which drives deriveActivePreset) and
+  // the server/optimistic source of truth (accessForPreset) must encode the
+  // same tier mapping. A one-sided edit would break the create round-trip —
+  // a fresh Public board would render as "Custom". PRESET_META now derives
+  // its tiers from accessForPreset; this pins that they cannot diverge.
+  for (const id of ['public', 'private'] as const) {
+    it(`${id}: UI preset tiers match the server source of truth`, () => {
+      const meta = PRESET_META.find((p) => p.id === id)!
+      const server = accessForPreset(id)
+      expect(meta.tiers).toEqual({
+        view: server.view,
+        vote: server.vote,
+        comment: server.comment,
+        submit: server.submit,
+      })
+    })
+  }
 })
