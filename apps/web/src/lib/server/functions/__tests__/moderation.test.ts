@@ -439,10 +439,9 @@ import { ForbiddenError, NotFoundError, ConflictError } from '@/lib/shared/error
 function listPendingPosts(): Handler {
   return hoisted.handlersByIndex[0]
 }
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- accessor reserved for forthcoming comment-moderation tests; index slot must stay correct
-function listPendingComments(): Handler {
-  return hoisted.handlersByIndex[1]
-}
+// Index slot 1 (listPendingComments) is intentionally not accessed here —
+// each accessor hardcodes its own index, so skipping it leaves the others
+// correct.
 function approve(): Handler {
   return hoisted.handlersByIndex[2]
 }
