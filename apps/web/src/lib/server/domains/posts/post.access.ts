@@ -18,6 +18,24 @@ import { type CommentId, type PostId } from '@quackback/ids'
 import { NotFoundError, ForbiddenError } from '@/lib/shared/errors'
 import { canViewPost, canVotePost, isTeamActor, type Actor } from '@/lib/server/policy'
 
+/**
+ * Resolve a post's board `access` matrix for capability gates, applying the
+ * same soft-delete predicate as the assert chokepoints. Returns null when the
+ * post / board doesn't exist or is soft-deleted — callers map that to their
+ * denied/empty response. Centralizing this join keeps the audience gate sound:
+ * the INNER + isNull predicate can't drift between the read paths that compose
+ * `boardCapabilitiesForActor` / `canVotePost` off `boards.access`.
+ */
+export async function loadBoardAccessForPost(postId: PostId) {
+  const rows = await db
+    .select({ access: boards.access })
+    .from(posts)
+    .innerJoin(boards, eq(posts.boardId, boards.id))
+    .where(and(eq(posts.id, postId), isNull(posts.deletedAt), isNull(boards.deletedAt)))
+    .limit(1)
+  return rows[0]?.access ?? null
+}
+
 export async function assertPostViewable(postId: PostId, actor: Actor): Promise<void> {
   // Fetch only the fields the policy needs. Soft-deleted post or board
   // is treated as "doesn't exist" — the join uses INNER + isNull

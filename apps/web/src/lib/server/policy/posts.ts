@@ -103,16 +103,29 @@ export type CommentCreateDecision =
   | { allowed: true; requiresApproval: boolean }
   | { allowed: false; reason: string }
 
-function commentDenyMessage(tier: AccessTier): string {
+/** Action-specific copy for the (unreachable) anonymous deny branch. */
+const ANON_DENY_MESSAGE: Record<'comment' | 'vote' | 'submit', string> = {
+  comment: 'Commenting is not allowed on this board',
+  vote: 'Voting is not allowed on this board',
+  submit: 'Submissions are not accepted on this board',
+}
+
+/**
+ * Denial copy for a board action the actor's tier doesn't satisfy. The
+ * authenticated/segments/team branches differ only by the action verb; the
+ * anonymous branch is unreachable in practice (`tierAllows('anonymous', …)`
+ * always passes) but carries action-specific copy.
+ */
+function tierDenyMessage(action: 'comment' | 'vote' | 'submit', tier: AccessTier): string {
   switch (tier) {
     case 'anonymous':
-      return 'Commenting is not allowed on this board'
+      return ANON_DENY_MESSAGE[action]
     case 'authenticated':
-      return 'Sign in to comment on this board'
+      return `Sign in to ${action} on this board`
     case 'segments':
-      return 'Only specific groups can comment on this board'
+      return `Only specific groups can ${action} on this board`
     case 'team':
-      return 'Only team members can comment on this board'
+      return `Only team members can ${action} on this board`
   }
 }
 
@@ -139,7 +152,7 @@ export function canCreateComment(
   if (!view.allowed) return { allowed: false, reason: view.reason }
 
   if (!tierAllows(actor, board.access.comment, board.access.segments.comment)) {
-    return { allowed: false, reason: commentDenyMessage(board.access.comment) }
+    return { allowed: false, reason: tierDenyMessage('comment', board.access.comment) }
   }
   if (post.isCommentsLocked && !isTeam(actor)) {
     return { allowed: false, reason: 'Comments are locked on this post' }
@@ -154,20 +167,6 @@ export function canCreateComment(
 }
 
 export type VoteDecision = { allowed: true } | { allowed: false; reason: string }
-
-function voteDenyMessage(tier: AccessTier): string {
-  switch (tier) {
-    case 'anonymous':
-      // Unreachable in practice — tierAllows('anonymous', …) always passes.
-      return 'Voting is not allowed on this board'
-    case 'authenticated':
-      return 'Sign in to vote on this board'
-    case 'segments':
-      return 'Only specific groups can vote on this board'
-    case 'team':
-      return 'Only team members can vote on this board'
-  }
-}
 
 /**
  * Whether the requesting actor can vote on a post.
@@ -186,7 +185,7 @@ export function canVotePost(actor: Actor, post: PostShape, board: BoardShape): V
   if (!view.allowed) return { allowed: false, reason: view.reason }
 
   if (!tierAllows(actor, board.access.vote, board.access.segments.vote)) {
-    return { allowed: false, reason: voteDenyMessage(board.access.vote) }
+    return { allowed: false, reason: tierDenyMessage('vote', board.access.vote) }
   }
   return { allowed: true }
 }
@@ -194,20 +193,6 @@ export function canVotePost(actor: Actor, post: PostShape, board: BoardShape): V
 export type CreateDecision =
   | { allowed: true; requiresApproval: boolean }
   | { allowed: false; reason: string }
-
-function submitDenyMessage(tier: AccessTier): string {
-  switch (tier) {
-    case 'anonymous':
-      // Unreachable in practice — tierAllows('anonymous', …) always passes.
-      return 'Submissions are not accepted on this board'
-    case 'authenticated':
-      return 'Sign in to submit on this board'
-    case 'segments':
-      return 'Only specific groups can submit on this board'
-    case 'team':
-      return 'Only team members can submit on this board'
-  }
-}
 
 export function canCreatePost(
   actor: Actor,
@@ -227,7 +212,7 @@ export function canCreatePost(
   // view but team-only to submit (admin-curated roadmap pattern), so the tier
   // check stays independent rather than collapsing into canViewBoard.
   if (!tierAllows(actor, board.access.submit, board.access.segments.submit)) {
-    return { allowed: false, reason: submitDenyMessage(board.access.submit) }
+    return { allowed: false, reason: tierDenyMessage('submit', board.access.submit) }
   }
 
   // Team always bypasses the moderation queue.

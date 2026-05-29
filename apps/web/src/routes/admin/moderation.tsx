@@ -49,29 +49,28 @@ function ModerationPage() {
     invalidateAfterDecision()
   }
 
-  const approvePost = useMutation({
-    mutationFn: (postId: string) => approvePostFn({ data: { postId } }),
+  // Every approve/reject mutation shares the same cache invalidation, the
+  // "already handled" toast, and the pending-row reset.
+  const decisionOptions = {
     onSuccess: invalidateAfterDecision,
     onError,
     onSettled: () => setPendingId(null),
+  }
+  const approvePost = useMutation({
+    mutationFn: (postId: string) => approvePostFn({ data: { postId } }),
+    ...decisionOptions,
   })
   const rejectPost = useMutation({
     mutationFn: (postId: string) => rejectPostFn({ data: { postId } }),
-    onSuccess: invalidateAfterDecision,
-    onError,
-    onSettled: () => setPendingId(null),
+    ...decisionOptions,
   })
   const approveComment = useMutation({
     mutationFn: (commentId: string) => approveCommentFn({ data: { commentId } }),
-    onSuccess: invalidateAfterDecision,
-    onError,
-    onSettled: () => setPendingId(null),
+    ...decisionOptions,
   })
   const rejectComment = useMutation({
     mutationFn: (commentId: string) => rejectCommentFn({ data: { commentId } }),
-    onSuccess: invalidateAfterDecision,
-    onError,
-    onSettled: () => setPendingId(null),
+    ...decisionOptions,
   })
 
   if (postsQuery.isLoading || commentsQuery.isLoading) {

@@ -44,11 +44,21 @@ const RejectCommentInput = z.object({
   reason: z.string().max(500).optional(),
 })
 
-export const listPendingPostsFn = createServerFn({ method: 'GET' }).handler(async () => {
+/**
+ * Team-only gate shared by every moderation handler. Approve/reject are
+ * team-level (admin OR member); changing the moderation *policy* is admin-only
+ * and lives on the Settings page.
+ */
+async function requireTeamAuth() {
   const auth = await requireAuth()
   if (!isTeamMember(auth.principal.role)) {
     throw new ForbiddenError('FORBIDDEN', 'Team only')
   }
+  return auth
+}
+
+export const listPendingPostsFn = createServerFn({ method: 'GET' }).handler(async () => {
+  await requireTeamAuth()
   const rows = await db
     .select({
       id: posts.id,
@@ -70,10 +80,7 @@ export const listPendingPostsFn = createServerFn({ method: 'GET' }).handler(asyn
 })
 
 export const listPendingCommentsFn = createServerFn({ method: 'GET' }).handler(async () => {
-  const auth = await requireAuth()
-  if (!isTeamMember(auth.principal.role)) {
-    throw new ForbiddenError('FORBIDDEN', 'Team only')
-  }
+  await requireTeamAuth()
   const rows = await db
     .select({
       id: comments.id,
@@ -104,10 +111,7 @@ export const listPendingCommentsFn = createServerFn({ method: 'GET' }).handler(a
 export const approvePostFn = createServerFn({ method: 'POST' })
   .inputValidator(ApproveInput.parse)
   .handler(async ({ data }) => {
-    const auth = await requireAuth()
-    if (!isTeamMember(auth.principal.role)) {
-      throw new ForbiddenError('FORBIDDEN', 'Team only')
-    }
+    const auth = await requireTeamAuth()
     const before = await db.query.posts.findFirst({ where: eq(posts.id, data.postId as never) })
     if (!before) throw new NotFoundError('POST_NOT_FOUND', `Post ${data.postId}`)
     const updated = await db
@@ -159,10 +163,7 @@ export const approvePostFn = createServerFn({ method: 'POST' })
 export const approveCommentFn = createServerFn({ method: 'POST' })
   .inputValidator(ApproveCommentInput.parse)
   .handler(async ({ data }) => {
-    const auth = await requireAuth()
-    if (!isTeamMember(auth.principal.role)) {
-      throw new ForbiddenError('FORBIDDEN', 'Team only')
-    }
+    const auth = await requireTeamAuth()
     const before = await db.query.comments.findFirst({
       where: eq(comments.id, data.commentId as never),
     })
@@ -233,10 +234,7 @@ export const approveCommentFn = createServerFn({ method: 'POST' })
 export const rejectCommentFn = createServerFn({ method: 'POST' })
   .inputValidator(RejectCommentInput.parse)
   .handler(async ({ data }) => {
-    const auth = await requireAuth()
-    if (!isTeamMember(auth.principal.role)) {
-      throw new ForbiddenError('FORBIDDEN', 'Team only')
-    }
+    const auth = await requireTeamAuth()
     const before = await db.query.comments.findFirst({
       where: eq(comments.id, data.commentId as never),
     })
@@ -290,10 +288,7 @@ export const rejectCommentFn = createServerFn({ method: 'POST' })
 export const rejectPostFn = createServerFn({ method: 'POST' })
   .inputValidator(RejectInput.parse)
   .handler(async ({ data }) => {
-    const auth = await requireAuth()
-    if (!isTeamMember(auth.principal.role)) {
-      throw new ForbiddenError('FORBIDDEN', 'Team only')
-    }
+    const auth = await requireTeamAuth()
     const before = await db.query.posts.findFirst({ where: eq(posts.id, data.postId as never) })
     if (!before) throw new NotFoundError('POST_NOT_FOUND', `Post ${data.postId}`)
     const deletedAt = new Date()
@@ -332,10 +327,7 @@ export const rejectPostFn = createServerFn({ method: 'POST' })
   })
 
 export const getModerationStatus = createServerFn({ method: 'GET' }).handler(async () => {
-  const auth = await requireAuth()
-  if (!isTeamMember(auth.principal.role)) {
-    throw new ForbiddenError('FORBIDDEN', 'Team only')
-  }
+  await requireTeamAuth()
   // Use allSettled so a transient failure of one query does not nuke the
   // entire status badge. Filter through parent deletedAt to stay consistent
   // with the listPending*Fn queries — items on a soft-deleted board (or, for

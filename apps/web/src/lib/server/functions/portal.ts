@@ -129,10 +129,12 @@ export const fetchPortalData = createServerFn({ method: 'GET' })
     const auth = await getOptionalAuth()
     const actor = await policyActorFromAuth(auth)
 
-    // Run ALL queries in parallel for maximum performance
-    // Member lookup and votes run independently alongside posts/boards/statuses/tags
-    const [memberResult, boardsRaw, postsResult, statuses, tags, allVotedPosts] = await Promise.all(
-      [
+    // Run ALL queries in parallel for maximum performance — including the portal
+    // config read so buildBoardPermissions doesn't serialize an extra round-trip
+    // onto this (highest-traffic) loader.
+    const { getPortalConfig } = await import('@/lib/server/domains/settings/settings.service')
+    const [memberResult, boardsRaw, postsResult, statuses, tags, allVotedPosts, portalConfig] =
+      await Promise.all([
         // Principal lookup (needed for principalId in response)
         data.userId
           ? db.query.principal.findFirst({
@@ -161,8 +163,8 @@ export const fetchPortalData = createServerFn({ method: 'GET' })
         data.userId
           ? getVotedPostIdsByUserId(data.userId as UserId)
           : Promise.resolve(new Set<PostId>()),
-      ]
-    )
+        getPortalConfig(),
+      ])
     const principalId = memberResult?.id ?? null
 
     // Per-board submit/vote capability for THIS viewer, composed with the
@@ -172,8 +174,7 @@ export const fetchPortalData = createServerFn({ method: 'GET' })
     // Keyed by board id: vote permission is per-board, so this one map also
     // covers infinite-scroll feed pages (every post belongs to one of these
     // boards). Computed in-memory from boardsRaw.access — no extra query.
-    const { getPortalConfig } = await import('@/lib/server/domains/settings/settings.service')
-    const allowAnonymous = (await getPortalConfig()).features.allowAnonymous ?? false
+    const allowAnonymous = portalConfig.features.allowAnonymous ?? false
     const boardPermissions = await buildBoardPermissions(actor, boardsRaw, allowAnonymous)
 
     // Return ALL voted post IDs (not just page 1) so infinite scroll pages show correct vote state
@@ -632,41 +633,28 @@ export const getCommentsSectionDataFn = createServerFn({ method: 'GET' })
         throw err
       }
 
-      // Per-board comment tier gate: a board can be public-to-view but
-      // authenticated-only-to-comment (the modern "Public" preset). Resolve
-      // board.access alongside the post and run canCreateComment so the UI
-      // renders the right CTA instead of letting the click learn the truth on
-      // submit. The workspace anonymous switch is composed below as a ceiling.
-      const { db, eq, and, isNull, posts, boards } = await import('@/lib/server/db')
-      const { canCreateComment } = await import('@/lib/server/policy')
-      const boardRow = await db
-        .select({ access: boards.access })
-        .from(posts)
-        .innerJoin(boards, eq(posts.boardId, boards.id))
-        .where(and(eq(posts.id, postId), isNull(posts.deletedAt), isNull(boards.deletedAt)))
-        .limit(1)
-      if (boardRow.length === 0) return denied
+      // Per-board comment capability for the real actor, composed with the
+      // workspace anonymous ceiling. boardCapabilitiesForActor is the single
+      // source of truth the portal + widget UIs share, so the CTA can't desync
+      // from the server-side canCreateComment gate (it passes a published,
+      // unlocked post internally — assertPostViewable already proved view, and
+      // comments-locked is handled by the component's lockedMessage).
+      const { loadBoardAccessForPost } = await import('@/lib/server/domains/posts/post.access')
+      const { boardCapabilitiesForActor } = await import('@/lib/server/policy')
+      const boardAccess = await loadBoardAccessForPost(postId)
+      if (!boardAccess) return denied
 
-      // assertPostViewable already proved view-allowed for this actor; pass
-      // moderationState='published' so the inner view check is a no-op and the
-      // decision reflects the comment tier specifically. Comments-locked is
-      // handled by the component (lockedMessage), so it is not gated here.
-      const decision = canCreateComment(
-        actor,
-        { moderationState: 'published', principalId: null, isCommentsLocked: false },
-        { access: boardRow[0].access },
-        undefined
-      )
-
-      // Compose the workspace anonymous master switch (collapsed from the
-      // legacy anonymousCommenting flag in migration 0084) for anonymous /
-      // no-session viewers. The per-board tier is the inner ceiling.
-      let canComment = decision.allowed
+      // The workspace anonymous ceiling only applies to non-user actors, so
+      // only real anonymous / no-session viewers need the (uncached) config
+      // read — a user actor's canComment is gated purely by the per-board tier,
+      // making allowAnonymous irrelevant. Keep the read lazy + conditional
+      // rather than eager so a user actor's path never depends on it.
+      let allowAnonymous = false
       if (actor.principalType !== 'user') {
         const { getPortalConfig } = await import('@/lib/server/domains/settings/settings.service')
-        const config = await getPortalConfig()
-        canComment = canComment && (config.features.allowAnonymous ?? false)
+        allowAnonymous = (await getPortalConfig()).features.allowAnonymous ?? false
       }
+      const canComment = boardCapabilitiesForActor(actor, boardAccess, allowAnonymous).canComment
 
       const isMember = !!(ctx?.user && ctx?.principal)
       const isTeamMember =

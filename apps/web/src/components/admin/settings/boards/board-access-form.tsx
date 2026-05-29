@@ -28,8 +28,8 @@ import {
   TagIcon,
   UsersIcon,
 } from '@heroicons/react/24/solid'
-import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { BoardSettingsSaveDock } from './board-settings-save-dock'
 import { FormError } from '@/components/shared/form-error'
 import { useUpdateBoardAccess } from '@/lib/client/mutations'
 import { useSegments } from '@/lib/client/hooks/use-segments-queries'
@@ -295,10 +295,7 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
       // preset click. moderation is left untouched (owned by the Moderation
       // sub-tab); presets target the access matrix only.
       const opts = { shouldDirty: true } as const
-      form.setValue('view', meta.tiers.view, opts)
-      form.setValue('vote', meta.tiers.vote, opts)
-      form.setValue('comment', meta.tiers.comment, opts)
-      form.setValue('submit', meta.tiers.submit, opts)
+      ACTIONS.forEach((a) => form.setValue(a.id, meta.tiers[a.id], opts))
       // Presets always clear segment lists — they target non-segments tiers.
       form.setValue('segments', { view: [], vote: [], comment: [], submit: [] }, opts)
       setOpenPicker(null)
@@ -444,9 +441,10 @@ export function BoardAccessForm({ board }: BoardAccessFormProps) {
         Team members and admins always have full access — they bypass these rules.
       </p>
 
-      <SaveDock
+      <BoardSettingsSaveDock
         dirty={dirty}
         error={segsError}
+        errorMessage="Some rules use Segments but no segments are selected."
         saving={mutation.isPending}
         onDiscard={handleDiscard}
       />
@@ -969,55 +967,5 @@ function SegmentPicker({
       </div>
     </div>,
     document.body
-  )
-}
-
-// ─── Sticky save dock ────────────────────────────────────────────────
-
-interface SaveDockProps {
-  dirty: boolean
-  error: boolean
-  saving: boolean
-  onDiscard: () => void
-}
-
-function SaveDock({ dirty, error, saving, onDiscard }: SaveDockProps) {
-  return (
-    <div
-      role="region"
-      aria-label="Save changes"
-      data-dirty={dirty || undefined}
-      className={cn(
-        'fixed inset-x-0 bottom-0 z-40 border-t bg-background/85 backdrop-blur-sm transition-transform duration-200',
-        dirty ? 'translate-y-0' : 'pointer-events-none translate-y-full'
-      )}
-    >
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span
-            className={cn(
-              'inline-block h-2 w-2 rounded-full',
-              error ? 'bg-destructive' : 'bg-primary'
-            )}
-            style={
-              error
-                ? { boxShadow: '0 0 8px rgba(248, 113, 113, 0.6)' }
-                : { boxShadow: '0 0 8px rgba(250, 204, 21, 0.6)' }
-            }
-          />
-          {error
-            ? 'Some rules use Segments but no segments are selected.'
-            : 'You have unsaved changes.'}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onDiscard} disabled={saving}>
-            Discard
-          </Button>
-          <Button type="submit" size="sm" disabled={error || saving}>
-            {saving ? 'Saving…' : 'Save changes'}
-          </Button>
-        </div>
-      </div>
-    </div>
   )
 }

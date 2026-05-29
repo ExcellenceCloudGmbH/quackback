@@ -172,10 +172,17 @@ vi.mock('@/lib/server/domains/embeddings/embedding.service', () => ({
   generateEmbedding: vi.fn().mockResolvedValue(null),
 }))
 
-vi.mock('@/lib/server/domains/posts/post.access', () => ({
-  assertPostViewable: vi.fn().mockResolvedValue(undefined),
-  assertCommentViewable: vi.fn().mockResolvedValue(undefined),
-}))
+// Partial mock: stub the assert chokepoints but keep the real
+// loadBoardAccessForPost, whose query chain resolves through the db mock's
+// .innerJoin().where().limit() (mockBoardRowLimit) like the inlined query did.
+vi.mock('@/lib/server/domains/posts/post.access', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/server/domains/posts/post.access')>()
+  return {
+    ...actual,
+    assertPostViewable: vi.fn().mockResolvedValue(undefined),
+    assertCommentViewable: vi.fn().mockResolvedValue(undefined),
+  }
+})
 
 // ---------------------------------------------------------------------------
 // Handler indices

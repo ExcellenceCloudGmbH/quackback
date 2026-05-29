@@ -8,8 +8,8 @@ import {
   ShieldCheckIcon,
   UserIcon,
 } from '@heroicons/react/24/solid'
-import { Button } from '@/components/ui/button'
 import { FormError } from '@/components/shared/form-error'
+import { BoardSettingsSaveDock } from './board-settings-save-dock'
 import { useUpdateBoardAccess } from '@/lib/client/mutations'
 import { settingsQueries } from '@/lib/client/queries/settings'
 import { cn } from '@/lib/shared/utils/cn'
@@ -19,7 +19,11 @@ import {
   DEFAULT_BOARD_ACCESS,
   type ModerationRuleValue,
 } from '@/lib/shared/db-types'
-import { resolveWorkspaceModeration, type ModerationAxis } from '@/lib/shared/moderation-policy'
+import {
+  resolveWorkspaceModeration,
+  type ModerationAxis,
+  type RequireApprovalLevel,
+} from '@/lib/shared/moderation-policy'
 
 /**
  * Per-board moderation form (R4 design, standalone page).
@@ -33,24 +37,6 @@ import { resolveWorkspaceModeration, type ModerationAxis } from '@/lib/shared/mo
  * slice — on save it preserves the rest of `board.access` verbatim so a
  * concurrent edit on the Access page is never zeroed out.
  */
-
-// ─── Workspace moderation defaults ────────────────────────────────────
-
-/** Mirrors the policy-side `RequireApproval` type. Kept private to this
- *  module so the UI doesn't drag the server policy import. */
-type RequireApproval = 'none' | 'anonymous' | 'authenticated' | 'all'
-
-/**
- * The SegmentedTri's "Inherit" sub-pill renders the resolved workspace
- * default for an axis. Delegates to the shared `resolveWorkspaceModeration`
- * helper so the UI pill and the server gate can never desync.
- */
-function resolveWorkspaceDefault(
-  axis: ModerationAxis,
-  workspaceApproval: RequireApproval | undefined
-): 'on' | 'off' {
-  return resolveWorkspaceModeration(axis, workspaceApproval)
-}
 
 // ─── Rule config ──────────────────────────────────────────────────────
 
@@ -102,7 +88,7 @@ export function BoardModerationForm({ board }: BoardModerationFormProps) {
   // is empty (e.g. in tests). The default falls back to "none" so the
   // inheritance pill stays conservative until we know better.
   const portalConfigQuery = useQuery({ ...settingsQueries.portalConfig(), retry: false })
-  const workspaceApproval: RequireApproval =
+  const workspaceApproval: RequireApprovalLevel =
     portalConfigQuery.data?.moderationDefault?.requireApproval ?? 'none'
 
   const defaults: ModerationShape = board.access?.moderation ?? DEFAULT_BOARD_ACCESS.moderation
@@ -182,7 +168,9 @@ export function BoardModerationForm({ board }: BoardModerationFormProps) {
             key={r.id}
             rule={r}
             value={values[r.id]}
-            workspaceDefault={resolveWorkspaceDefault(r.id, workspaceApproval)}
+            // Resolve the "Inherit" sub-pill via the shared helper so the UI
+            // pill and the server gate can never desync.
+            workspaceDefault={resolveWorkspaceModeration(r.id, workspaceApproval)}
             onChange={(v) => handleChange(r.id, v)}
             isLast={idx === MOD_RULES.length - 1}
           />
@@ -194,7 +182,7 @@ export function BoardModerationForm({ board }: BoardModerationFormProps) {
         Held posts and comments appear in the <span className="text-foreground">review queue</span>.
       </p>
 
-      <SaveDock dirty={dirty} saving={mutation.isPending} onDiscard={handleDiscard} />
+      <BoardSettingsSaveDock dirty={dirty} saving={mutation.isPending} onDiscard={handleDiscard} />
     </form>
   )
 }
@@ -302,46 +290,6 @@ function SegmentedTri({ value, onChange, workspaceDefault, ruleLabel }: Segmente
           </button>
         )
       })}
-    </div>
-  )
-}
-
-// ─── Sticky save dock ────────────────────────────────────────────────
-
-interface SaveDockProps {
-  dirty: boolean
-  saving: boolean
-  onDiscard: () => void
-}
-
-function SaveDock({ dirty, saving, onDiscard }: SaveDockProps) {
-  return (
-    <div
-      role="region"
-      aria-label="Save changes"
-      data-dirty={dirty || undefined}
-      className={cn(
-        'fixed inset-x-0 bottom-0 z-40 border-t bg-background/85 backdrop-blur-sm transition-transform duration-200',
-        dirty ? 'translate-y-0' : 'pointer-events-none translate-y-full'
-      )}
-    >
-      <div className="mx-auto flex max-w-5xl items-center justify-between gap-2 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span
-            className="inline-block h-2 w-2 rounded-full bg-primary"
-            style={{ boxShadow: '0 0 8px rgba(250, 204, 21, 0.6)' }}
-          />
-          You have unsaved changes.
-        </div>
-        <div className="flex items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onDiscard} disabled={saving}>
-            Discard
-          </Button>
-          <Button type="submit" size="sm" disabled={saving}>
-            {saving ? 'Saving…' : 'Save changes'}
-          </Button>
-        </div>
-      </div>
     </div>
   )
 }

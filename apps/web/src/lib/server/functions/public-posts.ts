@@ -732,16 +732,10 @@ export const getVoteSidebarDataFn = createServerFn({ method: 'GET' })
       // can render the right CTA (sign-in prompt vs. enabled button)
       // instead of letting an anonymous click learn the truth on submit.
       // The workspace anonymousVoting flag is composed below as a ceiling.
-      const { db, eq, and, isNull, posts, boards } = await import('@/lib/server/db')
+      const { loadBoardAccessForPost } = await import('@/lib/server/domains/posts/post.access')
       const { canVotePost } = await import('@/lib/server/policy')
-      const boardRow = await db
-        .select({ access: boards.access })
-        .from(posts)
-        .innerJoin(boards, eq(posts.boardId, boards.id))
-        .where(and(eq(posts.id, postId), isNull(posts.deletedAt), isNull(boards.deletedAt)))
-        .limit(1)
-
-      if (boardRow.length === 0) {
+      const boardAccess = await loadBoardAccessForPost(postId)
+      if (!boardAccess) {
         // Race: post or board deleted between assertPostViewable and now.
         console.log(`[fn:public-posts] getVoteSidebarDataFn: post/board vanished mid-call`)
         return denied
@@ -754,7 +748,7 @@ export const getVoteSidebarDataFn = createServerFn({ method: 'GET' })
       const voteDecision = canVotePost(
         probeActor,
         { moderationState: 'published', principalId: null },
-        { access: boardRow[0].access }
+        { access: boardAccess }
       )
 
       // No session cookie — fall back to the workspace anonymous master
