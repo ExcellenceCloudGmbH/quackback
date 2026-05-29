@@ -381,6 +381,9 @@ function WidgetPage() {
                       postId={successPost.id as PostId}
                       voteCount={successPost.voteCount}
                       onBeforeVote={canVote ? ensureSession : undefined}
+                      noAccessReason={
+                        canVote ? undefined : "You don't have access to vote on this board"
+                      }
                     />
                   </div>
                   <div className="flex-1 min-w-0">

@@ -98,7 +98,7 @@ export function FeedbackHeaderAnimated({
   // this viewer) — not the workspace-wide flag, which would advertise submit
   // on a board whose tier requires sign-in (Codex #191).
   const boardCanSubmit = boardPermissions?.[selectedBoardId]?.canSubmit ?? false
-  const { canSubmit, canPostAnonymously } = resolveSubmitState(boardCanSubmit, session)
+  const { canSubmit, canPostAnonymously, noAccess } = resolveSubmitState(boardCanSubmit, session)
 
   const [title, setTitle] = useState('')
   const [contentJson, setContentJson] = useState<JSONContent | null>(null)
@@ -155,10 +155,15 @@ export function FeedbackHeaderAnimated({
 
     if (!canSubmit) {
       setError(
-        intl.formatMessage({
-          id: 'portal.feedback.header.errorSignIn',
-          defaultMessage: 'Please sign in to submit feedback',
-        })
+        noAccess
+          ? intl.formatMessage({
+              id: 'portal.feedback.header.errorNoAccess',
+              defaultMessage: "You don't have access to post on this board",
+            })
+          : intl.formatMessage({
+              id: 'portal.feedback.header.errorSignIn',
+              defaultMessage: 'Please sign in to submit feedback',
+            })
       )
       return
     }
@@ -386,7 +391,14 @@ export function FeedbackHeaderAnimated({
               transition={{ duration: 0.2, delay: 0.2 }}
               className="flex items-center justify-between px-4 sm:px-5 py-3 border-t bg-muted/30"
             >
-              {effectiveUser ? (
+              {noAccess ? (
+                <p className="text-xs text-muted-foreground">
+                  <FormattedMessage
+                    id="portal.feedback.header.noAccess"
+                    defaultMessage="You don't have access to post on this board"
+                  />
+                </p>
+              ) : effectiveUser ? (
                 <p className="text-xs text-muted-foreground">
                   <FormattedMessage
                     id="portal.feedback.header.postingAs"
@@ -446,10 +458,15 @@ export function FeedbackHeaderAnimated({
                   disabled={createPost.isPending || !canSubmit}
                   title={
                     !canSubmit
-                      ? intl.formatMessage({
-                          id: 'portal.feedback.header.submitTooltipSignIn',
-                          defaultMessage: 'Please sign in to submit feedback',
-                        })
+                      ? noAccess
+                        ? intl.formatMessage({
+                            id: 'portal.feedback.header.submitTooltipNoAccess',
+                            defaultMessage: "You don't have access to post on this board",
+                          })
+                        : intl.formatMessage({
+                            id: 'portal.feedback.header.submitTooltipSignIn',
+                            defaultMessage: 'Please sign in to submit feedback',
+                          })
                       : undefined
                   }
                   className="portal-submit-button bg-[var(--portal-button-background)] text-[var(--portal-button-foreground)] hover:bg-[var(--portal-button-background)]/90"

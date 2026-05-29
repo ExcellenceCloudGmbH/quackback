@@ -94,6 +94,7 @@ const WidgetPostRow = memo(
     showBoard,
     compact,
     canVote,
+    noAccessReason,
     ensureSessionThen,
     onAuthRequired,
     onSelect,
@@ -103,6 +104,8 @@ const WidgetPostRow = memo(
     showBoard?: boolean
     compact?: boolean
     canVote: boolean
+    /** Reason an identified viewer cannot vote on this row's board (authz). */
+    noAccessReason?: string
     ensureSessionThen: (callback: () => void | Promise<void>) => Promise<void>
     onAuthRequired?: () => void
     onSelect?: () => void
@@ -129,6 +132,7 @@ const WidgetPostRow = memo(
                   }
                 : undefined
             }
+            noAccessReason={!canVote ? noAccessReason : undefined}
             onAuthRequired={!canVote ? onAuthRequired : undefined}
           />
         </div>
@@ -164,7 +168,8 @@ const WidgetPostRow = memo(
     prev.statusMap === next.statusMap &&
     prev.showBoard === next.showBoard &&
     prev.compact === next.compact &&
-    prev.canVote === next.canVote
+    prev.canVote === next.canVote &&
+    prev.noAccessReason === next.noAccessReason
 )
 
 // ── Main component ──
@@ -229,6 +234,9 @@ export function WidgetHomeAnimated({
   // An anonymous visitor on a board that does not allow anonymous submission must
   // identify first; the form collects an email and escalates to a real user.
   const needsEmail = !isIdentified && !hmacRequired && !canPost
+  // An identified viewer denied by the selected board's submit tier (segments/
+  // team) is an authorization failure — surface it instead of "Posting as X".
+  const submitNoAccess = isIdentified && !!selectedBoardId && !canPost
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -324,6 +332,16 @@ export function WidgetHomeAnimated({
     [hmacRequired, onPostSelect]
   )
 
+  // An identified viewer denied by the board's vote tier (segments/team) is an
+  // authorization failure, not auth: the vote button shows this as a dimmed
+  // tooltip. An anonymous viewer is routed to sign in (onAuthRequired) instead.
+  const voteNoAccessReason = isIdentified
+    ? intl.formatMessage({
+        id: 'widget.vote.noAccess',
+        defaultMessage: "You don't have access to vote on this board",
+      })
+    : undefined
+
   useEffect(() => {
     if (similarDebounceRef.current) clearTimeout(similarDebounceRef.current)
     const q = title.trim()
@@ -418,9 +436,16 @@ export function WidgetHomeAnimated({
           return
         }
         // Identified actor who does not satisfy the board's submit tier
-        // (segments/team). The submit button is disabled, but an Enter-key
-        // submit can still reach here — stop rather than fall through and fire a
-        // createPost the server would reject.
+        // (segments/team) — authorization, not auth. The submit button is
+        // disabled, but an Enter-key submit can still reach here: surface the
+        // reason rather than fall through and fire a createPost the server
+        // would reject.
+        setError(
+          intl.formatMessage({
+            id: 'widget.home.form.noAccess',
+            defaultMessage: "You don't have access to post on this board",
+          })
+        )
         setIsSubmitting(false)
         return
       } else if (!isIdentified) {
@@ -649,6 +674,7 @@ export function WidgetHomeAnimated({
                                   compact
                                   canVote={rowCanVote(post.board?.id)}
                                   ensureSessionThen={ensureSessionThen}
+                                  noAccessReason={voteNoAccessReason}
                                   onAuthRequired={() => handleAuthRequired(post.id)}
                                   onSelect={() => onPostSelect?.(post.id)}
                                 />
@@ -700,7 +726,12 @@ export function WidgetHomeAnimated({
                     )}
                     <div className="flex items-center justify-between px-3 py-2">
                       <p className="text-[11px] text-muted-foreground truncate me-2">
-                        {user ? (
+                        {submitNoAccess ? (
+                          <FormattedMessage
+                            id="widget.home.posting.noAccess"
+                            defaultMessage="You don't have access to post on this board"
+                          />
+                        ) : user ? (
                           <FormattedMessage
                             id="widget.home.posting.postingAs"
                             defaultMessage="Posting as {name}"
@@ -917,6 +948,7 @@ export function WidgetHomeAnimated({
                           showBoard
                           canVote={rowCanVote(post.board?.id)}
                           ensureSessionThen={ensureSessionThen}
+                          noAccessReason={voteNoAccessReason}
                           onAuthRequired={() => handleAuthRequired(post.id)}
                           onSelect={() => onPostSelect?.(post.id)}
                         />
@@ -974,6 +1006,7 @@ export function WidgetHomeAnimated({
                         showBoard
                         canVote={rowCanVote(post.board?.id)}
                         ensureSessionThen={ensureSessionThen}
+                        noAccessReason={voteNoAccessReason}
                         onAuthRequired={() => handleAuthRequired(post.id)}
                         onSelect={() => onPostSelect?.(post.id)}
                       />

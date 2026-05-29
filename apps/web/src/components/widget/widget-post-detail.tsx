@@ -112,6 +112,17 @@ export function WidgetPostDetail({ postId, statuses }: WidgetPostDetailProps) {
   // per-action tier requires sign-in (#191). Undefined (legacy/cached) → false.
   const canVote = post?.canVote ?? false
   const canComment = post?.canComment ?? false
+  // Identified viewer denied by the board tier (segments/team) = authorization,
+  // not auth. Vote shows a dimmed tooltip; the comment form is replaced with the
+  // reason. An anonymous viewer keeps the sign-in / email-identify path.
+  const voteNoAccessReason =
+    isIdentified && !canVote
+      ? intl.formatMessage({
+          id: 'widget.vote.noAccess',
+          defaultMessage: "You don't have access to vote on this board",
+        })
+      : undefined
+  const commentNoAccess = isIdentified && !canComment
 
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -179,6 +190,7 @@ export function WidgetPostDetail({ postId, statuses }: WidgetPostDetailProps) {
                     }
                   : undefined
               }
+              noAccessReason={voteNoAccessReason}
               onAuthRequired={!canVote ? handleViewOnPortal : undefined}
             />
           </div>
@@ -259,8 +271,20 @@ export function WidgetPostDetail({ postId, statuses }: WidgetPostDetailProps) {
             </span>
           </div>
 
-          {/* Root comment form — unified: textarea + email (when anonymous) + single Post */}
-          {!post.isCommentsLocked && !hmacRequired && (
+          {/* Identified viewer denied by the board's comment tier (segments/team)
+              — authorization, not auth: state it, no form or login prompt. */}
+          {!post.isCommentsLocked && commentNoAccess && (
+            <p className="text-xs text-muted-foreground/70 mb-3">
+              <FormattedMessage
+                id="widget.postDetail.commentNoAccess"
+                defaultMessage="You don't have access to comment on this board"
+              />
+            </p>
+          )}
+
+          {/* Root comment form — unified: textarea + email (when anonymous) + single Post.
+              For an anonymous viewer the email field escalates them to a real user. */}
+          {!post.isCommentsLocked && !commentNoAccess && !hmacRequired && (
             <WidgetCommentForm
               isIdentified={isIdentified}
               user={user}
@@ -269,7 +293,7 @@ export function WidgetPostDetail({ postId, statuses }: WidgetPostDetailProps) {
             />
           )}
 
-          {!post.isCommentsLocked && hmacRequired && !canComment && (
+          {!post.isCommentsLocked && !commentNoAccess && hmacRequired && !canComment && (
             <button
               type="button"
               onClick={handleViewOnPortal}

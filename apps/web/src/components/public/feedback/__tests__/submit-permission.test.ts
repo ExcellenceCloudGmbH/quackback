@@ -41,10 +41,28 @@ describe('resolveSubmitState', () => {
     expect(resolveSubmitState(false, null)).toEqual({
       canSubmit: false,
       canPostAnonymously: false,
+      noAccess: false,
     })
     expect(resolveSubmitState(false, anonSession)).toEqual({
       canSubmit: false,
       canPostAnonymously: false,
+      noAccess: false,
     })
+  })
+
+  // noAccess distinguishes authz (signed-in but denied) from authn (sign in to
+  // post). It drives the "You don't have access to post on this board" message.
+  it('flags noAccess when a signed-in real user is denied (authorization, not auth)', () => {
+    expect(resolveSubmitState(false, userSession).noAccess).toBe(true)
+  })
+
+  it('does not flag noAccess for a denied anonymous/no-session viewer (that is sign-in)', () => {
+    expect(resolveSubmitState(false, null).noAccess).toBe(false)
+    expect(resolveSubmitState(false, anonSession).noAccess).toBe(false)
+  })
+
+  it('does not flag noAccess when submission is allowed', () => {
+    expect(resolveSubmitState(true, userSession).noAccess).toBe(false)
+    expect(resolveSubmitState(true, null).noAccess).toBe(false)
   })
 })

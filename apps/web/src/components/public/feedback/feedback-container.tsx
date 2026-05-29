@@ -80,6 +80,11 @@ export function FeedbackContainer({
   const effectiveUser = session?.user
     ? { name: session.user.name, email: session.user.email }
     : user
+  // A real (non-anonymous) signed-in user. Drives the vote button's authz vs
+  // authn copy: a denied real user sees "no access"; a denied anonymous / no-
+  // session viewer gets the sign-in path. Anonymous sessions also populate
+  // session.user, so !!effectiveUser is not the right signal here.
+  const isRealUser = !!session?.user && session.user.principalType !== 'anonymous'
 
   // Current filter values (URL state takes precedence over props)
   const activeBoard = filters.board ?? currentBoard
@@ -295,7 +300,7 @@ export function FeedbackContainer({
                         createdAt={post.createdAt}
                         boardSlug={post.board?.slug || ''}
                         tags={post.tags}
-                        isAuthenticated={!!effectiveUser}
+                        isAuthenticated={isRealUser}
                         canVote={
                           post.board ? (boardPermissions?.[post.board.id]?.canVote ?? false) : false
                         }

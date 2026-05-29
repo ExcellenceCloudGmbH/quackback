@@ -17,6 +17,23 @@ describe('resolveCommentingState', () => {
     expect(state.allowCommenting).toBe(false)
   })
 
+  // noAccess distinguishes authz (signed-in but denied) from authn (sign in to
+  // comment). It drives the "You don't have access to comment on this board"
+  // message instead of the sign-in prompt.
+  it('flags noAccess when a signed-in real user is denied (authorization, not auth)', () => {
+    expect(resolveCommentingState(false, userSession).noAccess).toBe(true)
+  })
+
+  it('does not flag noAccess for a denied anonymous/no-session viewer (that is sign-in)', () => {
+    expect(resolveCommentingState(false, null).noAccess).toBe(false)
+    expect(resolveCommentingState(false, anonSession).noAccess).toBe(false)
+  })
+
+  it('does not flag noAccess when commenting is allowed', () => {
+    expect(resolveCommentingState(true, userSession).noAccess).toBe(false)
+    expect(resolveCommentingState(true, null).noAccess).toBe(false)
+  })
+
   it('hides the form for an anonymous visitor when the board requires sign-in', () => {
     // serverAllowCommenting=false means the board tier (or workspace switch)
     // already denied this viewer — the workspace flag must not re-open it.

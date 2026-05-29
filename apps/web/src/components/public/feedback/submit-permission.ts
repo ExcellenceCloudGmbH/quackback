@@ -22,6 +22,12 @@ export interface SubmitState {
    * anonymous-session creation on submit.
    */
   canPostAnonymously: boolean
+  /**
+   * Whether a signed-in (real-user) viewer is denied submission by the board's
+   * tier — an authorization failure, not authentication. Drives the "You don't
+   * have access to post on this board" message instead of a sign-in prompt.
+   */
+  noAccess: boolean
 }
 
 export function resolveSubmitState(
@@ -33,5 +39,6 @@ export function resolveSubmitState(
   return {
     canSubmit: boardCanSubmit,
     canPostAnonymously: boardCanSubmit && !isRealUser,
+    noAccess: !boardCanSubmit && isRealUser,
   }
 }

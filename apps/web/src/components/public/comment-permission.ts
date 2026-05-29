@@ -24,6 +24,12 @@ export interface CommentingState {
    * set for an existing anonymous session — `ensureAnonSession` is idempotent.
    */
   needsAnonSession: boolean
+  /**
+   * Whether a signed-in (real-user) viewer is denied commenting by the board's
+   * tier — an authorization failure, not authentication. Drives the "You don't
+   * have access to comment on this board" message instead of a sign-in prompt.
+   */
+  noAccess: boolean
 }
 
 export function resolveCommentingState(
@@ -38,5 +44,6 @@ export function resolveCommentingState(
     allowCommenting: serverAllowCommenting,
     surfaceSessionUser: !!sessionUser && (isRealUser || serverAllowCommenting),
     needsAnonSession: serverAllowCommenting && !isRealUser,
+    noAccess: !serverAllowCommenting && isRealUser,
   }
 }

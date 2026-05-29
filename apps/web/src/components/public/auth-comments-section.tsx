@@ -97,10 +97,8 @@ export function AuthCommentsSection({
   // this viewer. `needsAnonSession` drives the lazy-session path below (no real
   // user session yet, but commenting is allowed — e.g. an anonymous visitor on
   // an anonymous-comment board).
-  const { allowCommenting, surfaceSessionUser, needsAnonSession } = resolveCommentingState(
-    serverAllowCommenting,
-    session
-  )
+  const { allowCommenting, surfaceSessionUser, needsAnonSession, noAccess } =
+    resolveCommentingState(serverAllowCommenting, session)
   const user = surfaceSessionUser ? (session?.user ?? null) : null
 
   // User info from session, falling back to server-provided user
@@ -147,6 +145,7 @@ export function AuthCommentsSection({
       postId={postId}
       comments={comments}
       allowCommenting={allowCommenting}
+      noAccess={noAccess}
       user={userData}
       teamBadgeLogoUrl={settings?.brandingData?.logoUrl ?? undefined}
       teamBadgeLabel={settings?.brandingData?.name ?? settings?.name ?? undefined}
