@@ -10,7 +10,8 @@ import {
   type TagId,
   type UserId,
 } from '@quackback/ids'
-import type { BoardSettings } from '@/lib/server/db'
+import type { BoardSettings, BoardAccess } from '@/lib/server/db'
+import type { Actor } from '@/lib/server/policy'
 import {
   getOptionalAuth,
   hasAuthCredentials,
@@ -63,6 +64,27 @@ const fetchPortalDataSchema = z.object({
     .optional(),
   responded: z.enum(['responded', 'unresponded']).optional(),
 })
+
+/**
+ * Build the per-board submit/vote capability map for `actor` from already-fetched
+ * boards. Shared by fetchPortalData (feed SSR) and fetchBoardCapabilitiesFn (the
+ * widget's Bearer refetch) so the shape + composition live in one place. The
+ * caller passes `allowAnonymous` (and the boards) so it can parallelize the
+ * settings read with its own queries.
+ */
+async function buildBoardPermissions(
+  actor: Actor,
+  boards: ReadonlyArray<{ id: string; access: BoardAccess }>,
+  allowAnonymous: boolean
+): Promise<Record<string, { canSubmit: boolean; canVote: boolean }>> {
+  const { boardCapabilitiesForActor } = await import('@/lib/server/policy')
+  const map: Record<string, { canSubmit: boolean; canVote: boolean }> = {}
+  for (const b of boards) {
+    const caps = boardCapabilitiesForActor(actor, b.access, allowAnonymous)
+    map[b.id] = { canSubmit: caps.canSubmit, canVote: caps.canVote }
+  }
+  return map
+}
 
 export const getPrincipalIdForUser = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ userId: z.string() }))
@@ -150,13 +172,9 @@ export const fetchPortalData = createServerFn({ method: 'GET' })
     // Keyed by board id: vote permission is per-board, so this one map also
     // covers infinite-scroll feed pages (every post belongs to one of these
     // boards). Computed in-memory from boardsRaw.access — no extra query.
-    const { boardCapabilitiesForActor } = await import('@/lib/server/policy')
     const { getPortalConfig } = await import('@/lib/server/domains/settings/settings.service')
     const allowAnonymous = (await getPortalConfig()).features.allowAnonymous ?? false
-    const boardPermissions: Record<string, { canSubmit: boolean; canVote: boolean }> = {}
-    for (const b of boardsRaw) {
-      boardPermissions[b.id] = boardCapabilitiesForActor(actor, b.access, allowAnonymous)
-    }
+    const boardPermissions = await buildBoardPermissions(actor, boardsRaw, allowAnonymous)
 
     // Return ALL voted post IDs (not just page 1) so infinite scroll pages show correct vote state
     const votedPostIds = Array.from(allVotedPosts)
@@ -667,3 +685,39 @@ export const getCommentsSectionDataFn = createServerFn({ method: 'GET' })
       throw error
     }
   })
+
+/**
+ * Per-board submit/vote capability map for the request actor.
+ *
+ * Same shape and computation as fetchPortalData.boardPermissions, but split out
+ * so the widget can REFETCH it for the real (Bearer) identity. The widget feed
+ * is seeded at SSR from the anonymous baseline (no Bearer at loader time); after
+ * the visitor identifies it re-queries this with its Bearer token (keyed on
+ * sessionVersion), so the feed gates votes/submission per the actual actor
+ * instead of OR-ing in a blanket `isIdentified` — which would advertise CTAs on
+ * segments/team boards the actor cannot act on (Codex #191 follow-up).
+ *
+ * Declared at the end of the module on purpose: the gate test maps portal
+ * handlers by declaration order, so new server fns append here to avoid
+ * shifting existing indices.
+ */
+export const fetchBoardCapabilitiesFn = createServerFn({ method: 'GET' }).handler(async () => {
+  console.log(`[fn:portal] fetchBoardCapabilitiesFn`)
+  const empty: Record<string, { canSubmit: boolean; canVote: boolean }> = {}
+
+  // Same portal-visibility + per-board gates as fetchPortalData.
+  const access = await resolvePortalAccessForRequest()
+  if (!access.granted) return empty
+
+  const auth = await getOptionalAuth()
+  const actor = await policyActorFromAuth(auth)
+
+  // Settings read overlaps the board query — only one DB round-trip is on the
+  // critical path for this refetch-on-identify endpoint.
+  const [boards, config] = await Promise.all([
+    listPublicBoardsWithStats(actor),
+    import('@/lib/server/domains/settings/settings.service').then((m) => m.getPortalConfig()),
+  ])
+  const allowAnonymous = config.features.allowAnonymous ?? false
+  return buildBoardPermissions(actor, boards, allowAnonymous)
+})

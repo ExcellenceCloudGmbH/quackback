@@ -214,20 +214,21 @@ export function WidgetHomeAnimated({
     setContentHtml(html)
   }, [])
 
-  // Per-board capability (server-computed for the request actor; for a not-yet-
-  // identified visitor it's the anonymous baseline). Submit follows the selected
-  // board; each feed card's vote follows its own board — replacing the old
-  // workspace-wide flag that advertised actions the board's tier rejects (#191).
-  // Identified users (incl. those who email-identify in the form below, becoming
-  // a real user) pass via isIdentified and are enforced server-side.
+  // Per-board capability, server-computed for the request actor. The widget
+  // route refetches boardPermissions with the Bearer identity (keyed on
+  // sessionVersion), so for an identified viewer this already reflects the real
+  // actor and for an anonymous one it's the anonymous baseline — no client-side
+  // isIdentified OR, which would advertise CTAs on segments/team boards the
+  // actor cannot act on (#191). Submit follows the selected board; each feed
+  // card's vote follows its own board. Unknown board → deny.
   const rowCanVote = useCallback(
-    (boardId: string | undefined) =>
-      isIdentified || (!!boardId && (boardPermissions?.[boardId]?.canVote ?? false)),
-    [isIdentified, boardPermissions]
+    (boardId: string | undefined) => !!boardId && (boardPermissions?.[boardId]?.canVote ?? false),
+    [boardPermissions]
   )
-  const selectedBoardAllowsAnonSubmit = boardPermissions?.[selectedBoardId]?.canSubmit ?? false
-  const canPost = isIdentified || selectedBoardAllowsAnonSubmit
-  const needsEmail = !isIdentified && !hmacRequired && !selectedBoardAllowsAnonSubmit
+  const canPost = boardPermissions?.[selectedBoardId]?.canSubmit ?? false
+  // An anonymous visitor on a board that does not allow anonymous submission must
+  // identify first; the form collects an email and escalates to a real user.
+  const needsEmail = !isIdentified && !hmacRequired && !canPost
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -416,6 +417,12 @@ export function WidgetHomeAnimated({
           setIsSubmitting(false)
           return
         }
+        // Identified actor who does not satisfy the board's submit tier
+        // (segments/team). The submit button is disabled, but an Enter-key
+        // submit can still reach here — stop rather than fall through and fire a
+        // createPost the server would reject.
+        setIsSubmitting(false)
+        return
       } else if (!isIdentified) {
         const ok = await ensureSession()
         if (!ok) {

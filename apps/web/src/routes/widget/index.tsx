@@ -1,4 +1,5 @@
 import { createFileRoute } from '@tanstack/react-router'
+import { useQuery, keepPreviousData } from '@tanstack/react-query'
 import { z } from 'zod'
 import { useState, useCallback, useEffect, useMemo } from 'react'
 import { CheckCircleIcon } from '@heroicons/react/24/solid'
@@ -15,6 +16,8 @@ import { WidgetHelpCategory } from '@/components/widget/widget-help-category'
 import { WidgetHelpDetail } from '@/components/widget/widget-help-detail'
 import { useWidgetAuth } from '@/components/widget/widget-auth-provider'
 import { portalQueries } from '@/lib/client/queries/portal'
+import { fetchBoardCapabilitiesFn } from '@/lib/server/functions/portal'
+import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 import { widgetQueryKeys, INITIAL_SESSION_VERSION } from '@/lib/client/hooks/use-widget-vote'
 
 const searchSchema = z.object({
@@ -129,7 +132,27 @@ function WidgetPage() {
     portalAccess,
     portalOrigin,
   } = Route.useLoaderData()
-  const { isIdentified, ensureSession } = useWidgetAuth()
+  const { ensureSession, sessionVersion } = useWidgetAuth()
+
+  // The loader seeds boardPermissions for the anonymous SSR baseline (no Bearer
+  // at loader time). Refetch it for the REAL actor with the widget's Bearer
+  // token, re-keyed on sessionVersion so it updates after identify — then the
+  // feed gates votes/submission per the actual actor instead of OR-ing in a
+  // blanket isIdentified (which advertised CTAs on segments/team boards the
+  // actor cannot act on). Seeded with the loader map so SSR + first paint match.
+  const { data: livePermissions } = useQuery({
+    queryKey: ['widget', 'boardPermissions', sessionVersion],
+    queryFn: () => fetchBoardCapabilitiesFn({ headers: getWidgetAuthHeaders() }),
+    // Seed ONLY the initial (anonymous, SSR) key from the loader. initialData
+    // stamps an entry fresh as of now, so seeding it on every key would also
+    // mark the post-identify key fresh and suppress the Bearer refetch within
+    // staleTime — leaving an identified viewer stuck on the anonymous baseline.
+    // After identify the key changes, carries no initialData, and refetches with
+    // the Bearer while keepPreviousData shows the prior map meanwhile.
+    initialData: sessionVersion === INITIAL_SESSION_VERSION ? boardPermissions : undefined,
+    placeholderData: keepPreviousData,
+    staleTime: 30 * 1000,
+  })
 
   const initialTab: WidgetTab = tabs.feedback ? 'feedback' : tabs.changelog ? 'changelog' : 'help'
   const [view, setView] = useState<WidgetView>(
@@ -309,7 +332,7 @@ function WidgetPage() {
           initialHasMore={postsHasMore}
           statuses={statuses}
           boards={boards}
-          boardPermissions={boardPermissions}
+          boardPermissions={livePermissions}
           defaultBoard={defaultBoard}
           onPostSelect={handlePostSelect}
           onPostCreated={handlePostCreated}
@@ -329,9 +352,9 @@ function WidgetPage() {
                 (s: { id: string; name: string; color: string }) => s.id === successPost.statusId
               ) ?? null)
             : null
-          // Vote gate follows the created post's board, not a workspace flag.
-          const canVote =
-            isIdentified || (boardPermissions?.[successPost.board.id]?.canVote ?? false)
+          // Vote gate follows the created post's board for the real actor
+          // (livePermissions is refetched with the widget's Bearer identity).
+          const canVote = livePermissions?.[successPost.board.id]?.canVote ?? false
 
           return (
             <div className="flex flex-col h-full">

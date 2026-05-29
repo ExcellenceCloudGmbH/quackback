@@ -258,6 +258,8 @@ const FETCH_PUBLIC_STATUSES = 6
 const FETCH_PUBLIC_TAGS = 7
 const FETCH_PUBLIC_ROADMAPS = 11
 const FETCH_PUBLIC_ROADMAP_POSTS = 12
+// Declared last in portal.ts (appended to preserve the indices above).
+const FETCH_BOARD_CAPABILITIES = 14
 
 // Changelog handler indices
 const CHANGELOG = '@/lib/server/functions/changelog' as const
@@ -308,6 +310,49 @@ describe('portal.ts fetchPortalData — portal-visibility gate', () => {
     const h = await loadModule(PORTAL)
     await h[FETCH_PORTAL_DATA]({ data: { sort: 'top' } })
     expect(mockListPublicBoardsWithStats).toHaveBeenCalledTimes(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// portal.ts — fetchBoardCapabilitiesFn
+// ---------------------------------------------------------------------------
+
+describe('portal.ts fetchBoardCapabilitiesFn — per-board capability map', () => {
+  const anonAccess = {
+    view: 'anonymous',
+    vote: 'anonymous',
+    comment: 'anonymous',
+    submit: 'anonymous',
+    segments: { view: [], vote: [], comment: [], submit: [] },
+    moderation: { anonPosts: 'inherit', signedPosts: 'inherit', comments: 'inherit' },
+  }
+  const authAccess = { ...anonAccess, vote: 'authenticated', submit: 'authenticated' }
+
+  it('returns an empty map when the private portal blocks the caller', async () => {
+    mockResolvePortalAccess.mockResolvedValue({ granted: false, reason: 'unauthorized' })
+    const h = await loadModule(PORTAL)
+    const result = await h[FETCH_BOARD_CAPABILITIES]({ data: {} })
+    expect(result).toEqual({})
+    expect(mockListPublicBoardsWithStats).not.toHaveBeenCalled()
+  })
+
+  it('maps each visible board to its submit/vote capability for the actor', async () => {
+    mockResolvePortalAccess.mockResolvedValue({ granted: true, reason: 'public' })
+    mockListPublicBoardsWithStats.mockResolvedValue([
+      { id: 'board_pub', access: anonAccess },
+      { id: 'board_auth', access: authAccess },
+    ])
+    const h = await loadModule(PORTAL)
+    const result = (await h[FETCH_BOARD_CAPABILITIES]({ data: {} })) as Record<
+      string,
+      { canSubmit: boolean; canVote: boolean }
+    >
+    // Anonymous actor (mocked) + workspace allowAnonymous=true: the all-anonymous
+    // board is actionable, the sign-in-required board is not.
+    expect(result).toEqual({
+      board_pub: { canSubmit: true, canVote: true },
+      board_auth: { canSubmit: false, canVote: false },
+    })
   })
 })
 
