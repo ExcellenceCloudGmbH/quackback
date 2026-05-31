@@ -175,6 +175,23 @@ export const markChatReadFn = createServerFn({ method: 'POST' })
     }
   })
 
+/** Broadcast that the caller is typing (ephemeral; client-throttled). */
+export const sendChatTypingFn = createServerFn({ method: 'POST' })
+  .inputValidator(conversationIdSchema)
+  .handler(async ({ data }) => {
+    try {
+      const ctx = await requireAuth({ roles: ['admin', 'member', 'user'] })
+      const actor = await policyActorFromAuth(ctx)
+      const side: ChatSenderType = isTeamMember(ctx.principal.role) ? 'agent' : 'visitor'
+      const { signalTyping } = await import('@/lib/server/domains/chat/chat.service')
+      await signalTyping(data.conversationId as ConversationId, side, actor)
+      return { ok: true }
+    } catch (error) {
+      console.error('[fn:chat] sendChatTypingFn failed:', error)
+      throw error
+    }
+  })
+
 /** Mint a short-lived token authorizing this principal's SSE stream. */
 export const mintChatStreamTokenFn = createServerFn({ method: 'GET' }).handler(async () => {
   try {

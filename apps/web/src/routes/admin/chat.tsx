@@ -16,9 +16,12 @@ import {
   setConversationStatusFn,
   assignConversationFn,
   markChatReadFn,
+  sendChatTypingFn,
 } from '@/lib/server/functions/chat'
 import type { ChatMessageDTO, ConversationDTO } from '@/lib/shared/chat/types'
 import { useChatStream } from '@/lib/client/hooks/use-chat-stream'
+import { useChatTyping } from '@/lib/client/hooks/use-chat-typing'
+import { TypingDots } from '@/components/shared/typing-dots'
 import { Avatar } from '@/components/ui/avatar'
 import { Spinner } from '@/components/shared/spinner'
 import { EmptyState } from '@/components/shared/empty-state'
@@ -65,15 +68,20 @@ function ChatInboxPage() {
     void queryClient.invalidateQueries({ queryKey: ['admin', 'chat', 'conversations'] })
   }, [queryClient])
 
+  // Track whether the visitor of the selected conversation is currently typing.
+  const { remoteTyping: visitorTyping, onRemoteTyping, clearRemoteTyping } = useChatTyping(() => {})
+
   useChatStream({
     enabled: true,
     buildUrl: async () => '/api/chat/stream?scope=inbox',
     onReconnect: refreshInbox,
     onEvent: (evt) => {
-      // 'read' receipts don't change the agent-side inbox ordering or counts,
-      // so only refetch the list on message/conversation events.
-      if (evt.kind !== 'read') refreshInbox()
+      // 'read' / 'typing' don't change inbox ordering or counts, so only refetch
+      // the list on message/conversation events.
+      if (evt.kind !== 'read' && evt.kind !== 'typing') refreshInbox()
+
       if (evt.kind === 'message' && evt.conversationId === selectedId) {
+        if (evt.message.senderType === 'visitor') clearRemoteTyping()
         queryClient.setQueryData(
           ['admin', 'chat', 'thread', selectedId],
           (prev: { conversation: ConversationDTO; messages: ChatMessageDTO[] } | undefined) => {
@@ -81,6 +89,25 @@ function ChatInboxPage() {
             if (prev.messages.some((m) => m.id === evt.message.id)) return prev
             return { ...prev, messages: [...prev.messages, evt.message] }
           }
+        )
+      } else if (
+        evt.kind === 'typing' &&
+        evt.conversationId === selectedId &&
+        evt.side === 'visitor'
+      ) {
+        onRemoteTyping()
+      } else if (
+        evt.kind === 'read' &&
+        evt.conversationId === selectedId &&
+        evt.side === 'visitor'
+      ) {
+        // Advance the visitor read watermark so the agent's "Seen" updates live.
+        queryClient.setQueryData(
+          ['admin', 'chat', 'thread', selectedId],
+          (prev: { conversation: ConversationDTO; messages: ChatMessageDTO[] } | undefined) =>
+            prev
+              ? { ...prev, conversation: { ...prev.conversation, visitorLastReadAt: evt.at } }
+              : prev
         )
       }
     },
@@ -166,7 +193,12 @@ function ChatInboxPage() {
       {/* Thread */}
       <div className="flex-1 min-w-0">
         {selectedId ? (
-          <ChatThread key={selectedId} conversationId={selectedId} onChanged={refreshInbox} />
+          <ChatThread
+            key={selectedId}
+            conversationId={selectedId}
+            onChanged={refreshInbox}
+            isVisitorTyping={visitorTyping}
+          />
         ) : (
           <div className="flex h-full items-center justify-center">
             <EmptyState
@@ -184,14 +216,21 @@ function ChatInboxPage() {
 function ChatThread({
   conversationId,
   onChanged,
+  isVisitorTyping,
 }: {
   conversationId: ConversationId
   onChanged: () => void
+  isVisitorTyping: boolean
 }) {
   const queryClient = useQueryClient()
   const threadKey = ['admin', 'chat', 'thread', conversationId] as const
   const [reply, setReply] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  const sendTyping = useCallback(() => {
+    void sendChatTypingFn({ data: { conversationId } }).catch(() => {})
+  }, [conversationId])
+  const { onLocalInput } = useChatTyping(sendTyping)
 
   const { data, isLoading } = useQuery({
     queryKey: threadKey,
@@ -201,10 +240,19 @@ function ChatThread({
   const messages = data?.messages ?? []
   const conversation = data?.conversation
 
+  // The agent's latest message is "Seen" once the visitor read watermark
+  // reaches it.
+  const lastAgentMessage = [...messages].reverse().find((m) => m.senderType === 'agent')
+  const lastAgentSeen =
+    !!conversation?.visitorLastReadAt &&
+    !!lastAgentMessage &&
+    new Date(conversation.visitorLastReadAt).getTime() >=
+      new Date(lastAgentMessage.createdAt).getTime()
+
   useEffect(() => {
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
-  }, [messages.length, isLoading])
+  }, [messages.length, isLoading, isVisitorTyping])
 
   // Clear the agent-side unread badge when a thread is open and new visitor
   // messages arrive — opening + reading should mark read, not only replying.
@@ -323,6 +371,17 @@ function ChatThread({
           {messages.length === 0 && (
             <p className="py-8 text-center text-sm text-muted-foreground">No messages yet</p>
           )}
+
+          {lastAgentSeen && !isVisitorTyping && (
+            <p className="-mt-1.5 pe-1 text-end text-[10px] text-muted-foreground/50">Seen</p>
+          )}
+
+          {isVisitorTyping && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground/70">
+              <TypingDots />
+              <span>{conversation?.visitor.displayName ?? 'Visitor'} is typing…</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -331,7 +390,10 @@ function ChatThread({
         <div className="flex items-end gap-2 rounded-lg border border-border bg-background px-3 py-2 focus-within:ring-2 focus-within:ring-primary/20">
           <textarea
             value={reply}
-            onChange={(e) => setReply(e.target.value)}
+            onChange={(e) => {
+              setReply(e.target.value)
+              onLocalInput()
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()

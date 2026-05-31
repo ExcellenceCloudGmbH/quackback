@@ -274,6 +274,23 @@ export async function assignConversation(
   return updated
 }
 
+/** Broadcast an ephemeral typing signal (never persisted). */
+export async function signalTyping(
+  conversationId: ConversationId,
+  side: ChatSenderType,
+  actor: Actor
+): Promise<void> {
+  // Same access gate as reading the thread — prevents spoofing typing into a
+  // conversation the actor can't see.
+  await assertConversationViewable(conversationId, actor)
+  publishChatEvent(conversationId, {
+    kind: 'typing',
+    conversationId,
+    side,
+    at: new Date().toISOString(),
+  })
+}
+
 /** Mark a conversation read up to now for one side. */
 export async function markConversationRead(
   conversationId: ConversationId,

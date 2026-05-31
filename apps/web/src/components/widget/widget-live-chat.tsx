@@ -4,10 +4,12 @@ import { PaperAirplaneIcon } from '@heroicons/react/24/solid'
 import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
 import type { ConversationId } from '@quackback/ids'
 import { Avatar } from '@/components/ui/avatar'
+import { TypingDots } from '@/components/shared/typing-dots'
 import { cn } from '@/lib/shared/utils'
 import { useWidgetAuth } from './widget-auth-provider'
 import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 import { useChatStream } from '@/lib/client/hooks/use-chat-stream'
+import { useChatTyping } from '@/lib/client/hooks/use-chat-typing'
 import type { ChatMessageDTO } from '@/lib/shared/chat/types'
 import {
   getMyChatFn,
@@ -15,6 +17,7 @@ import {
   listChatMessagesFn,
   markChatReadFn,
   mintChatStreamTokenFn,
+  sendChatTypingFn,
 } from '@/lib/server/functions/chat'
 
 function formatTime(iso: string): string {
@@ -32,6 +35,7 @@ export function WidgetLiveChat() {
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null)
   const [teamName, setTeamName] = useState<string | null>(null)
   const [agentsOnline, setAgentsOnline] = useState(false)
+  const [agentReadAt, setAgentReadAt] = useState<string | null>(null)
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
 
@@ -40,6 +44,16 @@ export function WidgetLiveChat() {
   const appendMessage = useCallback((msg: ChatMessageDTO) => {
     setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]))
   }, [])
+
+  const sendTyping = useCallback(() => {
+    if (!conversationId) return
+    void sendChatTypingFn({
+      data: { conversationId },
+      headers: getWidgetAuthHeaders(),
+    }).catch(() => {})
+  }, [conversationId])
+  const { remoteTyping, onLocalInput, onRemoteTyping, clearRemoteTyping } =
+    useChatTyping(sendTyping)
 
   // Initial load — resumes an existing conversation for the current principal
   // (works without forcing a session: getMyChat returns just the greeting when
@@ -56,6 +70,7 @@ export function WidgetLiveChat() {
         setTeamName(res.teamName)
         setAgentsOnline(res.agentsOnline)
         setConversationId((res.conversation?.id as ConversationId | undefined) ?? null)
+        setAgentReadAt(res.conversation?.agentLastReadAt ?? null)
         setMessages(res.messages)
       } catch {
         /* leave greeting-only state */
@@ -98,10 +113,25 @@ export function WidgetLiveChat() {
       }
     },
     onEvent: (evt) => {
-      if (evt.kind === 'message') appendMessage(evt.message)
+      if (evt.kind === 'message') {
+        appendMessage(evt.message)
+        if (evt.message.senderType === 'agent') clearRemoteTyping()
+      } else if (evt.kind === 'typing' && evt.side === 'agent') {
+        onRemoteTyping()
+      } else if (evt.kind === 'read' && evt.side === 'agent') {
+        setAgentReadAt(evt.at)
+      }
     },
     onReconnect: () => void refreshMessages(),
   })
+
+  // The newest visitor message is "Seen" once the agent's read watermark
+  // reaches it.
+  const lastVisitorMessage = [...messages].reverse().find((m) => m.senderType === 'visitor')
+  const lastVisitorSeen =
+    !!agentReadAt &&
+    !!lastVisitorMessage &&
+    new Date(agentReadAt).getTime() >= new Date(lastVisitorMessage.createdAt).getTime()
 
   // Auto-scroll to the newest message.
   useEffect(() => {
@@ -209,6 +239,27 @@ export function WidgetLiveChat() {
               </p>
             </div>
           )}
+
+          {/* "Seen" on the visitor's latest message once the agent has read it. */}
+          {lastVisitorSeen && !remoteTyping && (
+            <p className="text-end text-[10px] text-muted-foreground/50 -mt-1.5 pe-1">
+              <FormattedMessage id="widget.chat.seen" defaultMessage="Seen" />
+            </p>
+          )}
+
+          {/* Agent typing indicator. */}
+          {remoteTyping && (
+            <div className="flex items-center gap-1.5 px-1 text-xs text-muted-foreground/70">
+              <TypingDots />
+              <span>
+                <FormattedMessage
+                  id="widget.chat.typing"
+                  defaultMessage="{name} is typing…"
+                  values={{ name: teamName ?? 'Support' }}
+                />
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -224,7 +275,10 @@ export function WidgetLiveChat() {
         <div className="flex items-end gap-2 rounded-lg border border-border bg-background px-2.5 py-1.5 focus-within:ring-2 focus-within:ring-primary/20">
           <textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value)
+              onLocalInput()
+            }}
             onKeyDown={onKeyDown}
             rows={1}
             placeholder={intl.formatMessage({

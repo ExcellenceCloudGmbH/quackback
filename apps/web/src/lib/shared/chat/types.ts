@@ -37,6 +37,9 @@ export interface ConversationDTO {
   assignedAgent: ChatAuthorDTO | null
   /** Unread count for the side that requested it (0 when fully read). */
   unreadCount: number
+  /** Read-receipt watermarks (ISO) used to render a "Seen" state. */
+  visitorLastReadAt: string | null
+  agentLastReadAt: string | null
 }
 
 /**
@@ -49,6 +52,13 @@ export type ChatStreamEvent =
   | { kind: 'conversation'; conversation: ConversationDTO }
   | {
       kind: 'read'
+      conversationId: ConversationId
+      side: ChatSenderType
+      at: string
+    }
+  | {
+      // Ephemeral typing signal — never persisted, just fanned out over pub/sub.
+      kind: 'typing'
       conversationId: ConversationId
       side: ChatSenderType
       at: string

@@ -98,6 +98,8 @@ export function toConversationDTO(
     visitor,
     assignedAgent,
     unreadCount,
+    visitorLastReadAt: conversation.visitorLastReadAt?.toISOString() ?? null,
+    agentLastReadAt: conversation.agentLastReadAt?.toISOString() ?? null,
   }
 }
 
