@@ -55,6 +55,36 @@ describe('isWithinOfficeHours', () => {
     expect(isWithinOfficeHours(ny, new Date('2026-01-05T03:00:00Z'))).toBe(false)
   })
 
+  it('uses the LOCAL weekday, not the UTC weekday', () => {
+    // A discriminating instant: 2026-01-10T04:00:00Z is Saturday 04:00 in UTC
+    // but Friday 23:00 in New York. With Fri open until 24:00 it must read OPEN
+    // locally; a UTC-day implementation would see Saturday (closed) and a
+    // 17:00 close would also wrongly read closed — so this only passes with
+    // correct local-day + open-late evaluation.
+    const friLate: OfficeHoursConfig = {
+      enabled: true,
+      timezone: 'America/New_York',
+      days: [0, 1, 2, 3, 4, 5, 6].map((d) => ({
+        enabled: d === 5,
+        start: '09:00',
+        end: '00:00',
+      })),
+    }
+    expect(isWithinOfficeHours(friLate, new Date('2026-01-10T04:00:00Z'))).toBe(true)
+  })
+
+  it('treats an end of 00:00 as midnight / end-of-day, not closed-all-day', () => {
+    const tillMidnight: OfficeHoursConfig = {
+      enabled: true,
+      timezone: 'UTC',
+      days: [0, 1, 2, 3, 4, 5, 6].map(() => ({ enabled: true, start: '09:00', end: '00:00' })),
+    }
+    // 23:00 is inside 09:00–24:00.
+    expect(isWithinOfficeHours(tillMidnight, new Date('2026-01-05T23:00:00Z'))).toBe(true)
+    // 08:00 is still before opening.
+    expect(isWithinOfficeHours(tillMidnight, new Date('2026-01-05T08:00:00Z'))).toBe(false)
+  })
+
   it('fails closed on an unknown timezone', () => {
     expect(isWithinOfficeHours(weekdays9to5('Not/AZone'), new Date('2026-01-05T12:00:00Z'))).toBe(
       false

@@ -115,8 +115,8 @@ export function toConversationDTO(
 }
 
 /**
- * Batch-load tags for conversations, newest tags first within each. Joins the
- * shared `tags` table and skips soft-deleted tags. Returns a lookup map.
+ * Batch-load tags for conversations, ordered alphabetically by name within each.
+ * Joins the shared `tags` table and skips soft-deleted tags. Returns a lookup map.
  */
 export async function loadConversationTags(
   conversationIds: ReadonlyArray<ConversationId>

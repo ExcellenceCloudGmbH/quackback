@@ -250,6 +250,11 @@ export const Route = createFileRoute('/api/chat/stream')({
                         and(
                           eq(chatMessages.conversationId, backfillConversationId),
                           isNull(chatMessages.deletedAt),
+                          // Mirror listMessages: internal notes are agent-only.
+                          // Visitor (non-team) reconnect backfill must exclude
+                          // them — publish-time channel separation doesn't cover
+                          // this DB read path.
+                          isTeamMember(me.role) ? undefined : eq(chatMessages.isInternal, false),
                           or(
                             gt(chatMessages.createdAt, cursor.createdAt),
                             and(

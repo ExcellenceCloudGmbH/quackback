@@ -91,7 +91,11 @@ export async function notifyNoteMentions(opts: {
   authorName: string
 }): Promise<void> {
   try {
-    const tokens = [...opts.content.matchAll(/@([\w.+-]{2,})/g)].map((m) => m[1].toLowerCase())
+    // Require the @ to start a token (line start or whitespace) so a pasted
+    // email like "billing@jane.doe" doesn't read its domain as a mention.
+    const tokens = [...opts.content.matchAll(/(?:^|\s)@([\w.+-]{2,})/g)].map((m) =>
+      m[1].toLowerCase()
+    )
     if (tokens.length === 0) return
     const wanted = new Set(tokens)
 

@@ -34,6 +34,7 @@ const agentDto = {
   agentLastReadAt: null,
   csatRating: null,
   tags: [{ id: 'tag_1', name: 'billing', color: '#ff0000' }],
+  visitorEmail: 'visitor@example.com',
 } as unknown as ConversationDTO
 
 beforeEach(() => vi.clearAllMocks())
@@ -56,7 +57,7 @@ describe('publishAgentChatEvent', () => {
 })
 
 describe('publishConversationUpdate', () => {
-  it('sends the full DTO (with tags) to the inbox and a tag-stripped copy to the visitor', () => {
+  it('sends the full DTO to the inbox and strips ALL agent-only fields for the visitor', () => {
     publishConversationUpdate(conversationId, agentDto)
 
     const inbox = publish.mock.calls.find((c) => c[0] === CHAT_INBOX_CHANNEL)
@@ -64,8 +65,14 @@ describe('publishConversationUpdate', () => {
     expect(inbox).toBeDefined()
     expect(visitor).toBeDefined()
 
-    // Agents keep the tags; the visitor copy must have them stripped.
-    expect((inbox![1] as { conversation: ConversationDTO }).conversation.tags).toHaveLength(1)
-    expect((visitor![1] as { conversation: ConversationDTO }).conversation.tags).toEqual([])
+    // Agents keep agent-only fields...
+    const inboxConv = (inbox![1] as { conversation: ConversationDTO }).conversation
+    expect(inboxConv.tags).toHaveLength(1)
+    expect(inboxConv.visitorEmail).toBe('visitor@example.com')
+
+    // ...the visitor copy must have every agent-only field stripped.
+    const visitorConv = (visitor![1] as { conversation: ConversationDTO }).conversation
+    expect(visitorConv.tags).toEqual([])
+    expect(visitorConv.visitorEmail).toBeNull()
   })
 })

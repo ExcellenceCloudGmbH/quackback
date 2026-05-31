@@ -52,7 +52,10 @@ export function isWithinOfficeHours(config: OfficeHoursConfig, now: Date): boole
   const cur = hour * 60 + Number(parts.find((p) => p.type === 'minute')?.value)
 
   const start = parseHm(day.start)
-  const end = parseHm(day.end)
+  // An end of "00:00" means midnight / end-of-day (1440), not 0 — otherwise a
+  // natural "09:00–00:00" range would read as closed all day.
+  const endRaw = parseHm(day.end)
+  const end = endRaw === 0 ? 24 * 60 : endRaw
   // Reject malformed or non-positive ranges (no overnight support).
   if (Number.isNaN(start) || Number.isNaN(end) || end <= start) return false
 

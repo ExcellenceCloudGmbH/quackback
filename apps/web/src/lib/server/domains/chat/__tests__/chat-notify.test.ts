@@ -248,6 +248,33 @@ describe('notifyNoteMentions', () => {
     expect(createNotificationsBatch).not.toHaveBeenCalled()
   })
 
+  it('does not treat the domain of a pasted email as a mention', async () => {
+    teamRows = [{ principalId: 'principal_jane', email: 'jane.doe@example.com' }]
+
+    await notifyNoteMentions({
+      conversationId,
+      // The @ here belongs to an email address, not a mention.
+      content: 'forward this to billing@jane.doe please',
+      authorPrincipalId: 'principal_author' as PrincipalId,
+      authorName: 'Author',
+    })
+
+    expect(createNotificationsBatch).not.toHaveBeenCalled()
+  })
+
+  it('matches a real @mention at the start of the note', async () => {
+    teamRows = [{ principalId: 'principal_jane', email: 'jane.doe@example.com' }]
+
+    await notifyNoteMentions({
+      conversationId,
+      content: '@jane.doe can you take this?',
+      authorPrincipalId: 'principal_author' as PrincipalId,
+      authorName: 'Author',
+    })
+
+    expect(createNotificationsBatch).toHaveBeenCalledTimes(1)
+  })
+
   it('swallows a thrown dependency (does not reject)', async () => {
     teamRows = [{ principalId: 'principal_jane', email: 'jane.doe@example.com' }]
     createNotificationsBatch.mockRejectedValue(new Error('db down'))
