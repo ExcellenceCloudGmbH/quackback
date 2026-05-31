@@ -6,6 +6,7 @@ import type { BoardId, ConversationId, PostId } from '@quackback/ids'
 import { convertChatToPostFn } from '@/lib/server/functions/chat'
 import { findSimilarPostsFn } from '@/lib/server/functions/public-posts'
 import { adminQueries } from '@/lib/client/queries/admin'
+import { useDebouncedValue } from '@/lib/client/hooks/use-debounced-value'
 import {
   Dialog,
   DialogContent,
@@ -60,11 +61,7 @@ export function ConvertToPostDialog({
   }, [boards, boardId])
 
   // Debounced dedupe: find existing posts similar to the draft title.
-  const [debouncedTitle, setDebouncedTitle] = useState(defaultTitle)
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedTitle(title.trim()), 350)
-    return () => clearTimeout(t)
-  }, [title])
+  const debouncedTitle = useDebouncedValue(title.trim(), 350)
   const { data: similar = [] } = useQuery({
     queryKey: ['admin', 'chat', 'similar', debouncedTitle],
     queryFn: () => findSimilarPostsFn({ data: { title: debouncedTitle, limit: 4 } }),

@@ -21,7 +21,7 @@ interface UseChatStreamOptions {
   resetKey?: string | number
 }
 
-const NAMED_EVENTS = ['message', 'conversation', 'read', 'typing'] as const
+const NAMED_EVENTS = ['message', 'conversation', 'read', 'typing', 'message_deleted'] as const
 
 /**
  * Subscribe to the chat SSE stream with automatic, token-refreshing reconnect.

@@ -146,9 +146,13 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
     onEvent: (evt) => {
       if (evt.kind === 'message') {
         appendMessage(evt.message)
-        if (evt.message.senderType === 'agent') clearRemoteTyping()
+        if (evt.message.senderType === 'agent') {
+          clearRemoteTyping()
+          setAgentsOnline(true) // an agent is clearly here right now
+        }
       } else if (evt.kind === 'typing' && evt.side === 'agent') {
         onRemoteTyping()
+        setAgentsOnline(true)
       } else if (evt.kind === 'read' && evt.side === 'agent') {
         setAgentReadAt(evt.at)
       } else if (evt.kind === 'message_deleted') {
@@ -231,14 +235,16 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
 
   // Clear unread on the visitor side only when the newest message is from an
   // agent — skip the visitor's own outbound sends (avoids a write + 'read'
-  // broadcast on every send).
+  // broadcast on every send). Keyed on the last message id so benign array
+  // re-creation doesn't re-fire the write.
+  const lastMessageId = messages.at(-1)?.id
   useEffect(() => {
     if (!conversationId) return
     if (messages.at(-1)?.senderType !== 'agent') return
     void markChatReadFn({ data: { conversationId }, headers: getWidgetAuthHeaders() }).catch(
       () => {}
     )
-  }, [conversationId, messages])
+  }, [conversationId, lastMessageId])
 
   const send = useCallback(async () => {
     const text = input.trim()

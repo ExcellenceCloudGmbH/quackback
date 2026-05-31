@@ -32,6 +32,7 @@ import { useChatStream } from '@/lib/client/hooks/use-chat-stream'
 import { useChatTyping } from '@/lib/client/hooks/use-chat-typing'
 import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
 import { useChatComposerAttachments } from '@/lib/client/hooks/use-chat-composer-attachments'
+import { useDebouncedValue } from '@/lib/client/hooks/use-debounced-value'
 import { TypingDots } from '@/components/shared/typing-dots'
 import { ChatAttachmentList } from '@/components/shared/chat-attachments'
 import { ConvertToPostDialog } from '@/components/admin/chat/convert-to-post-dialog'
@@ -73,13 +74,8 @@ function ChatInboxPage() {
   const [status, setStatus] = useState<StatusFilter>('open')
   const [selectedId, setSelectedId] = useState<ConversationId | null>(null)
   const [searchInput, setSearchInput] = useState('')
-  const [search, setSearch] = useState('')
-
   // Debounce the search box so we don't refetch on every keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => setSearch(searchInput.trim()), 300)
-    return () => clearTimeout(t)
-  }, [searchInput])
+  const search = useDebouncedValue(searchInput.trim(), 300)
 
   const listKey = useMemo(
     () => ['admin', 'chat', 'conversations', status, search] as const,
@@ -312,13 +308,15 @@ function ChatThread({
 
   // Clear the agent-side unread badge when a thread is open and new visitor
   // messages arrive — opening + reading should mark read, not only replying.
+  // Keyed on the last message id so array re-creation doesn't re-fire the write.
+  const lastMessageId = messages.at(-1)?.id
   useEffect(() => {
     if (isLoading || messages.length === 0) return
     if (messages.at(-1)?.senderType !== 'visitor') return
     void markChatReadFn({ data: { conversationId } })
       .then(() => onChanged())
       .catch(() => {})
-  }, [conversationId, messages, isLoading, onChanged])
+  }, [conversationId, lastMessageId, isLoading, onChanged])
 
   const sendMutation = useMutation({
     mutationFn: (vars: { content: string; attachments?: ChatAttachment[] }) =>

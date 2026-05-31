@@ -222,7 +222,7 @@ export const Route = createFileRoute('/api/chat/stream')({
               await markPresent(me.principalId, isAgentStream)
               presenceMarked = true
 
-              unsubscribe = await subscribe(channels, (_channel, message) => {
+              const unsub = await subscribe(channels, (_channel, message) => {
                 // Each pub/sub payload is already a serialized ChatStreamEvent.
                 let id: string | undefined
                 let eventName = 'message'
@@ -238,6 +238,14 @@ export const Route = createFileRoute('/api/chat/stream')({
                 }
                 send(`${id ? `id: ${id}\n` : ''}event: ${eventName}\ndata: ${message}\n\n`)
               })
+              // If the client aborted while subscribe() was in flight, cleanup
+              // already ran (with unsubscribe still null) — release this orphan
+              // subscription immediately instead of leaking it.
+              if (closed) {
+                await unsub()
+                return
+              }
+              unsubscribe = unsub
 
               heartbeat = setInterval(() => {
                 send(`: ping\n\n`)
