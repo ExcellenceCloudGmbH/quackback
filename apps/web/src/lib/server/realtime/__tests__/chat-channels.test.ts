@@ -16,6 +16,8 @@ import {
   publishChatEvent,
   publishAgentChatEvent,
   publishConversationUpdate,
+  publishAgentTyping,
+  shouldSuppressOwnAgentTyping,
 } from '../chat-channels'
 
 const conversationId = 'conversation_1' as ConversationId
@@ -77,5 +79,51 @@ describe('publishConversationUpdate', () => {
     expect(visitorConv.visitorEmail).toBeNull()
     // Internal triage tags are agent-only and must never reach the visitor wire.
     expect(visitorConv.tags).toEqual([])
+  })
+})
+
+describe('publishAgentTyping', () => {
+  it('sends the agent id only to the inbox, never to the visitor channel', () => {
+    publishAgentTyping(conversationId, '2026-01-01T00:00:00.000Z', 'principal_agent' as never)
+
+    const inbox = publish.mock.calls.find((c) => c[0] === CHAT_INBOX_CHANNEL)
+    const visitor = publish.mock.calls.find((c) => c[0] === conversationChannel(conversationId))
+
+    // Inbox carries the agent id (so other agents can detect a collision)...
+    expect(inbox![1]).toMatchObject({
+      kind: 'typing',
+      side: 'agent',
+      agentPrincipalId: 'principal_agent',
+    })
+    // ...the visitor only sees an anonymous "agent is typing" — no id leak.
+    expect(visitor![1]).toMatchObject({ kind: 'typing', side: 'agent' })
+    expect((visitor![1] as { agentPrincipalId?: string }).agentPrincipalId).toBeUndefined()
+  })
+})
+
+describe('shouldSuppressOwnAgentTyping', () => {
+  const frame = (e: unknown) => JSON.stringify(e)
+
+  it('suppresses an agent typing frame from the same principal', () => {
+    expect(
+      shouldSuppressOwnAgentTyping(
+        frame({ kind: 'typing', side: 'agent', agentPrincipalId: 'p1' }),
+        'p1'
+      )
+    ).toBe(true)
+  })
+
+  it('does not suppress another agent, a visitor, a non-typing event, or junk', () => {
+    expect(
+      shouldSuppressOwnAgentTyping(
+        frame({ kind: 'typing', side: 'agent', agentPrincipalId: 'p2' }),
+        'p1'
+      )
+    ).toBe(false)
+    expect(shouldSuppressOwnAgentTyping(frame({ kind: 'typing', side: 'visitor' }), 'p1')).toBe(
+      false
+    )
+    expect(shouldSuppressOwnAgentTyping(frame({ kind: 'message' }), 'p1')).toBe(false)
+    expect(shouldSuppressOwnAgentTyping('not json{', 'p1')).toBe(false)
   })
 })

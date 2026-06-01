@@ -48,6 +48,7 @@ import {
   publishChatEvent,
   publishAgentChatEvent,
   publishConversationUpdate,
+  publishAgentTyping,
 } from '@/lib/server/realtime/chat-channels'
 import { truncate } from '@/lib/shared/utils/string'
 import { notifyVisitorMessage, notifyAgentReply, notifyNoteMentions } from './chat.notify'
@@ -612,12 +613,14 @@ export async function signalTyping(
   // Same access gate as reading the thread — prevents spoofing typing into a
   // conversation the actor can't see.
   await assertConversationViewable(conversationId, actor)
-  publishChatEvent(conversationId, {
-    kind: 'typing',
-    conversationId,
-    side,
-    at: new Date().toISOString(),
-  })
+  const at = new Date().toISOString()
+  // Agent typing carries the agent id on the inbox channel only (collision
+  // detection) — never to the visitor. Visitor typing fans out as before.
+  if (side === 'agent' && actor.principalId) {
+    publishAgentTyping(conversationId, at, actor.principalId)
+  } else {
+    publishChatEvent(conversationId, { kind: 'typing', conversationId, side, at })
+  }
 }
 
 /** Mark a conversation read up to now for one side. */

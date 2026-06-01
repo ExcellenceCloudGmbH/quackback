@@ -13,7 +13,11 @@ import {
 import type { ConversationId, PrincipalId } from '@quackback/ids'
 import { auth } from '@/lib/server/auth'
 import { verifyStreamToken } from '@/lib/server/realtime/stream-token'
-import { conversationChannel, CHAT_INBOX_CHANNEL } from '@/lib/server/realtime/chat-channels'
+import {
+  conversationChannel,
+  CHAT_INBOX_CHANNEL,
+  shouldSuppressOwnAgentTyping,
+} from '@/lib/server/realtime/chat-channels'
 import { subscribe } from '@/lib/server/realtime/pubsub'
 import { markPresent, refreshPresence, clearPresence } from '@/lib/server/realtime/presence'
 import { canViewConversation } from '@/lib/server/policy/chat'
@@ -229,6 +233,11 @@ export const Route = createFileRoute('/api/chat/stream')({
               }
 
               const unsub = await subscribe(channels, (_channel, message) => {
+                // Don't echo an agent's own typing back to them — so the client
+                // can treat any agent-typing it receives as "another agent".
+                if (isAgentStream && shouldSuppressOwnAgentTyping(message, me.principalId)) {
+                  return
+                }
                 const { id, frame } = formatFrame(message)
                 if (backfilling) {
                   liveBuffer.push({ id, frame })

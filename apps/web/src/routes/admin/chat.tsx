@@ -134,6 +134,13 @@ function ChatInboxPage() {
 
   // Track whether the visitor of the selected conversation is currently typing.
   const { remoteTyping: visitorTyping, onRemoteTyping, clearRemoteTyping } = useChatTyping(() => {})
+  // Collision detection: another agent typing in the same thread (self-echo is
+  // filtered server-side, so any agent-typing here is a different agent).
+  const {
+    remoteTyping: otherAgentTyping,
+    onRemoteTyping: onOtherAgentTyping,
+    clearRemoteTyping: clearOtherAgentTyping,
+  } = useChatTyping(() => {})
 
   useChatStream({
     enabled: true,
@@ -146,6 +153,7 @@ function ChatInboxPage() {
 
       if (evt.kind === 'message' && evt.conversationId === selectedId) {
         if (evt.message.senderType === 'visitor') clearRemoteTyping()
+        if (evt.message.senderType === 'agent') clearOtherAgentTyping()
         queryClient.setQueryData(
           ['admin', 'chat', 'thread', selectedId],
           (prev: { conversation: ConversationDTO; messages: ChatMessageDTO[] } | undefined) => {
@@ -160,6 +168,13 @@ function ChatInboxPage() {
         evt.side === 'visitor'
       ) {
         onRemoteTyping()
+      } else if (
+        evt.kind === 'typing' &&
+        evt.conversationId === selectedId &&
+        evt.side === 'agent'
+      ) {
+        // Self-echo is dropped server-side, so this is always another agent.
+        onOtherAgentTyping()
       } else if (
         evt.kind === 'read' &&
         evt.conversationId === selectedId &&
@@ -332,6 +347,7 @@ function ChatInboxPage() {
             conversationId={selectedId}
             onChanged={refreshInbox}
             isVisitorTyping={visitorTyping}
+            isOtherAgentTyping={otherAgentTyping}
           />
         ) : (
           <div className="flex h-full items-center justify-center">
@@ -351,10 +367,12 @@ function ChatThread({
   conversationId,
   onChanged,
   isVisitorTyping,
+  isOtherAgentTyping,
 }: {
   conversationId: ConversationId
   onChanged: () => void
   isVisitorTyping: boolean
+  isOtherAgentTyping: boolean
 }) {
   const queryClient = useQueryClient()
   const threadKey = ['admin', 'chat', 'thread', conversationId] as const
@@ -593,7 +611,13 @@ function ChatThread({
                 {conversation?.visitor.displayName ?? 'Visitor'}
               </p>
               <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground capitalize">
-                {conversation?.status}
+                {isOtherAgentTyping ? (
+                  <span className="font-medium normal-case text-amber-600">
+                    Another agent is replying…
+                  </span>
+                ) : (
+                  conversation?.status
+                )}
                 {conversation && <ChannelBadge channel={conversation.channel} />}
                 {conversation?.csatRating != null && (
                   <span className="ml-1.5 text-amber-500">

@@ -117,6 +117,10 @@ export type ChatStreamEvent =
       conversationId: ConversationId
       side: ChatSenderType
       at: string
+      /** For agent typing: which agent (inbox channel only — never sent to the
+       *  visitor). Lets other agents detect a collision; the originating agent's
+       *  own echo is filtered server-side. */
+      agentPrincipalId?: PrincipalId
     }
   | { kind: 'message_deleted'; conversationId: ConversationId; messageId: ChatMessageId }
 
