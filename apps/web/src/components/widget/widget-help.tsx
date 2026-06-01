@@ -3,15 +3,11 @@ import { useIntl, FormattedMessage } from 'react-intl'
 import { useQuery } from '@tanstack/react-query'
 import { contentPreview } from '@/lib/shared/utils/string'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import {
-  MagnifyingGlassIcon,
-  QuestionMarkCircleIcon,
-  ChatBubbleLeftRightIcon,
-  ChevronRightIcon,
-} from '@heroicons/react/24/outline'
+import { MagnifyingGlassIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline'
 import { publicHelpCenterQueries } from '@/lib/client/queries/help-center'
 import { getTopLevelCategories } from '@/components/help-center/help-center-utils'
 import { CategoryIcon } from '@/components/help-center/category-icon'
+import { WidgetMessagesSection } from './widget-messages-section'
 
 interface WidgetHelpArticle {
   id: string
@@ -108,31 +104,6 @@ export function WidgetHelp({ onArticleSelect, onCategorySelect, onOpenChat }: Wi
 
       <ScrollArea scrollBarClassName="w-1.5" className="flex-1 min-h-0 h-full">
         <div className="px-3 pt-1 pb-3">
-          {/* Messages entry — present when live chat is part of this surface. */}
-          {onOpenChat && showCategories && (
-            <button
-              type="button"
-              onClick={onOpenChat}
-              className="w-full flex items-center gap-3 rounded-lg border border-border/60 bg-card px-3 py-2.5 text-start hover:bg-muted/40 transition-colors mb-3"
-            >
-              <span className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/10 text-primary shrink-0">
-                <ChatBubbleLeftRightIcon className="w-4.5 h-4.5" />
-              </span>
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-medium text-foreground">
-                  <FormattedMessage id="widget.help.messages.title" defaultMessage="Messages" />
-                </span>
-                <span className="block text-xs text-muted-foreground">
-                  <FormattedMessage
-                    id="widget.help.messages.cta"
-                    defaultMessage="Send us a message"
-                  />
-                </span>
-              </span>
-              <ChevronRightIcon className="w-4 h-4 text-muted-foreground/50 shrink-0 rtl:rotate-180" />
-            </button>
-          )}
-
           {/* Category grid (default view) */}
           {showCategories && (
             <>
@@ -187,6 +158,9 @@ export function WidgetHelp({ onArticleSelect, onCategorySelect, onOpenChat }: Wi
                   ))}
                 </div>
               )}
+
+              {/* Messages — the chat half of the combined support surface. */}
+              {onOpenChat && <WidgetMessagesSection onOpenChat={onOpenChat} />}
             </>
           )}
 
