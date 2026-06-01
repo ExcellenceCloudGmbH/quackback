@@ -123,9 +123,9 @@ function WidgetSettingsPage() {
   // only "enabled" (active in the widget) when its feature is also turned on —
   // mirroring the runtime triple-gate (flag → feature enabled → tab on) so the
   // preview can never advertise a tab the live widget wouldn't render.
-  const flags = settings?.featureFlags as { liveChat?: boolean; helpCenter?: boolean } | undefined
+  const flags = settings?.featureFlags as { chat?: boolean; helpCenter?: boolean } | undefined
   const helpAvailable = flags?.helpCenter ?? false
-  const chatAvailable = flags?.liveChat ?? false
+  const chatAvailable = flags?.chat ?? false
   const helpEnabled = helpAvailable && (helpCenterConfigQuery.data.enabled ?? false)
   const chatEnabled = chatAvailable && (config.chat?.enabled ?? false)
 
@@ -459,7 +459,7 @@ function WidgetAppearanceControls({
               onChange={(checked) => toggleTab('chat', checked)}
               hint={
                 chatEnabled ? undefined : (
-                  <FeatureDisabledHint to="/admin/settings/live-chat" label="the Live Chat page" />
+                  <FeatureDisabledHint to="/admin/settings/live-chat" label="the Chat page" />
                 )
               }
             />

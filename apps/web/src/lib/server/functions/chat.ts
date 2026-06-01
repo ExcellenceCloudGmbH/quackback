@@ -108,9 +108,9 @@ const conversationTagSchema = z.object({
 })
 
 async function assertChatEnabled(): Promise<void> {
-  const { isLiveChatEnabled } = await import('@/lib/server/domains/settings/settings.widget')
-  if (!(await isLiveChatEnabled())) {
-    throw new Error('Live chat is not enabled')
+  const { isChatEnabled } = await import('@/lib/server/domains/settings/settings.widget')
+  if (!(await isChatEnabled())) {
+    throw new Error('Chat is not enabled')
   }
 }
 
@@ -200,11 +200,11 @@ export const getChatPresenceFn = createServerFn({ method: 'GET' }).handler(async
 /** The current visitor's active conversation + first page of messages. */
 export const getMyChatFn = createServerFn({ method: 'GET' }).handler(async () => {
   try {
-    const { getLiveChatConfig, isLiveChatEnabled } =
+    const { getLiveChatConfig, isChatEnabled } =
       await import('@/lib/server/domains/settings/settings.widget')
     const { isEmailConfigured } = await import('@quackback/email')
     const { canEmailVisitor } = await import('@/lib/shared/chat/reply-capability')
-    const [enabled, chatConfig] = await Promise.all([isLiveChatEnabled(), getLiveChatConfig()])
+    const [enabled, chatConfig] = await Promise.all([isChatEnabled(), getLiveChatConfig()])
     const officeHours = chatConfig.officeHours
     const preChatEmail = chatConfig.preChatEmail ?? 'off'
     const emailConfigured = isEmailConfigured()
@@ -298,8 +298,8 @@ export const getMyChatFn = createServerFn({ method: 'GET' }).handler(async () =>
  */
 export const getMyConversationsFn = createServerFn({ method: 'GET' }).handler(async () => {
   try {
-    const { isLiveChatEnabled } = await import('@/lib/server/domains/settings/settings.widget')
-    if (!(await isLiveChatEnabled()) || !hasAuthCredentials()) return { conversations: [] }
+    const { isChatEnabled } = await import('@/lib/server/domains/settings/settings.widget')
+    if (!(await isChatEnabled()) || !hasAuthCredentials()) return { conversations: [] }
 
     const ctx = await getOptionalAuth()
     if (!ctx?.principal) return { conversations: [] }

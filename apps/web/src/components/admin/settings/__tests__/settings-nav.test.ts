@@ -8,8 +8,8 @@ describe('buildNavSections', () => {
     expect(labels).not.toContain('Support')
   })
 
-  it('has no Support section when both helpCenter and liveChat are false', () => {
-    const sections = buildNavSections({ helpCenter: false, liveChat: false })
+  it('has no Support section when both helpCenter and chat are false', () => {
+    const sections = buildNavSections({ helpCenter: false, chat: false })
     const labels = sections.map((s) => s.label)
     expect(labels).not.toContain('Support')
   })
@@ -20,14 +20,14 @@ describe('buildNavSections', () => {
     expect(labels).toContain('Support')
   })
 
-  it('includes a Support section when liveChat flag is true', () => {
-    const sections = buildNavSections({ liveChat: true })
+  it('includes a Support section when chat flag is true', () => {
+    const sections = buildNavSections({ chat: true })
     const labels = sections.map((s) => s.label)
     expect(labels).toContain('Support')
   })
 
   it('places Support between Feedback and Customers', () => {
-    const sections = buildNavSections({ helpCenter: true, liveChat: true })
+    const sections = buildNavSections({ helpCenter: true, chat: true })
     const labels = sections.map((s) => s.label)
     const feedbackIdx = labels.indexOf('Feedback')
     const supportIdx = labels.indexOf('Support')
@@ -36,33 +36,33 @@ describe('buildNavSections', () => {
     expect(supportIdx).toBeLessThan(customersIdx)
   })
 
-  it('Support bundles Live Chat then Help Center in that order', () => {
-    const sections = buildNavSections({ helpCenter: true, liveChat: true })
+  it('Support bundles Chat then Help Center in that order', () => {
+    const sections = buildNavSections({ helpCenter: true, chat: true })
     const support = sections.find((s) => s.label === 'Support')!
-    expect(support.items.map((i) => i.label)).toEqual(['Live Chat', 'Help Center'])
-    expect(support.items.find((i) => i.label === 'Live Chat')!.to).toBe('/admin/settings/live-chat')
+    expect(support.items.map((i) => i.label)).toEqual(['Chat', 'Help Center'])
+    expect(support.items.find((i) => i.label === 'Chat')!.to).toBe('/admin/settings/live-chat')
     expect(support.items.find((i) => i.label === 'Help Center')!.to).toBe(
       '/admin/settings/help-center'
     )
   })
 
-  it('Support contains only Help Center when liveChat is off', () => {
+  it('Support contains only Help Center when chat is off', () => {
     const sections = buildNavSections({ helpCenter: true })
     const support = sections.find((s) => s.label === 'Support')!
     expect(support.items.map((i) => i.label)).toEqual(['Help Center'])
   })
 
-  it('Support contains only Live Chat when helpCenter is off', () => {
-    const sections = buildNavSections({ liveChat: true })
+  it('Support contains only Chat when helpCenter is off', () => {
+    const sections = buildNavSections({ chat: true })
     const support = sections.find((s) => s.label === 'Support')!
-    expect(support.items.map((i) => i.label)).toEqual(['Live Chat'])
+    expect(support.items.map((i) => i.label)).toEqual(['Chat'])
   })
 
-  it('does not place Live Chat under Customization', () => {
-    const sections = buildNavSections({ liveChat: true })
+  it('does not place Chat under Customization', () => {
+    const sections = buildNavSections({ chat: true })
     const customization = sections.find((s) => s.label === 'Customization')!
-    const liveChat = customization.items.find((i) => i.label === 'Live Chat')
-    expect(liveChat).toBeUndefined()
+    const chat = customization.items.find((i) => i.label === 'Chat')
+    expect(chat).toBeUndefined()
   })
 
   it('places Widget and Branding under Customization', () => {
@@ -107,8 +107,8 @@ describe('buildNavSections', () => {
     expect(labels).not.toContain('Developers')
   })
 
-  it('has the expected section order with helpCenter and liveChat on', () => {
-    const sections = buildNavSections({ helpCenter: true, liveChat: true })
+  it('has the expected section order with helpCenter and chat on', () => {
+    const sections = buildNavSections({ helpCenter: true, chat: true })
     const labels = sections.map((s) => s.label)
     expect(labels).toEqual(['Administration', 'Customization', 'Feedback', 'Support', 'Customers'])
   })

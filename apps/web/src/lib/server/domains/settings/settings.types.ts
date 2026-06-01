@@ -717,15 +717,15 @@ export interface FeatureFlags {
   helpCenter: boolean
   /** AI-powered feedback extraction from external sources */
   aiFeedbackExtraction: boolean
-  /** Live chat in the widget + agent inbox */
-  liveChat: boolean
+  /** Chat (support inbox) in the widget + agent inbox */
+  chat: boolean
 }
 
 export const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   analytics: false,
   helpCenter: false,
   aiFeedbackExtraction: false,
-  liveChat: false,
+  chat: false,
 }
 
 /**
@@ -748,8 +748,8 @@ export const FEATURE_FLAG_REGISTRY: Record<
     description:
       'Automatically extract and categorize feedback from connected sources using large language models.',
   },
-  liveChat: {
-    label: 'Live Chat',
+  chat: {
+    label: 'Chat',
     description:
       'Let visitors message your team in real time from the widget, with an agent inbox in the admin panel.',
   },

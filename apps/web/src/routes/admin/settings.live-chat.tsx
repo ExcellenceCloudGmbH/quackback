@@ -1,11 +1,12 @@
 import { useMemo, useState, useTransition } from 'react'
-import { createFileRoute, useRouter } from '@tanstack/react-router'
+import { createFileRoute, useRouter, Navigate } from '@tanstack/react-router'
 import { useSuspenseQuery } from '@tanstack/react-query'
 import { ChatBubbleLeftRightIcon, ArrowPathIcon } from '@heroicons/react/24/solid'
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/outline'
 import type { CannedReply } from '@/lib/server/domains/settings/settings.types'
 import { DEFAULT_OFFICE_HOURS } from '@/lib/server/domains/settings/settings.types'
 import type { OfficeHoursConfig } from '@/lib/shared/chat/types'
+import type { FeatureFlags } from '@/lib/shared/types/settings'
 import { settingsQueries } from '@/lib/client/queries/settings'
 import { updateWidgetConfigFn } from '@/lib/server/functions/settings'
 import { BackLink } from '@/components/ui/back-link'
@@ -27,8 +28,22 @@ export const Route = createFileRoute('/admin/settings/live-chat')({
     await context.queryClient.ensureQueryData(settingsQueries.widgetConfig())
     return {}
   },
-  component: LiveChatSettingsPage,
+  component: ChatSettingsRoute,
 })
+
+/**
+ * Gate the chat settings page behind the experimental `chat` flag (off by
+ * default), mirroring the help-center route. Wrapping keeps the flag check
+ * above the page's hooks so they aren't conditionally called.
+ */
+function ChatSettingsRoute() {
+  const { settings } = Route.useRouteContext()
+  const flags = settings?.featureFlags as FeatureFlags | undefined
+  if (!flags?.chat) {
+    return <Navigate to="/admin/settings" />
+  }
+  return <LiveChatSettingsPage />
+}
 
 function LiveChatSettingsPage() {
   const router = useRouter()
@@ -109,19 +124,19 @@ function LiveChatSettingsPage() {
       </div>
       <PageHeader
         icon={ChatBubbleLeftRightIcon}
-        title="Live Chat"
+        title="Chat"
         description="Let visitors message your team in real time from the widget."
       />
 
       {!widgetEnabled && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
           The widget is currently disabled. Enable it under{' '}
-          <span className="font-medium">Widget</span> settings for live chat to appear.
+          <span className="font-medium">Widget</span> settings for chat to appear.
         </div>
       )}
 
       <SettingsCard
-        title="Live chat"
+        title="Chat"
         description="Show a chat tab in the widget so visitors can start a conversation with your team."
       >
         <div className="flex items-center justify-between py-1">

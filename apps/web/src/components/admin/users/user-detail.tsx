@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Link } from '@tanstack/react-router'
+import { Link, useRouteContext } from '@tanstack/react-router'
 import {
   ArrowLeftIcon,
   CheckCircleIcon,
@@ -29,6 +29,7 @@ import { contentPreview } from '@/lib/shared/utils/string'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { TimeAgo } from '@/components/ui/time-ago'
 import type { PortalUserDetail, EngagedPost } from '@/lib/shared/types'
+import type { FeatureFlags } from '@/lib/shared/types/settings'
 import { UserSegmentBadges } from '@/components/admin/users/user-segments'
 import { useUpdatePortalUser } from '@/lib/client/mutations'
 import { listConversationsForUserFn } from '@/lib/server/functions/chat'
@@ -177,10 +178,16 @@ function EngagedPostCard({ post }: { post: EngagedPost }) {
 
 /** A user's live-chat history, linking each conversation into the Support inbox. */
 function UserConversations({ principalId }: { principalId: PrincipalId }) {
+  const { settings } = useRouteContext({ from: '__root__' })
+  // Gated by the experimental `chat` flag — when off, skip the fetch and render
+  // nothing, so the profile shows no support history for a disabled feature.
+  const chatEnabled = (settings?.featureFlags as FeatureFlags | undefined)?.chat ?? false
   const { data } = useQuery({
     queryKey: ['admin', 'user-conversations', principalId],
     queryFn: () => listConversationsForUserFn({ data: { principalId } }),
+    enabled: chatEnabled,
   })
+  if (!chatEnabled) return null
   const conversations = data?.conversations ?? []
   if (conversations.length === 0) return null
 

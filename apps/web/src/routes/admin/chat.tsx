@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Navigate } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -69,6 +69,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/shared/utils'
+import type { FeatureFlags } from '@/lib/shared/types/settings'
 
 export const Route = createFileRoute('/admin/chat')({
   // `?c=<conversationId>` deep-links a conversation open (e.g. from a user profile).
@@ -80,8 +81,22 @@ export const Route = createFileRoute('/admin/chat')({
     await requireWorkspaceRole({ data: { allowedRoles: ['admin', 'member'] } })
     return {}
   },
-  component: ChatInboxPage,
+  component: ChatRoute,
 })
+
+/**
+ * Gate the inbox behind the experimental `chat` flag (off by default), mirroring
+ * the help-center route. Wrapping keeps the flag check above the inbox's hooks
+ * so they aren't conditionally called.
+ */
+function ChatRoute() {
+  const { settings } = Route.useRouteContext()
+  const flags = settings?.featureFlags as FeatureFlags | undefined
+  if (!flags?.chat) {
+    return <Navigate to="/admin/feedback" />
+  }
+  return <ChatInboxPage />
+}
 
 type StatusFilter = 'open' | 'snoozed' | 'pending' | 'closed'
 

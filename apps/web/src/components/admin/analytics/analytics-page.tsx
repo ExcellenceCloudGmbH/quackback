@@ -1,5 +1,7 @@
 import { lazy, Suspense, useState } from 'react'
+import { useRouteContext } from '@tanstack/react-router'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import type { FeatureFlags } from '@/lib/shared/types/settings'
 import { analyticsQueries, type AnalyticsPeriod } from '@/lib/client/queries/analytics'
 import { formatDistanceToNow } from 'date-fns'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -52,6 +54,12 @@ const navItems: Array<{ key: Section; label: string; icon: React.ElementType }> 
 ]
 
 export function AnalyticsPage() {
+  const { settings } = useRouteContext({ from: '__root__' })
+  const flags = settings?.featureFlags as FeatureFlags | undefined
+  // The Support section reports chat (CSAT) metrics, so hide it unless the
+  // experimental chat flag is on — same gate as the inbox itself.
+  const sections = navItems.filter((i) => i.key !== 'support' || (flags?.chat ?? false))
+
   const [period, setPeriod] = useState<AnalyticsPeriod>('30d')
   const [section, setSection] = useState<Section>('overview')
   const [activeMetric, setActiveMetric] = useState<MetricKey>('posts')
@@ -74,7 +82,7 @@ export function AnalyticsPage() {
                 Sections
               </span>
               <div className="mt-2 space-y-1">
-                {navItems.map(({ key, label, icon: Icon }) => (
+                {sections.map(({ key, label, icon: Icon }) => (
                   <button
                     key={key}
                     type="button"

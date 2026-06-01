@@ -96,13 +96,13 @@ export function AdminSidebar({ initialUserData, latestVersion }: AdminSidebarPro
   const { session, settings } = useRouteContext({ from: '__root__' })
   const pathname = useRouterState({ select: (s) => s.location.pathname })
   const flags = settings?.featureFlags as
-    | { analytics?: boolean; helpCenter?: boolean; liveChat?: boolean }
+    | { analytics?: boolean; helpCenter?: boolean; chat?: boolean }
     | undefined
 
   const filteredNavItems = navItems.filter((item) => {
     if (item.href === '/admin/analytics') return flags?.analytics ?? false
     if (item.href === '/admin/help-center') return flags?.helpCenter ?? false
-    if (item.href === '/admin/chat') return flags?.liveChat ?? false
+    if (item.href === '/admin/chat') return flags?.chat ?? false
     return true
   })
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
