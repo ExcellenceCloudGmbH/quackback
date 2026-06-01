@@ -249,6 +249,15 @@ export async function sendVisitorMessage(
       .where(eq(conversations.id, conversation.id))
       .returning()
 
+    // Also stash the captured email at the principal level so it survives across
+    // conversations (reusable contact). Don't overwrite an existing address.
+    if (captureEmail) {
+      await tx
+        .update(principal)
+        .set({ contactEmail: captureEmail })
+        .where(and(eq(principal.id, author.principalId), isNull(principal.contactEmail)))
+    }
+
     return { conversation: updated, message }
   })
 

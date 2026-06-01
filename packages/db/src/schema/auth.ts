@@ -401,12 +401,20 @@ export const principal = pgTable(
      * /oauth2/callback/:providerId hooks.after middleware.
      */
     lastSsoSignInAt: timestamp('last_sso_sign_in_at', { withTimezone: true }),
+    // Contact email for an anonymous visitor (captured in live chat) so an
+    // offline reply can reach them across conversations. Agent-only — the
+    // principal stays anonymous; never exposed to the visitor.
+    contactEmail: text('contact_email'),
   },
   (table) => [
     // Ensure one principal record per human user (partial index excludes service principals)
     uniqueIndex('principal_user_idx')
       .on(table.userId)
       .where(sql`user_id IS NOT NULL`),
+    // Lookups by contact email (only the rows that have one).
+    index('principal_contact_email_idx')
+      .on(table.contactEmail)
+      .where(sql`contact_email IS NOT NULL`),
     // Index for user listings filtered by role
     index('principal_role_idx').on(table.role),
     // Index for filtering by principal type

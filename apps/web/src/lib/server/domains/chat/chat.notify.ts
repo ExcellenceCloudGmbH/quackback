@@ -144,13 +144,13 @@ export async function notifyAgentReply(opts: {
     if (await isPrincipalOnline(opts.visitorPrincipalId)) return
 
     const [visitor] = await db
-      .select({ type: principal.type, email: user.email })
+      .select({ type: principal.type, email: user.email, contactEmail: principal.contactEmail })
       .from(principal)
       .leftJoin(user, eq(principal.userId, user.id))
       .where(eq(principal.id, opts.visitorPrincipalId))
       .limit(1)
 
-    const recipient = resolveReplyRecipient(visitor, opts.capturedEmail)
+    const recipient = resolveReplyRecipient(visitor, visitor?.contactEmail, opts.capturedEmail)
     if (!recipient) {
       // The visitor is offline and unreachable — surface it instead of dropping
       // silently (the inbox can flag conversations with no reply-to address).

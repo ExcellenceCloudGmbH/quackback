@@ -2,26 +2,32 @@ import { describe, it, expect } from 'vitest'
 import { resolveReplyRecipient } from '../chat.recipient'
 
 describe('resolveReplyRecipient', () => {
-  it('prefers an identified visitor account email', () => {
-    expect(resolveReplyRecipient({ type: 'user', email: 'a@b.com' }, 'captured@x.com')).toBe(
-      'a@b.com'
-    )
+  it('prefers an identified visitor account email above all', () => {
+    expect(
+      resolveReplyRecipient({ type: 'user', email: 'a@b.com' }, 'contact@x.com', 'captured@x.com')
+    ).toBe('a@b.com')
   })
 
-  it('falls back to the captured pre-chat email for an anonymous visitor', () => {
-    expect(resolveReplyRecipient({ type: 'anonymous', email: null }, 'captured@x.com')).toBe(
+  it('uses the principal contact email before the per-conversation captured one', () => {
+    expect(
+      resolveReplyRecipient({ type: 'anonymous', email: null }, 'contact@x.com', 'captured@x.com')
+    ).toBe('contact@x.com')
+  })
+
+  it('falls back to the captured pre-chat email when no contact email is on file', () => {
+    expect(resolveReplyRecipient({ type: 'anonymous', email: null }, null, 'captured@x.com')).toBe(
       'captured@x.com'
     )
   })
 
-  it('falls back to captured when an identified account has no email on record', () => {
-    expect(resolveReplyRecipient({ type: 'user', email: null }, 'captured@x.com')).toBe(
-      'captured@x.com'
+  it('falls back past an identified account with no email on record', () => {
+    expect(resolveReplyRecipient({ type: 'user', email: null }, 'contact@x.com', null)).toBe(
+      'contact@x.com'
     )
   })
 
   it('returns null when there is no reachable address', () => {
-    expect(resolveReplyRecipient({ type: 'anonymous', email: null }, null)).toBeNull()
-    expect(resolveReplyRecipient(undefined, undefined)).toBeNull()
+    expect(resolveReplyRecipient({ type: 'anonymous', email: null }, null, null)).toBeNull()
+    expect(resolveReplyRecipient(undefined, undefined, undefined)).toBeNull()
   })
 })

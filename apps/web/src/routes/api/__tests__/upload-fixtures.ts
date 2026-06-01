@@ -54,6 +54,7 @@ export function mockPrincipal(
     avatarUrl: null,
     avatarKey: null,
     serviceMetadata: null,
+    contactEmail: null,
     createdAt: new Date(),
     lastSsoSignInAt: null,
     ...overrides,

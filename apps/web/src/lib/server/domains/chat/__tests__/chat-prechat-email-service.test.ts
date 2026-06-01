@@ -92,6 +92,7 @@ vi.mock('@/lib/server/db', () => {
     isNull: vi.fn(),
     conversations: { __name: 'conversations', id: 'id' },
     chatMessages: { __name: 'chat_messages', id: 'id' },
+    principal: { __name: 'principal', id: 'id', contactEmail: 'contact_email' },
   }
 })
 

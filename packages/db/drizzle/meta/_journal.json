@@ -666,6 +666,13 @@
       "when": 1780790400000,
       "tag": "0094_conversation_priority_and_tags",
       "breakpoints": true
+    },
+    {
+      "idx": 95,
+      "version": "7",
+      "when": 1780876800000,
+      "tag": "0095_principal_contact_email",
+      "breakpoints": true
     }
   ]
 }
