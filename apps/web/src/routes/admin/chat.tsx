@@ -23,14 +23,29 @@ import {
   sendAgentMessageFn,
   addChatNoteFn,
   setConversationStatusFn,
-  assignConversationFn,
   markChatReadFn,
   sendChatTypingFn,
   getCannedRepliesFn,
   deleteChatMessageFn,
 } from '@/lib/server/functions/chat'
 import { getPortalUserFn } from '@/lib/server/functions/admin'
-import type { ChatAttachment, ChatMessageDTO, ConversationDTO } from '@/lib/shared/chat/types'
+import type {
+  ChatAttachment,
+  ChatMessageDTO,
+  ConversationDTO,
+  ConversationPriority,
+} from '@/lib/shared/chat/types'
+import { priorityMeta } from '@/lib/shared/chat/priority-meta'
+import {
+  PriorityControl,
+  PriorityDot,
+  PriorityMenuItems,
+} from '@/components/admin/chat/priority-control'
+import { AssigneeControl } from '@/components/admin/chat/assignee-control'
+import { ConversationTags } from '@/components/admin/chat/conversation-tags'
+import { LinkedPosts } from '@/components/admin/chat/linked-posts'
+import { ChannelBadge, NoEmailBadge } from '@/components/admin/chat/channel-badge'
+import { TagChip } from '@/components/shared/tag-chip'
 import { useChatStream } from '@/lib/client/hooks/use-chat-stream'
 import { useChatTyping } from '@/lib/client/hooks/use-chat-typing'
 import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
@@ -65,7 +80,7 @@ export const Route = createFileRoute('/admin/chat')({
   component: ChatInboxPage,
 })
 
-type StatusFilter = 'open' | 'snoozed' | 'closed'
+type StatusFilter = 'open' | 'snoozed' | 'pending' | 'closed'
 
 function relativeTime(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -81,6 +96,7 @@ function ChatInboxPage() {
   const queryClient = useQueryClient()
   const { c: deepLinkConversationId } = Route.useSearch()
   const [status, setStatus] = useState<StatusFilter>('open')
+  const [priorityFilter, setPriorityFilter] = useState<ConversationPriority | 'all'>('all')
   const [selectedId, setSelectedId] = useState<ConversationId | null>(
     (deepLinkConversationId as ConversationId | undefined) ?? null
   )
@@ -89,15 +105,19 @@ function ChatInboxPage() {
   const search = useDebouncedValue(searchInput.trim(), 300)
 
   const listKey = useMemo(
-    () => ['admin', 'chat', 'conversations', status, search] as const,
-    [status, search]
+    () => ['admin', 'chat', 'conversations', status, priorityFilter, search] as const,
+    [status, priorityFilter, search]
   )
 
   const { data: listData, isLoading: listLoading } = useQuery({
     queryKey: listKey,
     queryFn: () =>
       listConversationsFn({
-        data: { status, search: search || undefined },
+        data: {
+          status,
+          priority: priorityFilter === 'all' ? undefined : priorityFilter,
+          search: search || undefined,
+        },
       }),
     refetchInterval: 30_000, // polling fallback if the stream drops
   })
@@ -190,20 +210,46 @@ function ChatInboxPage() {
             className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-primary/20"
           />
         </div>
-        <div className="flex gap-1 px-3 py-2">
-          {(['open', 'snoozed', 'closed'] as const).map((s) => (
+        <div className="flex items-center gap-1 px-3 py-2">
+          {(['open', 'snoozed', 'pending', 'closed'] as const).map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => setStatus(s)}
               className={cn(
-                'px-3 py-1 rounded-md text-xs font-medium capitalize transition-colors',
+                'px-2.5 py-1 rounded-md text-xs font-medium capitalize transition-colors',
                 status === s ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:bg-muted'
               )}
             >
               {s}
             </button>
           ))}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                aria-label="Filter by priority"
+                className={cn(
+                  'ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                  priorityFilter !== 'all'
+                    ? 'bg-primary/10 text-primary'
+                    : 'text-muted-foreground hover:bg-muted'
+                )}
+              >
+                <PriorityDot priority={priorityFilter === 'all' ? 'none' : priorityFilter} />
+                {priorityFilter === 'all' ? 'Priority' : priorityMeta(priorityFilter).label}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setPriorityFilter('all')} className="text-xs">
+                All priorities
+              </DropdownMenuItem>
+              <PriorityMenuItems
+                selected={priorityFilter === 'all' ? undefined : priorityFilter}
+                onSelect={setPriorityFilter}
+              />
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         <div className="flex-1 overflow-y-auto">
           {listLoading ? (
@@ -232,8 +278,11 @@ function ChatInboxPage() {
                 />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium">
-                      {c.visitor.displayName ?? 'Visitor'}
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <PriorityDot priority={c.priority} />
+                      <span className="truncate text-sm font-medium">
+                        {c.visitor.displayName ?? 'Visitor'}
+                      </span>
                     </span>
                     <span className="shrink-0 text-[10px] text-muted-foreground">
                       {relativeTime(c.lastMessageAt)}
@@ -242,6 +291,24 @@ function ChatInboxPage() {
                   <p className="truncate text-xs text-muted-foreground mt-0.5">
                     {c.lastMessagePreview ?? c.subject ?? 'No messages yet'}
                   </p>
+                  {(c.channel !== 'live_chat' || c.tags.length > 0) && (
+                    <div className="mt-1 flex flex-wrap items-center gap-1">
+                      <ChannelBadge channel={c.channel} />
+                      {c.tags.slice(0, 2).map((tag) => (
+                        <TagChip
+                          key={tag.id}
+                          name={tag.name}
+                          color={tag.color}
+                          className="max-w-24"
+                        />
+                      ))}
+                      {c.tags.length > 2 && (
+                        <span className="text-[10px] text-muted-foreground">
+                          +{c.tags.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {c.unreadCount > 0 && (
                   <span className="shrink-0 mt-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
@@ -415,14 +482,12 @@ function ChatThread({
     onError: () => toast.error('Failed to update conversation'),
   })
 
-  const assignMutation = useMutation({
-    mutationFn: () => assignConversationFn({ data: { conversationId, assignTo: 'me' } }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: threadKey })
-      onChanged()
-    },
-    onError: () => toast.error('Failed to assign conversation'),
-  })
+  // Re-fetch the thread (priority/assignee/tags live on the conversation row)
+  // and the inbox after a metadata mutation handled by a child control.
+  const refreshThread = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ['admin', 'chat', 'thread', conversationId] })
+    onChanged()
+  }, [queryClient, conversationId, onChanged])
 
   const deleteMutation = useMutation({
     mutationFn: (messageId: ChatMessageId) => deleteChatMessageFn({ data: { messageId } }),
@@ -507,8 +572,9 @@ function ChatThread({
               <p className="truncate text-sm font-semibold">
                 {conversation?.visitor.displayName ?? 'Visitor'}
               </p>
-              <p className="text-[11px] text-muted-foreground capitalize">
+              <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground capitalize">
                 {conversation?.status}
+                {conversation && <ChannelBadge channel={conversation.channel} />}
                 {conversation?.csatRating != null && (
                   <span className="ml-1.5 text-amber-500">
                     {'★'.repeat(conversation.csatRating)}
@@ -526,15 +592,19 @@ function ChatThread({
               defaultTitle={convertTitle}
               defaultContent={convertContent}
             />
-            {!conversation?.assignedAgent && (
-              <button
-                type="button"
-                onClick={() => assignMutation.mutate()}
-                disabled={assignMutation.isPending}
-                className="rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
-              >
-                Assign to me
-              </button>
+            {conversation && (
+              <>
+                <PriorityControl
+                  conversationId={conversationId}
+                  value={conversation.priority}
+                  onChanged={refreshThread}
+                />
+                <AssigneeControl
+                  conversationId={conversationId}
+                  assignedAgent={conversation.assignedAgent}
+                  onChanged={refreshThread}
+                />
+              </>
             )}
             {!isClosed && (
               <button
@@ -753,7 +823,11 @@ function ChatThread({
         </div>
       </div>
 
-      <VisitorSidebar conversation={conversation} detail={visitorDetail} />
+      <VisitorSidebar
+        conversation={conversation}
+        detail={visitorDetail}
+        onChanged={refreshThread}
+      />
     </div>
   )
 }
@@ -842,19 +916,23 @@ function AdminBubble({ message, onDelete }: { message: ChatMessageDTO; onDelete:
 function VisitorSidebar({
   conversation,
   detail,
+  onChanged,
 }: {
   conversation?: ConversationDTO
   detail?: Awaited<ReturnType<typeof getPortalUserFn>> | null
+  onChanged?: () => void
 }) {
   if (!conversation) return null
   const name = conversation.visitor.displayName ?? 'Visitor'
+  // Anonymous visitor with no captured email: an offline email reply can't reach them.
+  const hasEmail = Boolean(detail?.email || conversation.visitorEmail)
   return (
     <aside className="hidden w-64 shrink-0 flex-col border-l border-border/50 lg:flex">
       <div className="flex flex-col items-center gap-2 border-b border-border/50 px-4 py-5 text-center">
         <Avatar src={conversation.visitor.avatarUrl} name={name} className="size-12 text-base" />
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold">{name}</p>
-          {detail?.email || conversation.visitorEmail ? (
+          {hasEmail ? (
             <p className="truncate text-xs text-muted-foreground">
               {detail?.email ?? conversation.visitorEmail}
               {!detail?.email && conversation.visitorEmail && (
@@ -862,9 +940,19 @@ function VisitorSidebar({
               )}
             </p>
           ) : (
-            <p className="text-xs text-muted-foreground">Anonymous visitor</p>
+            <p className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+              Anonymous visitor <NoEmailBadge />
+            </p>
           )}
         </div>
+      </div>
+      <div className="flex flex-col gap-3 border-b border-border/50 px-4 py-3">
+        <ConversationTags
+          conversationId={conversation.id}
+          tags={conversation.tags}
+          onChanged={onChanged}
+        />
+        <LinkedPosts conversationId={conversation.id} />
       </div>
       {detail && (
         <div className="flex-1 overflow-y-auto px-4 py-4">
