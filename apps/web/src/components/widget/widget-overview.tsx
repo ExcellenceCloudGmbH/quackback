@@ -4,7 +4,6 @@ import { LightBulbIcon, ChatBubbleLeftRightIcon, ChevronRightIcon } from '@heroi
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/shared/utils'
 import { useChatSummary } from './use-chat-summary'
-import { chatAvailable } from '@/lib/shared/chat/presence'
 import { useWidgetAuth } from './widget-auth-provider'
 import { WidgetResumeCard } from './widget-resume-card'
 import { WidgetChangelogTeaser } from './widget-changelog-teaser'
@@ -42,10 +41,10 @@ export function WidgetOverview({
   const { user } = useWidgetAuth()
   const firstName = user?.name?.trim().split(/\s+/)[0]
 
-  // Presence + a recent-conversation resume card are chat concepts — only
-  // fetched/shown when chat is part of the support surface.
-  const { conversation, teamName, agentsOnline, withinOfficeHours } = useChatSummary(!!tabs.chat)
-  const available = chatAvailable(agentsOnline, withinOfficeHours)
+  // A recent-conversation resume card is a chat concept — only fetched/shown
+  // when chat is part of the support surface. Presence now lives on the support
+  // surface's message CTA, not here.
+  const { conversation, teamName, agentsOnline } = useChatSummary(!!tabs.chat)
 
   return (
     <div className="flex flex-col h-full">
@@ -66,25 +65,6 @@ export function WidgetOverview({
             <p className="text-sm text-muted-foreground">
               <FormattedMessage id="widget.launcher.subtitle" defaultMessage="How can we help?" />
             </p>
-            {tabs.chat && (
-              <p className="flex items-center gap-1.5 pt-0.5 text-xs text-muted-foreground">
-                <span
-                  className={cn(
-                    'size-2 rounded-full',
-                    available ? 'bg-emerald-500' : 'bg-muted-foreground/40'
-                  )}
-                  aria-hidden
-                />
-                {available ? (
-                  <FormattedMessage id="widget.chat.online" defaultMessage="We're online" />
-                ) : (
-                  <FormattedMessage
-                    id="widget.chat.offline"
-                    defaultMessage="We'll reply by email"
-                  />
-                )}
-              </p>
-            )}
           </header>
 
           {conversation && (

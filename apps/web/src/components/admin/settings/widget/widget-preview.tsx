@@ -71,7 +71,7 @@ export function WidgetPreview({
               {activeTab === 'feedback'
                 ? 'Share your ideas'
                 : activeTab === 'help'
-                  ? 'Help Center'
+                  ? 'Help & Support'
                   : activeTab === 'chat'
                     ? 'Chat with us'
                     : "What's new"}

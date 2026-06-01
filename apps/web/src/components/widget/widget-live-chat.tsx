@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { FormattedMessage, useIntl } from 'react-intl'
 import { buildChatRows, type ChatRow } from './widget-chat-rows'
+import { ChatPresenceBadge } from './chat-presence-badge'
 import { chatAvailable } from '@/lib/shared/chat/presence'
 import { PaperAirplaneIcon, ChevronDownIcon } from '@heroicons/react/24/solid'
 import {
@@ -535,21 +536,8 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
   return (
     <div className="flex flex-col h-full">
       {/* Presence strip */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-border/40 shrink-0">
-        <span
-          className={cn(
-            'size-2 rounded-full',
-            available ? 'bg-emerald-500' : 'bg-muted-foreground/40'
-          )}
-          aria-hidden
-        />
-        <span className="text-xs text-muted-foreground">
-          {available ? (
-            <FormattedMessage id="widget.chat.online" defaultMessage="We're online" />
-          ) : (
-            <FormattedMessage id="widget.chat.offline" defaultMessage="We'll reply by email" />
-          )}
-        </span>
+      <div className="flex items-center px-4 py-2 border-b border-border/40 shrink-0">
+        <ChatPresenceBadge available={available} />
       </div>
 
       <div className="relative flex-1 min-h-0">

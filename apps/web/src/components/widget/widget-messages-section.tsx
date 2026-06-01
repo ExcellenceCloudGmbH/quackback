@@ -1,7 +1,9 @@
 import { FormattedMessage } from 'react-intl'
 import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
+import { chatAvailable } from '@/lib/shared/chat/presence'
 import { useChatSummary } from './use-chat-summary'
 import { WidgetResumeCard } from './widget-resume-card'
+import { ChatPresenceBadge } from './chat-presence-badge'
 
 interface WidgetMessagesSectionProps {
   /** Open the full-height chat thread. */
@@ -14,7 +16,8 @@ interface WidgetMessagesSectionProps {
  * below the help articles when live chat is part of the support surface.
  */
 export function WidgetMessagesSection({ onOpenChat }: WidgetMessagesSectionProps) {
-  const { conversation, teamName, agentsOnline } = useChatSummary(true)
+  const { conversation, teamName, agentsOnline, withinOfficeHours } = useChatSummary(true)
+  const available = chatAvailable(agentsOnline, withinOfficeHours)
 
   return (
     <div className="mt-4 border-t border-border/40 pt-3">
@@ -36,17 +39,22 @@ export function WidgetMessagesSection({ onOpenChat }: WidgetMessagesSectionProps
       <button
         type="button"
         onClick={onOpenChat}
-        className="w-full flex items-center justify-center gap-2 rounded-lg border border-border/60 bg-card px-3 py-2.5 text-sm font-medium text-foreground hover:bg-muted/40 transition-colors"
+        className="w-full flex items-center gap-2.5 rounded-lg border border-border/60 bg-card px-3 py-2.5 text-start hover:bg-muted/40 transition-colors"
       >
-        <ChatBubbleLeftRightIcon className="w-4 h-4 text-muted-foreground" />
-        {conversation ? (
-          <FormattedMessage
-            id="widget.messages.continue"
-            defaultMessage="Continue the conversation"
-          />
-        ) : (
-          <FormattedMessage id="widget.messages.start" defaultMessage="Send us a message" />
-        )}
+        <ChatBubbleLeftRightIcon className="w-4 h-4 shrink-0 text-muted-foreground" />
+        <span className="flex-1 min-w-0">
+          <span className="block text-sm font-medium text-foreground">
+            {conversation ? (
+              <FormattedMessage
+                id="widget.messages.continue"
+                defaultMessage="Continue the conversation"
+              />
+            ) : (
+              <FormattedMessage id="widget.messages.start" defaultMessage="Send us a message" />
+            )}
+          </span>
+          <ChatPresenceBadge available={available} className="mt-0.5" />
+        </span>
       </button>
     </div>
   )

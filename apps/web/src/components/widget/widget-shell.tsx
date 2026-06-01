@@ -169,7 +169,7 @@ export function WidgetShell({
                   defaultMessage="Share your ideas"
                 />
               ) : activeTab === 'help' ? (
-                <FormattedMessage id="widget.shell.heading.help" defaultMessage="Help Center" />
+                <FormattedMessage id="widget.shell.heading.help" defaultMessage="Help & Support" />
               ) : (
                 <FormattedMessage id="widget.shell.heading.changelog" defaultMessage="What's new" />
               )}
