@@ -32,6 +32,9 @@ import { widgetQueryKeys, INITIAL_SESSION_VERSION } from '@/lib/client/hooks/use
 
 const searchSchema = z.object({
   board: z.string().optional(),
+  // `?c=<conversationId>` opens the widget straight to live chat — used by the
+  // cross-device resume link in agent-reply emails (P2.6b).
+  c: z.string().optional(),
 })
 
 export const Route = createFileRoute('/widget/')({
@@ -161,9 +164,16 @@ function WidgetPage() {
     staleTime: 30 * 1000,
   })
 
+  const { c: resumeConversationId } = Route.useSearch()
   const initialTab = resolveInitialTab(tabs)
-  const [view, setView] = useState<WidgetView>(resolveInitialView(tabs))
-  const [activeTab, setActiveTab] = useState<WidgetTab>(initialTab)
+  // A resume link (?c=) opens straight to chat (when chat is enabled); the
+  // widget then loads the visitor's active conversation — usually the linked one.
+  const [view, setView] = useState<WidgetView>(
+    resumeConversationId && tabs.chat ? 'chat' : resolveInitialView(tabs)
+  )
+  const [activeTab, setActiveTab] = useState<WidgetTab>(
+    resumeConversationId && tabs.chat ? 'help' : initialTab
+  )
   const [successPost, setSuccessPost] = useState<SuccessPost | null>(null)
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [selectedChangelogId, setSelectedChangelogId] = useState<string | null>(null)
