@@ -164,12 +164,10 @@ export async function notifyAgentReply(opts: {
     const ctx = await buildHookContext()
     if (!ctx) return
     const { sendChatMessageEmail } = await import('@quackback/email')
-    const { mintConversationResumeToken } = await import('@/lib/server/realtime/chat-resume-token')
-    // Deep-link via a signed, expiring resume token so the link works on a fresh
-    // device (cross-device resume). The /chat/resume route verifies the token
-    // before surfacing the thread — the token is the capability, not the URL.
-    const token = mintConversationResumeToken(opts.conversationId, opts.visitorPrincipalId)
-    const ctaUrl = `${ctx.portalBaseUrl.replace(/\/$/, '')}/api/chat/resume?token=${encodeURIComponent(token)}`
+    // Deep-link straight to the widget's chat view. The thread is surfaced from
+    // the visitor's own session (or a re-identify in the host app), so the URL
+    // only navigates — it carries no capability of its own.
+    const ctaUrl = `${ctx.portalBaseUrl.replace(/\/$/, '')}/widget/?c=${encodeURIComponent(opts.conversationId)}`
     // Only advertise a reply address we can actually receive on, so a visitor's
     // email reply threads back into this conversation (inbound email channel).
     const replyTo = isEmailInboundConfigured()

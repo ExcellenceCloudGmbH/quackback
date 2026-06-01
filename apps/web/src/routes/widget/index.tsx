@@ -33,7 +33,7 @@ import { widgetQueryKeys, INITIAL_SESSION_VERSION } from '@/lib/client/hooks/use
 const searchSchema = z.object({
   board: z.string().optional(),
   // `?c=<conversationId>` opens the widget straight to live chat — used by the
-  // cross-device resume link in agent-reply emails (P2.6b).
+  // deep link in agent-reply emails. Navigation only; carries no capability.
   c: z.string().optional(),
 })
 
@@ -166,8 +166,8 @@ function WidgetPage() {
 
   const { c: resumeConversationId } = Route.useSearch()
   const initialTab = resolveInitialTab(tabs)
-  // A resume link (?c=) opens straight to chat (when chat is enabled); the
-  // widget then loads the visitor's active conversation — usually the linked one.
+  // A `?c=` deep link opens straight to chat (when chat is enabled); the widget
+  // then loads the visitor's active conversation from their session.
   const [view, setView] = useState<WidgetView>(
     resumeConversationId && tabs.chat ? 'chat' : resolveInitialView(tabs)
   )

@@ -5,7 +5,6 @@ import type { Role } from '@/lib/server/auth'
 import { auth } from '@/lib/server/auth'
 import { db, session, principal, eq, and, gt } from '@/lib/server/db'
 import { shouldRollSession, WIDGET_SESSION_TTL_MS } from './widget-session-roll'
-import { isWidgetAnonCookieEnabled, readWidgetAnonCookie } from './widget-anon-cookie'
 
 export interface WidgetAuthContext {
   settings: {
@@ -43,18 +42,8 @@ export async function getWidgetSession(opts?: {
   try {
     const headers = getRequestHeaders()
     const authHeader = headers.get('authorization')
-    // Bearer is the primary credential and always takes precedence. Only when
-    // NO Bearer is present do we consider the gated first-party anon cookie
-    // (P2.7) — and a cookie can only ever resolve an ANONYMOUS session (enforced
-    // after lookup), so it can't elevate or poison an identified one.
-    let token: string | null = null
-    let viaCookie = false
-    if (authHeader?.startsWith('Bearer ')) {
-      token = authHeader.slice(7) || null
-    } else if (isWidgetAnonCookieEnabled()) {
-      token = readWidgetAnonCookie(headers.get('cookie'))
-      viaCookie = true
-    }
+    // Bearer is the widget's sole credential — the visitor's localStorage token.
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) || null : null
     if (!token) return null
 
     const sessionRecord = await db.query.session.findFirst({
@@ -88,11 +77,6 @@ export async function getWidgetSession(opts?: {
         .returning()
       principalRecord = created
     }
-
-    // A cookie-resolved session may ONLY be anonymous — checked BEFORE any write
-    // (e.g. the TTL roll below) so the cookie channel never touches, let alone
-    // resolves, a non-anonymous session.
-    if (viaCookie && (principalRecord.type ?? 'user') !== 'anonymous') return null
 
     // Roll the session's expiry forward on active use so a returning visitor
     // isn't cut off 7 days after their first mint. Gated to ≥24h since the last

@@ -41,11 +41,6 @@ vi.mock('@quackback/email', () => ({
   sendChatMessageEmail: (...a: [Record<string, unknown>]) => sendChatMessageEmail(...a),
 }))
 
-// Signed resume token (P2.6) — stub so the test doesn't pull in config/secretKey.
-vi.mock('@/lib/server/realtime/chat-resume-token', () => ({
-  mintConversationResumeToken: () => 'tok_test',
-}))
-
 vi.mock('@/lib/server/db', () => {
   // A thenable chain. `.where()` resolves to the team rows (so a bare await on
   // the where() builder yields the array); `.limit()` resolves to the single
@@ -329,8 +324,8 @@ describe('notifyAgentReply', () => {
       to: 'account@x.com',
       direction: 'agent_reply',
       senderName: 'Agent',
-      // Signed cross-device resume deep-link (P2.6).
-      ctaUrl: expect.stringContaining('https://acme.example.com/api/chat/resume?token='),
+      // Token-free deep link straight to the widget's chat view.
+      ctaUrl: expect.stringContaining('https://acme.example.com/widget/?c='),
       workspaceName: 'Acme',
     })
   })
