@@ -105,6 +105,8 @@ async function sendEmail(options: {
   to: string
   subject: string
   react: React.ReactElement
+  /** Conversation-specific reply address (e.g. plus-addressed inbound). */
+  replyTo?: string
 }): Promise<EmailResult> {
   const provider = getProvider()
 
@@ -116,6 +118,7 @@ async function sendEmail(options: {
         to: options.to,
         subject: options.subject,
         html,
+        replyTo: options.replyTo,
       })
       console.log(`[Email] Sent via SMTP to ${options.to}, messageId: ${result.messageId}`)
     } catch (error) {
@@ -142,6 +145,7 @@ async function sendEmail(options: {
       to: options.to,
       subject: options.subject,
       react: options.react,
+      replyTo: options.replyTo,
     })
     if (result.error) {
       console.error(`[Email] Resend API error:`, JSON.stringify(result.error, null, 2))
@@ -545,6 +549,9 @@ interface SendChatMessageEmailParams {
   workspaceName: string
   logoUrl?: string
   unsubscribeUrl?: string
+  /** Conversation-specific reply address so a visitor's reply routes back to
+   *  the right thread (inbound email channel). */
+  replyTo?: string
 }
 
 /**
@@ -563,6 +570,7 @@ export async function sendChatMessageEmail(
     workspaceName,
     logoUrl,
     unsubscribeUrl,
+    replyTo,
   } = params
 
   const isReply = direction === 'agent_reply'
@@ -606,6 +614,7 @@ export async function sendChatMessageEmail(
       unsubscribeUrl,
       logoUrl,
     }),
+    replyTo,
   })
 }
 

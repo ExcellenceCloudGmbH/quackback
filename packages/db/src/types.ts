@@ -315,6 +315,16 @@ export interface ChatAttachment {
   size: number
 }
 
+// Channel provenance stored on a chat message (chat_messages.metadata). Null for
+// ordinary in-app live-chat messages; set when a message arrives over another
+// channel so the inbox can render it and dedupe provider retries.
+export interface ChatMessageMetadata {
+  /** The channel this message arrived through, when not in-app live chat. */
+  source?: 'email'
+  /** Provider Message-ID for an inbound email, used to dedupe webhook retries. */
+  emailMessageId?: string
+}
+
 // Live chat row types
 export type Conversation = InferSelectModel<typeof conversations>
 export type NewConversation = InferInsertModel<typeof conversations>

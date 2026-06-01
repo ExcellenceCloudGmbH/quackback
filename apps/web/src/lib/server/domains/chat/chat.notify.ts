@@ -16,6 +16,7 @@ import { createNotificationsBatch } from '@/lib/server/domains/notifications/not
 import { buildHookContext } from '@/lib/server/events/hook-context'
 import { truncate } from '@/lib/shared/utils/string'
 import { resolveReplyRecipient } from './chat.recipient'
+import { inboundReplyToAddress, isEmailInboundConfigured } from './chat.email-channel'
 
 const previewOf = (content: string) => truncate(content, 140)
 
@@ -166,6 +167,11 @@ export async function notifyAgentReply(opts: {
     // Deep-link the visitor back to their conversation (the widget restores it
     // from the persisted anon session), not just the portal root.
     const ctaUrl = `${ctx.portalBaseUrl.replace(/\/$/, '')}/?openChat=1`
+    // Only advertise a reply address we can actually receive on, so a visitor's
+    // email reply threads back into this conversation (inbound email channel).
+    const replyTo = isEmailInboundConfigured()
+      ? (inboundReplyToAddress(opts.conversationId) ?? undefined)
+      : undefined
     const result = await sendChatMessageEmail({
       to: recipient,
       direction: 'agent_reply',
@@ -174,6 +180,7 @@ export async function notifyAgentReply(opts: {
       ctaUrl,
       workspaceName: ctx.workspaceName,
       logoUrl: ctx.logoUrl ?? undefined,
+      replyTo,
     })
     if (result && result.sent === false) {
       console.warn(

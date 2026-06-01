@@ -4,7 +4,7 @@
  * to an offline visitor. All three paths are fire-and-forget and must swallow
  * dependency errors rather than reject.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PrincipalId, ConversationId } from '@quackback/ids'
 import type { Conversation } from '@/lib/server/db'
 
@@ -375,5 +375,51 @@ describe('notifyAgentReply', () => {
       })
     ).resolves.toBeUndefined()
     expect(sendChatMessageEmail).not.toHaveBeenCalled()
+  })
+
+  describe('inbound-email Reply-To', () => {
+    const prevDomain = process.env.EMAIL_INBOUND_DOMAIN
+    const prevSecret = process.env.EMAIL_INBOUND_SIGNING_SECRET
+
+    afterEach(() => {
+      if (prevDomain === undefined) delete process.env.EMAIL_INBOUND_DOMAIN
+      else process.env.EMAIL_INBOUND_DOMAIN = prevDomain
+      if (prevSecret === undefined) delete process.env.EMAIL_INBOUND_SIGNING_SECRET
+      else process.env.EMAIL_INBOUND_SIGNING_SECRET = prevSecret
+    })
+
+    it('sets a conversation-specific Reply-To when inbound email is configured', async () => {
+      process.env.EMAIL_INBOUND_DOMAIN = 'tenaevexeo.resend.app'
+      process.env.EMAIL_INBOUND_SIGNING_SECRET = 'whsec_test'
+      isPrincipalOnline.mockResolvedValue(false)
+      visitorRows = [{ type: 'user', email: 'account@x.com' }]
+
+      await notifyAgentReply({
+        conversationId,
+        visitorPrincipalId,
+        content: 'here is your answer',
+        agentName: 'Agent',
+      })
+
+      expect(sendChatMessageEmail.mock.calls[0][0]).toMatchObject({
+        replyTo: `reply+${conversationId}@tenaevexeo.resend.app`,
+      })
+    })
+
+    it('omits Reply-To when inbound email is not configured', async () => {
+      delete process.env.EMAIL_INBOUND_DOMAIN
+      delete process.env.EMAIL_INBOUND_SIGNING_SECRET
+      isPrincipalOnline.mockResolvedValue(false)
+      visitorRows = [{ type: 'user', email: 'account@x.com' }]
+
+      await notifyAgentReply({
+        conversationId,
+        visitorPrincipalId,
+        content: 'here is your answer',
+        agentName: 'Agent',
+      })
+
+      expect(sendChatMessageEmail.mock.calls[0][0].replyTo).toBeUndefined()
+    })
   })
 })

@@ -221,6 +221,7 @@ export async function sendVisitorMessage(
         senderType: 'visitor',
         content,
         attachments: attachments.length > 0 ? attachments : null,
+        metadata: input.metadata ?? null,
       })
       .returning()
 

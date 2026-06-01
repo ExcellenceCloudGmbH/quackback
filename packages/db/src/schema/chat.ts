@@ -18,7 +18,7 @@ import {
   CHANNELS,
   CONVERSATION_PRIORITIES,
 } from '../types'
-import type { ChatAttachment } from '../types'
+import type { ChatAttachment, ChatMessageMetadata } from '../types'
 
 /**
  * Live chat conversations — one thread between a visitor (anonymous or
@@ -124,6 +124,9 @@ export const chatMessages = pgTable(
     isInternal: boolean('is_internal').notNull().default(false),
     // Image/file attachments (client-safe refs); null/empty for text-only messages.
     attachments: jsonb('attachments').$type<ChatAttachment[]>(),
+    // Channel provenance (e.g. inbound email message-id for retry dedupe); null
+    // for ordinary in-app live-chat messages.
+    metadata: jsonb('metadata').$type<ChatMessageMetadata>(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }),
     // Soft delete support, mirroring comments.
