@@ -9,7 +9,14 @@
  */
 import { z } from 'zod'
 import { createServerFn } from '@tanstack/react-start'
-import type { ConversationId, ChatMessageId, PrincipalId, PostId, BoardId } from '@quackback/ids'
+import type {
+  ConversationId,
+  ChatMessageId,
+  PrincipalId,
+  PostId,
+  BoardId,
+  TagId,
+} from '@quackback/ids'
 import {
   MAX_CHAT_MESSAGE_LENGTH,
   MAX_CHAT_ATTACHMENTS,
@@ -84,6 +91,16 @@ const assignSchema = z.object({
   conversationId: z.string(),
   /** null / omitted = unassign; 'me' = assign to the current agent. */
   assignTo: z.union([z.literal('me'), z.null()]).optional(),
+})
+
+const setPrioritySchema = z.object({
+  conversationId: z.string(),
+  priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']),
+})
+
+const conversationTagSchema = z.object({
+  conversationId: z.string(),
+  tagId: z.string(),
 })
 
 async function assertChatEnabled(): Promise<void> {
@@ -560,6 +577,51 @@ export const assignConversationFn = createServerFn({ method: 'POST' })
       return { ok: true }
     } catch (error) {
       console.error('[fn:chat] assignConversationFn failed:', error)
+      throw error
+    }
+  })
+
+export const setConversationPriorityFn = createServerFn({ method: 'POST' })
+  .inputValidator(setPrioritySchema)
+  .handler(async ({ data }) => {
+    try {
+      const ctx = await requireAuth({ roles: ['admin', 'member'] })
+      const actor = await policyActorFromAuth(ctx)
+      const { setConversationPriority } = await import('@/lib/server/domains/chat/chat.service')
+      await setConversationPriority(data.conversationId as ConversationId, data.priority, actor)
+      return { ok: true }
+    } catch (error) {
+      console.error('[fn:chat] setConversationPriorityFn failed:', error)
+      throw error
+    }
+  })
+
+export const addConversationTagFn = createServerFn({ method: 'POST' })
+  .inputValidator(conversationTagSchema)
+  .handler(async ({ data }) => {
+    try {
+      const ctx = await requireAuth({ roles: ['admin', 'member'] })
+      const actor = await policyActorFromAuth(ctx)
+      const { addConversationTag } = await import('@/lib/server/domains/chat/chat.service')
+      await addConversationTag(data.conversationId as ConversationId, data.tagId as TagId, actor)
+      return { ok: true }
+    } catch (error) {
+      console.error('[fn:chat] addConversationTagFn failed:', error)
+      throw error
+    }
+  })
+
+export const removeConversationTagFn = createServerFn({ method: 'POST' })
+  .inputValidator(conversationTagSchema)
+  .handler(async ({ data }) => {
+    try {
+      const ctx = await requireAuth({ roles: ['admin', 'member'] })
+      const actor = await policyActorFromAuth(ctx)
+      const { removeConversationTag } = await import('@/lib/server/domains/chat/chat.service')
+      await removeConversationTag(data.conversationId as ConversationId, data.tagId as TagId, actor)
+      return { ok: true }
+    } catch (error) {
+      console.error('[fn:chat] removeConversationTagFn failed:', error)
       throw error
     }
   })

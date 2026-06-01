@@ -6,6 +6,7 @@
 import type { ConversationId, ChatMessageId, PrincipalId } from '@quackback/ids'
 
 export type ConversationStatus = 'open' | 'snoozed' | 'pending' | 'closed'
+export type ConversationPriority = 'none' | 'low' | 'medium' | 'high' | 'urgent'
 export type ChatSenderType = 'visitor' | 'agent'
 
 /** One weekday's availability window, local to the config timezone. */
@@ -62,6 +63,8 @@ export interface ChatMessageDTO {
 export interface ConversationDTO {
   id: ConversationId
   status: ConversationStatus
+  /** Agent-set triage priority ('none' = unset). */
+  priority: ConversationPriority
   subject: string | null
   lastMessagePreview: string | null
   lastMessageAt: string

@@ -297,6 +297,11 @@ export type ConversationStatus = (typeof CONVERSATION_STATUSES)[number]
 export const CHANNELS = ['live_chat', 'email', 'web_form'] as const
 export type Channel = (typeof CHANNELS)[number]
 
+// Agent-set conversation priority for inbox triage — kept in sync with the
+// conversations.priority column enum. 'none' = unset (the default).
+export const CONVERSATION_PRIORITIES = ['none', 'low', 'medium', 'high', 'urgent'] as const
+export type ConversationPriority = (typeof CONVERSATION_PRIORITIES)[number]
+
 // Which side of a conversation a message came from — kept in sync with the
 // chat_messages.sender_type column enum.
 export const CHAT_SENDER_TYPES = ['visitor', 'agent'] as const

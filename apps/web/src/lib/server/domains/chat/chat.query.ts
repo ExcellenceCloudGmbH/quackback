@@ -96,6 +96,7 @@ export function toConversationDTO(
   return {
     id: conversation.id,
     status: conversation.status,
+    priority: conversation.priority,
     subject: conversation.subject,
     lastMessagePreview: conversation.lastMessagePreview,
     lastMessageAt: conversation.lastMessageAt.toISOString(),
@@ -286,6 +287,7 @@ export async function listMessages(
 
 export interface ConversationListFilter {
   status?: 'open' | 'snoozed' | 'pending' | 'closed'
+  priority?: 'none' | 'low' | 'medium' | 'high' | 'urgent'
   assignedAgentPrincipalId?: PrincipalId
   /** Free-text match over the visitor name + message content. */
   search?: string
@@ -333,6 +335,7 @@ export async function listConversationsForAgent(
     .where(
       and(
         filter.status ? eq(conversations.status, filter.status) : undefined,
+        filter.priority ? eq(conversations.priority, filter.priority) : undefined,
         filter.assignedAgentPrincipalId
           ? eq(conversations.assignedAgentPrincipalId, filter.assignedAgentPrincipalId)
           : undefined,

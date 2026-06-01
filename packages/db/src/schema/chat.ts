@@ -1,8 +1,23 @@
-import { pgTable, text, timestamp, index, jsonb, integer, boolean } from 'drizzle-orm/pg-core'
+import {
+  pgTable,
+  text,
+  timestamp,
+  index,
+  uniqueIndex,
+  jsonb,
+  integer,
+  boolean,
+} from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 import { typeIdWithDefault, typeIdColumn, typeIdColumnNullable } from '@quackback/ids/drizzle'
 import { principal } from './auth'
-import { CONVERSATION_STATUSES, CHAT_SENDER_TYPES, CHANNELS } from '../types'
+import { tags } from './boards'
+import {
+  CONVERSATION_STATUSES,
+  CHAT_SENDER_TYPES,
+  CHANNELS,
+  CONVERSATION_PRIORITIES,
+} from '../types'
 import type { ChatAttachment } from '../types'
 
 /**
@@ -30,6 +45,8 @@ export const conversations = pgTable(
     // are 'live_chat'; 'email' / 'web_form' are added in later phases so the
     // inbox is one polymorphic conversation type rather than separate objects.
     channel: text('channel', { enum: CHANNELS }).notNull().default('live_chat'),
+    // Agent-set triage priority. 'none' = unset (the default for every row).
+    priority: text('priority', { enum: CONVERSATION_PRIORITIES }).notNull().default('none'),
     // Optional human-readable subject, derived from the first message for the
     // inbox list. Plain text.
     subject: text('subject'),
@@ -58,6 +75,29 @@ export const conversations = pgTable(
     index('conversations_status_last_message_idx').on(table.status, table.lastMessageAt),
     index('conversations_visitor_principal_idx').on(table.visitorPrincipalId),
     index('conversations_assigned_agent_idx').on(table.assignedAgentPrincipalId),
+  ]
+)
+
+/**
+ * Conversation labels — reuses the shared `tags` vocabulary so the inbox and
+ * feedback posts draw from one set of labels (powering the feedback<->support
+ * loop). Agent-only; never exposed to the visitor. Both FKs cascade so deleting
+ * a tag or a conversation cleans up here.
+ */
+export const conversationTags = pgTable(
+  'conversation_tags',
+  {
+    conversationId: typeIdColumn('conversation')('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    tagId: typeIdColumn('tag')('tag_id')
+      .notNull()
+      .references(() => tags.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    uniqueIndex('conversation_tags_pk').on(table.conversationId, table.tagId),
+    index('conversation_tags_conversation_id_idx').on(table.conversationId),
+    index('conversation_tags_tag_id_idx').on(table.tagId),
   ]
 )
 

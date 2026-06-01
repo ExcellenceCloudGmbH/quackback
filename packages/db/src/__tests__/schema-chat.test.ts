@@ -1,8 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import { getTableName, getTableColumns } from 'drizzle-orm'
 import { getTableConfig } from 'drizzle-orm/pg-core'
-import { conversations, chatMessages } from '../schema/chat'
-import { CONVERSATION_STATUSES, CHAT_SENDER_TYPES, CHANNELS } from '../types'
+import { conversations, chatMessages, conversationTags } from '../schema/chat'
+import {
+  CONVERSATION_STATUSES,
+  CHAT_SENDER_TYPES,
+  CHANNELS,
+  CONVERSATION_PRIORITIES,
+} from '../types'
 
 describe('conversations schema', () => {
   it('has correct table name', () => {
@@ -50,6 +55,13 @@ describe('conversations schema', () => {
     expect(cols.channel.notNull).toBe(true)
   })
 
+  it('priority enum matches CONVERSATION_PRIORITIES and defaults to none (not null)', () => {
+    const cols = getTableColumns(conversations)
+    expect(cols.priority.enumValues).toEqual([...CONVERSATION_PRIORITIES])
+    expect(cols.priority.default).toBe('none')
+    expect(cols.priority.notNull).toBe(true)
+  })
+
   it('restricts delete of the visitor principal so chat history is never orphaned', () => {
     const cfg = getTableConfig(conversations)
     const fk = cfg.foreignKeys.find((f) => {
@@ -57,6 +69,23 @@ describe('conversations schema', () => {
       return ref.columns.some((c) => c.name === 'visitor_principal_id')
     })
     expect(fk?.onDelete).toBe('restrict')
+  })
+})
+
+describe('conversation_tags schema', () => {
+  it('has the expected table name + columns', () => {
+    expect(getTableName(conversationTags)).toBe('conversation_tags')
+    expect(Object.keys(getTableColumns(conversationTags))).toEqual(
+      expect.arrayContaining(['conversationId', 'tagId'])
+    )
+  })
+
+  it('cascades delete from both the conversation and the tag', () => {
+    const cfg = getTableConfig(conversationTags)
+    expect(cfg.foreignKeys).toHaveLength(2)
+    for (const fk of cfg.foreignKeys) {
+      expect(fk.onDelete).toBe('cascade')
+    }
   })
 })
 
