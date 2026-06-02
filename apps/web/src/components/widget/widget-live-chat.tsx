@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { FormattedMessage, useIntl } from 'react-intl'
 import { buildChatRows, type ChatRow } from './widget-chat-rows'
 import { ChatPresenceBadge } from './chat-presence-badge'
-import { chatAvailable, type ChatPresence } from '@/lib/shared/chat/presence'
+import { chatAvailable, CHAT_PRESENCE_POLL_MS, type ChatPresence } from '@/lib/shared/chat/presence'
 import { PaperAirplaneIcon, ChevronDownIcon } from '@heroicons/react/24/solid'
 import {
   ChatBubbleLeftRightIcon,
@@ -194,7 +194,7 @@ export function WidgetLiveChat({
           setNextOpenAtIso(p.nextOpenAt)
         })
         .catch(() => {})
-    const id = setInterval(poll, 30_000)
+    const id = setInterval(poll, CHAT_PRESENCE_POLL_MS)
     return () => {
       cancelled = true
       clearInterval(id)

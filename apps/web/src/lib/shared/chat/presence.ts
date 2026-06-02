@@ -23,3 +23,10 @@ export interface ChatPresence {
   withinOfficeHours: boolean | null
   nextOpenAt: string | null
 }
+
+/**
+ * How often the open widget re-polls presence to keep the online/offline strip
+ * fresh (e.g. an agent going offline). Comfortably under the server's presence
+ * TTL so a gone agent is reflected promptly. The SSR seed covers first paint.
+ */
+export const CHAT_PRESENCE_POLL_MS = 30_000

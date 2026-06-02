@@ -3,7 +3,7 @@ import { useWidgetAuth } from './widget-auth-provider'
 import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 import { getMyChatFn, getChatPresenceFn } from '@/lib/server/functions/chat'
 import type { ConversationDTO } from '@/lib/shared/chat/types'
-import type { ChatPresence } from '@/lib/shared/chat/presence'
+import { CHAT_PRESENCE_POLL_MS, type ChatPresence } from '@/lib/shared/chat/presence'
 
 export interface ChatSummary {
   conversation: ConversationDTO | null
@@ -79,7 +79,7 @@ export function useChatSummary(
           }))
         })
         .catch(() => {})
-    }, 30_000)
+    }, CHAT_PRESENCE_POLL_MS)
     return () => {
       cancelled = true
       clearInterval(id)
