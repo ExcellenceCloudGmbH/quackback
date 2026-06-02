@@ -34,7 +34,8 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import type { LatestVersionResult } from '@/lib/server/functions/version'
 import { setAgentAvailabilityFn } from '@/lib/server/functions/chat'
 
-/** Online / Away rows for the account menu (chat routing availability). */
+/** Slack-style availability toggle for the account menu (chat routing). The dot
+ *  + label preview the state you'll switch to; the avatar dot shows the current one. */
 function AvailabilityMenuItems({
   availability,
   onSet,
@@ -42,21 +43,14 @@ function AvailabilityMenuItems({
   availability: 'online' | 'away'
   onSet: (next: 'online' | 'away') => void
 }) {
+  const goingAway = availability === 'online'
   return (
     <>
-      <DropdownMenuItem
-        onClick={() => onSet('online')}
-        className={cn(availability === 'online' && 'font-medium')}
-      >
-        <span className="mr-2 h-2 w-2 rounded-full bg-green-500" />
-        Online
-      </DropdownMenuItem>
-      <DropdownMenuItem
-        onClick={() => onSet('away')}
-        className={cn(availability === 'away' && 'font-medium')}
-      >
-        <span className="mr-2 h-2 w-2 rounded-full bg-yellow-400" />
-        Away
+      <DropdownMenuItem onClick={() => onSet(goingAway ? 'away' : 'online')}>
+        <span
+          className={cn('mr-2 h-2 w-2 rounded-full', goingAway ? 'bg-yellow-400' : 'bg-green-500')}
+        />
+        {goingAway ? 'Set yourself as away' : 'Set yourself as active'}
       </DropdownMenuItem>
       <DropdownMenuSeparator />
     </>
@@ -290,7 +284,7 @@ export function AdminSidebar({ initialUserData, latestVersion }: AdminSidebarPro
                         {chatEnabled && (
                           <span
                             className={cn(
-                              'absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full ring-2 ring-background',
+                              'absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-background',
                               availability === 'online' ? 'bg-green-500' : 'bg-yellow-400'
                             )}
                             aria-hidden="true"
@@ -305,9 +299,12 @@ export function AdminSidebar({ initialUserData, latestVersion }: AdminSidebarPro
                 </Tooltip>
                 <DropdownMenuContent align="start" side="right" sideOffset={8} className="w-56">
                   <DropdownMenuLabel className="font-normal">
-                    <div className="flex flex-col gap-0.5">
-                      <p className="text-sm font-medium truncate">{name}</p>
-                      <p className="text-xs text-muted-foreground truncate">{email}</p>
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-8 w-8 shrink-0" src={avatarUrl} name={name} />
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <p className="text-sm font-medium truncate">{name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{email}</p>
+                      </div>
                     </div>
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
@@ -441,7 +438,7 @@ export function AdminSidebar({ initialUserData, latestVersion }: AdminSidebarPro
                 {chatEnabled && (
                   <span
                     className={cn(
-                      'absolute bottom-0.5 right-0.5 h-2.5 w-2.5 rounded-full ring-2 ring-background',
+                      'absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full ring-2 ring-background',
                       availability === 'online' ? 'bg-green-500' : 'bg-yellow-400'
                     )}
                     aria-hidden="true"
@@ -451,9 +448,12 @@ export function AdminSidebar({ initialUserData, latestVersion }: AdminSidebarPro
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-sm font-medium truncate">{name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{email}</p>
+                <div className="flex items-center gap-2">
+                  <Avatar className="h-8 w-8 shrink-0" src={avatarUrl} name={name} />
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <p className="text-sm font-medium truncate">{name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{email}</p>
+                  </div>
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
