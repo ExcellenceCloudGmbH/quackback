@@ -1,6 +1,7 @@
 import { db, eq, asc, comments, posts, boards, type Comment } from '@/lib/server/db'
 import { type CommentId, type PostId, type PrincipalId } from '@quackback/ids'
 import { NotFoundError } from '@/lib/shared/errors'
+import { realEmail } from '@/lib/shared/anonymous-email'
 import type { CommentThread } from './comment.types'
 import { buildCommentTree, toStatusChange } from '@/lib/shared'
 
@@ -44,7 +45,7 @@ export async function getCommentById(
   return {
     ...comment,
     authorName: comment.author?.displayName ?? null,
-    authorEmail: comment.author?.user?.email ?? null,
+    authorEmail: realEmail(comment.author?.user?.email),
   }
 }
 
