@@ -17,6 +17,7 @@ import {
   type ChatAttachment,
 } from '@/lib/shared/chat/types'
 import { officeHoursSnapshot } from '@/lib/shared/chat/office-hours'
+import type { ChatPresence } from '@/lib/shared/chat/presence'
 import { realEmail } from '@/lib/shared/anonymous-email'
 import { CONVERSATION_STATUSES } from '@/lib/shared/db-types'
 import {
@@ -171,24 +172,32 @@ export const sendChatMessageFn = createServerFn({ method: 'POST' })
   })
 
 /**
- * Lightweight presence read for polling: agent-online state + the office-hours
- * verdict, WITHOUT loading the conversation or messages. The widget polls this
- * so the online/offline indicator stays fresh (e.g. agents going offline
- * between messages) without re-fetching the whole thread.
+ * The team's availability verdict (live presence + office-hours snapshot),
+ * WITHOUT loading the conversation or messages. Tenant-global — no visitor auth
+ * needed. The widget polls this to keep the online/offline indicator fresh, and
+ * the widget loader calls it server-side to SSR-seed the same value so the first
+ * paint matches what the poll reports.
+ *
+ * The Redis/DB reads stay INSIDE the handler so the server-fn transform strips
+ * them — and their transitive `ioredis` import — from the client bundle. A plain
+ * exported helper holding these dynamic imports would leak ioredis client-side
+ * and break the build, so callers (incl. the loader) must go through this fn.
  */
-export const getChatPresenceFn = createServerFn({ method: 'GET' }).handler(async () => {
-  const { getLiveChatConfig } = await import('@/lib/server/domains/settings/settings.widget')
-  const { isAnyAgentAvailable } = await import('@/lib/server/realtime/presence')
-  const [liveChatConfig, agentsOnline] = await Promise.all([
-    getLiveChatConfig(),
-    isAnyAgentAvailable(),
-  ])
-  return {
-    agentsOnline,
-    // withinOfficeHours + (when closed) the ISO instant we're next back.
-    ...officeHoursSnapshot(liveChatConfig.officeHours, new Date()),
+export const getChatPresenceFn = createServerFn({ method: 'GET' }).handler(
+  async (): Promise<ChatPresence> => {
+    const { getLiveChatConfig } = await import('@/lib/server/domains/settings/settings.widget')
+    const { isAnyAgentAvailable } = await import('@/lib/server/realtime/presence')
+    const [liveChatConfig, agentsOnline] = await Promise.all([
+      getLiveChatConfig(),
+      isAnyAgentAvailable(),
+    ])
+    return {
+      agentsOnline,
+      // withinOfficeHours + (when closed) the ISO instant we're next back.
+      ...officeHoursSnapshot(liveChatConfig.officeHours, new Date()),
+    }
   }
-})
+)
 
 /** The current visitor's active conversation + first page of messages. */
 export const getMyChatFn = createServerFn({ method: 'GET' }).handler(async () => {
@@ -198,15 +207,22 @@ export const getMyChatFn = createServerFn({ method: 'GET' }).handler(async () =>
     const { getSettings } = await import('./workspace')
     const { isEmailConfigured } = await import('@quackback/email')
     const { canEmailVisitor } = await import('@/lib/shared/chat/reply-capability')
-    const [enabled, liveChatConfig, appSettings] = await Promise.all([
+    const { isAnyAgentAvailable } = await import('@/lib/server/realtime/presence')
+    // Presence is tenant-global (needs no principal), so resolve it up front and
+    // report it on EVERY return path — including the not-yet-authenticated early
+    // returns. Otherwise a fresh visitor reads the team as "away" until the next
+    // poll even when an agent is online.
+    const [enabled, liveChatConfig, appSettings, agentsOnline] = await Promise.all([
       isLiveChatEnabled(),
       getLiveChatConfig(),
       getSettings(),
+      isAnyAgentAvailable(),
     ])
     const preChatEmail = liveChatConfig.preChatEmail ?? 'off'
     const emailConfigured = isEmailConfigured()
     const base = {
       enabled,
+      agentsOnline,
       welcomeMessage: liveChatConfig.welcomeMessage ?? null,
       offlineMessage: liveChatConfig.offlineMessage ?? null,
       // Falls back to the workspace name (as the settings help text promises)
@@ -229,12 +245,12 @@ export const getMyChatFn = createServerFn({ method: 'GET' }).handler(async () =>
     }
 
     if (!enabled || !hasAuthCredentials()) {
-      return { ...base, conversation: null, messages: [], hasMore: false, agentsOnline: false }
+      return { ...base, conversation: null, messages: [], hasMore: false }
     }
 
     const ctx = await getOptionalAuth()
     if (!ctx?.principal) {
-      return { ...base, conversation: null, messages: [], hasMore: false, agentsOnline: false }
+      return { ...base, conversation: null, messages: [], hasMore: false }
     }
 
     // Gate reads behind portal access for non-team callers (degrade gracefully
@@ -243,18 +259,14 @@ export const getMyChatFn = createServerFn({ method: 'GET' }).handler(async () =>
       const { resolvePortalAccessForRequest } = await import('./portal-access')
       const access = await resolvePortalAccessForRequest()
       if (!access.granted) {
-        return { ...base, conversation: null, messages: [], hasMore: false, agentsOnline: false }
+        return { ...base, conversation: null, messages: [], hasMore: false }
       }
     }
 
     const { getActiveConversationForVisitor, conversationToDTO, listMessages } =
       await import('@/lib/server/domains/chat/chat.query')
-    const { isAnyAgentAvailable } = await import('@/lib/server/realtime/presence')
 
-    const [active, agentsOnline] = await Promise.all([
-      getActiveConversationForVisitor(ctx.principal.id),
-      isAnyAgentAvailable(),
-    ])
+    const active = await getActiveConversationForVisitor(ctx.principal.id)
     const conversation = active.conversation
     // Anonymous visitors carry a synthetic placeholder email — it must not count
     // as a real address (else the widget promises an email reply it can't send).
@@ -269,7 +281,6 @@ export const getMyChatFn = createServerFn({ method: 'GET' }).handler(async () =>
         conversation: null,
         messages: [],
         hasMore: false,
-        agentsOnline,
       }
     }
 
@@ -285,7 +296,6 @@ export const getMyChatFn = createServerFn({ method: 'GET' }).handler(async () =>
       conversation: dto,
       messages: page.messages,
       hasMore: page.hasMore,
-      agentsOnline,
     }
   } catch (error) {
     console.error('[fn:chat] getMyChatFn failed:', error)

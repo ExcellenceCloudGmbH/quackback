@@ -3,7 +3,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { FormattedMessage, useIntl } from 'react-intl'
 import { buildChatRows, type ChatRow } from './widget-chat-rows'
 import { ChatPresenceBadge } from './chat-presence-badge'
-import { chatAvailable } from '@/lib/shared/chat/presence'
+import { chatAvailable, type ChatPresence } from '@/lib/shared/chat/presence'
 import { PaperAirplaneIcon, ChevronDownIcon } from '@heroicons/react/24/solid'
 import {
   ChatBubbleLeftRightIcon,
@@ -46,9 +46,15 @@ interface WidgetLiveChatProps {
   helpEnabled?: boolean
   /** Open a help article by slug (switches the widget to the article view). */
   onArticleSelect?: (slug: string) => void
+  /** SSR-seeded presence so the online/offline strip is right on first paint. */
+  initialPresence?: ChatPresence | null
 }
 
-export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatProps = {}) {
+export function WidgetLiveChat({
+  helpEnabled,
+  onArticleSelect,
+  initialPresence,
+}: WidgetLiveChatProps = {}) {
   const intl = useIntl()
   const { user, ensureSession, sessionVersion } = useWidgetAuth()
   const firstName = firstNameOf(user?.name)
@@ -59,11 +65,17 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
   const [welcomeMessage, setWelcomeMessage] = useState<string | null>(null)
   const [offlineMessage, setOfflineMessage] = useState<string | null>(null)
   const [teamName, setTeamName] = useState<string | null>(null)
-  const [agentsOnline, setAgentsOnline] = useState(false)
+  // Seeded from the SSR loader (tenant-global presence) so the online/offline
+  // strip is correct on first paint; the load + poll below keep it fresh.
+  const [agentsOnline, setAgentsOnline] = useState(initialPresence?.agentsOnline ?? false)
   // null = no office-hours schedule; true/false = the schedule's verdict at load.
-  const [withinOfficeHours, setWithinOfficeHours] = useState<boolean | null>(null)
+  const [withinOfficeHours, setWithinOfficeHours] = useState<boolean | null>(
+    initialPresence?.withinOfficeHours ?? null
+  )
   // ISO instant the team is next back (only when the schedule says we're closed).
-  const [nextOpenAtIso, setNextOpenAtIso] = useState<string | null>(null)
+  const [nextOpenAtIso, setNextOpenAtIso] = useState<string | null>(
+    initialPresence?.nextOpenAt ?? null
+  )
   const [agentReadAt, setAgentReadAt] = useState<string | null>(null)
   // Pre-chat email capture (anonymous visitors).
   const [preChatMode, setPreChatMode] = useState<'off' | 'optional' | 'required'>('off')
@@ -182,7 +194,7 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
           setNextOpenAtIso(p.nextOpenAt)
         })
         .catch(() => {})
-    const id = setInterval(poll, 45_000)
+    const id = setInterval(poll, 30_000)
     return () => {
       cancelled = true
       clearInterval(id)

@@ -1,6 +1,6 @@
 import { FormattedMessage } from 'react-intl'
 import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
-import { chatAvailable } from '@/lib/shared/chat/presence'
+import { chatAvailable, type ChatPresence } from '@/lib/shared/chat/presence'
 import { useChatSummary } from './use-chat-summary'
 import { WidgetResumeCard } from './widget-resume-card'
 import { WidgetConversationHistory } from './widget-conversation-history'
@@ -9,6 +9,8 @@ import { ChatPresenceBadge } from './chat-presence-badge'
 interface WidgetMessagesSectionProps {
   /** Open the full-height chat thread. */
   onOpenChat: () => void
+  /** SSR-seeded presence so the online/offline badge is right on first paint. */
+  initialPresence?: ChatPresence | null
 }
 
 /**
@@ -16,8 +18,11 @@ interface WidgetMessagesSectionProps {
  * in-flight conversation plus a primary CTA into the chat thread. Rendered
  * below the help articles when live chat is part of the support surface.
  */
-export function WidgetMessagesSection({ onOpenChat }: WidgetMessagesSectionProps) {
-  const { conversation, teamName, agentsOnline, withinOfficeHours } = useChatSummary(true)
+export function WidgetMessagesSection({ onOpenChat, initialPresence }: WidgetMessagesSectionProps) {
+  const { conversation, teamName, agentsOnline, withinOfficeHours } = useChatSummary(
+    true,
+    initialPresence
+  )
   const available = chatAvailable(agentsOnline, withinOfficeHours)
 
   return (

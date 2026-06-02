@@ -8,6 +8,7 @@ import { publicHelpCenterQueries } from '@/lib/client/queries/help-center'
 import { getTopLevelCategories } from '@/components/help-center/help-center-utils'
 import { CategoryIcon } from '@/components/help-center/category-icon'
 import { WidgetMessagesSection } from './widget-messages-section'
+import type { ChatPresence } from '@/lib/shared/chat/presence'
 
 interface WidgetHelpArticle {
   id: string
@@ -26,9 +27,16 @@ interface WidgetHelpProps {
    * disabled — the support surface is then help articles only.
    */
   onOpenChat?: () => void
+  /** SSR-seeded presence, forwarded to the Messages section's online badge. */
+  chatPresence?: ChatPresence | null
 }
 
-export function WidgetHelp({ onArticleSelect, onCategorySelect, onOpenChat }: WidgetHelpProps) {
+export function WidgetHelp({
+  onArticleSelect,
+  onCategorySelect,
+  onOpenChat,
+  chatPresence,
+}: WidgetHelpProps) {
   const intl = useIntl()
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<WidgetHelpArticle[]>([])
@@ -160,7 +168,9 @@ export function WidgetHelp({ onArticleSelect, onCategorySelect, onOpenChat }: Wi
               )}
 
               {/* Messages — the chat half of the combined support surface. */}
-              {onOpenChat && <WidgetMessagesSection onOpenChat={onOpenChat} />}
+              {onOpenChat && (
+                <WidgetMessagesSection onOpenChat={onOpenChat} initialPresence={chatPresence} />
+              )}
             </>
           )}
 

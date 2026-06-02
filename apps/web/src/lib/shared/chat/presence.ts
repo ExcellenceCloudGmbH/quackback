@@ -10,3 +10,16 @@
 export function chatAvailable(agentsOnline: boolean, withinOfficeHours: boolean | null): boolean {
   return withinOfficeHours === null ? agentsOnline : withinOfficeHours || agentsOnline
 }
+
+/**
+ * The team's availability verdict: live-agent presence plus the office-hours
+ * snapshot. Computed server-side and shared between the polled presence endpoint
+ * and the widget loader's SSR seed, so the first paint matches what the poll
+ * reports (no "away" flash before the first fetch). `withinOfficeHours`: null =
+ * no schedule; `nextOpenAt`: ISO instant the team is next back (only when closed).
+ */
+export interface ChatPresence {
+  agentsOnline: boolean
+  withinOfficeHours: boolean | null
+  nextOpenAt: string | null
+}

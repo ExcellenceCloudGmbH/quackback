@@ -29,6 +29,7 @@ import { portalQueries } from '@/lib/client/queries/portal'
 import { fetchBoardCapabilitiesFn } from '@/lib/server/functions/portal'
 import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 import { widgetQueryKeys, INITIAL_SESSION_VERSION } from '@/lib/client/hooks/use-widget-vote'
+import type { ChatPresence } from '@/lib/shared/chat/presence'
 
 const searchSchema = z.object({
   board: z.string().optional(),
@@ -58,7 +59,34 @@ export const Route = createFileRoute('/widget/')({
 
     const { getBaseUrl } = await import('@/lib/server/config')
 
+    // Same triple-gate as the `chat` tab below: Support Inbox flag + live chat
+    // enabled + tab on. Hoisted so we only compute presence when chat shows.
+    const chatTabEnabled =
+      ((settings?.featureFlags as { supportInbox?: boolean } | undefined)?.supportInbox ?? false) &&
+      (settings?.publicWidgetConfig?.chat?.enabled ?? false) &&
+      (settings?.publicWidgetConfig?.tabs?.chat ?? false)
+
+    // Presence is tenant-global (not visitor-specific), so the anonymous SSR
+    // baseline value is exactly correct for every visitor — seed it so the chat
+    // online/offline strip paints right immediately instead of flashing "away"
+    // until the first client poll. Skipped (null) when chat isn't shown.
+    let chatPresence: ChatPresence | null = null
+    if (chatTabEnabled) {
+      try {
+        // Call the server fn (not an unwrapped helper): its handler — and the
+        // ioredis-reaching presence import inside it — is stripped from the
+        // client bundle. Server-side it runs inline and returns the verdict.
+        const { getChatPresenceFn } = await import('@/lib/server/functions/chat')
+        chatPresence = await getChatPresenceFn()
+      } catch {
+        // A presence read failure must never break the whole widget load — fall
+        // back to no seed (offline) and let the client poll correct it.
+        chatPresence = null
+      }
+    }
+
     return {
+      chatPresence,
       posts: portalData.posts.items.map((p) => ({
         id: p.id,
         title: p.title,
@@ -97,12 +125,8 @@ export const Route = createFileRoute('/widget/')({
           ((settings?.featureFlags as { helpCenter?: boolean } | undefined)?.helpCenter ?? false) &&
           (settings?.helpCenterConfig?.enabled ?? false) &&
           (settings?.publicWidgetConfig?.tabs?.help ?? false),
-        // Same triple-gate as help: Support Inbox flag + live chat enabled + tab on.
-        chat:
-          ((settings?.featureFlags as { supportInbox?: boolean } | undefined)?.supportInbox ??
-            false) &&
-          (settings?.publicWidgetConfig?.chat?.enabled ?? false) &&
-          (settings?.publicWidgetConfig?.tabs?.chat ?? false),
+        // Support Inbox flag + live chat enabled + tab on (computed above).
+        chat: chatTabEnabled,
         // Admin opt-out for the aggregated Home tab (defaults to shown).
         home: settings?.publicWidgetConfig?.tabs?.home ?? true,
       },
@@ -142,6 +166,7 @@ function WidgetPage() {
     defaultBoard,
     portalAccess,
     portalOrigin,
+    chatPresence,
   } = Route.useLoaderData()
   const { ensureSession, sessionVersion } = useWidgetAuth()
 
@@ -339,6 +364,7 @@ function WidgetPage() {
       {view === 'overview' && (
         <WidgetOverview
           tabs={tabs}
+          initialPresence={chatPresence}
           onLeaveFeedback={() => handleTabChange('feedback')}
           onGetHelp={() => handleTabChange('help')}
           onResumeChat={() => {
@@ -356,7 +382,11 @@ function WidgetPage() {
       {view === 'changelog' && <WidgetChangelog onEntrySelect={handleChangelogEntrySelect} />}
 
       {view === 'chat' && (
-        <WidgetLiveChat helpEnabled={tabs.help} onArticleSelect={handleHelpArticleSelect} />
+        <WidgetLiveChat
+          helpEnabled={tabs.help}
+          onArticleSelect={handleHelpArticleSelect}
+          initialPresence={chatPresence}
+        />
       )}
 
       {view === 'changelog-detail' && selectedChangelogId && (
@@ -368,6 +398,7 @@ function WidgetPage() {
           onArticleSelect={handleHelpArticleSelect}
           onCategorySelect={handleHelpCategorySelect}
           onOpenChat={tabs.chat ? () => setView('chat') : undefined}
+          chatPresence={chatPresence}
         />
       )}
 

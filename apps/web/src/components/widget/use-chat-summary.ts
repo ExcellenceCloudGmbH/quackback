@@ -3,6 +3,7 @@ import { useWidgetAuth } from './widget-auth-provider'
 import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 import { getMyChatFn, getChatPresenceFn } from '@/lib/server/functions/chat'
 import type { ConversationDTO } from '@/lib/shared/chat/types'
+import type { ChatPresence } from '@/lib/shared/chat/presence'
 
 export interface ChatSummary {
   conversation: ConversationDTO | null
@@ -23,11 +24,19 @@ const EMPTY: ChatSummary = {
  * presence) from getMyChatFn, re-keyed on sessionVersion. Shared by the Home
  * overview and the Help Messages section so the resume card and presence stay
  * consistent across both. Pass `enabled=false` (e.g. when chat is off) to skip
- * the fetch entirely.
+ * the fetch entirely. `initialPresence` (SSR-seeded) makes the online/offline
+ * verdict correct on first paint, before the client fetch resolves.
  */
-export function useChatSummary(enabled: boolean): ChatSummary {
+export function useChatSummary(
+  enabled: boolean,
+  initialPresence?: ChatPresence | null
+): ChatSummary {
   const { sessionVersion } = useWidgetAuth()
-  const [summary, setSummary] = useState<ChatSummary>(EMPTY)
+  const [summary, setSummary] = useState<ChatSummary>(() => ({
+    ...EMPTY,
+    agentsOnline: initialPresence?.agentsOnline ?? false,
+    withinOfficeHours: initialPresence?.withinOfficeHours ?? null,
+  }))
 
   useEffect(() => {
     if (!enabled) {
@@ -70,7 +79,7 @@ export function useChatSummary(enabled: boolean): ChatSummary {
           }))
         })
         .catch(() => {})
-    }, 45_000)
+    }, 30_000)
     return () => {
       cancelled = true
       clearInterval(id)
