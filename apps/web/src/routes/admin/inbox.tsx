@@ -80,6 +80,8 @@ const PRIORITY_VALUES = ['all', 'none', 'low', 'medium', 'high', 'urgent'] as co
 /** Inbox URL search params — the source of truth for the open chat + filters. */
 export interface InboxSearch {
   c?: string
+  /** Deep-link target message within `c` — scrolled to + flashed on open. */
+  m?: string
   view?: InboxView
   tag?: string
   status?: StatusFilter
@@ -95,6 +97,9 @@ export const Route = createFileRoute('/admin/inbox')({
   // restores the exact open conversation + filters, and links are shareable.
   validateSearch: (search: Record<string, unknown>): InboxSearch => ({
     c: typeof search.c === 'string' ? search.c : undefined,
+    // Only accept a well-formed chat-message id — a stray `?m=` is harmless
+    // (the thread just won't find it), but validating keeps it tidy.
+    m: typeof search.m === 'string' && isValidTypeId(search.m, 'chat_msg') ? search.m : undefined,
     // Allowlist tracks CONVERSATION_VIEWS (incl. 'saved') so deep-links can't
     // silently drop a real view and fall back to the conversation list.
     view: isInboxView(search.view) ? search.view : undefined,
@@ -169,6 +174,7 @@ function InboxPage() {
   const navigate = Route.useNavigate()
   const {
     c: urlC,
+    m: urlM,
     view: urlView,
     tag: urlTag,
     status: urlStatus,
@@ -221,8 +227,18 @@ function InboxPage() {
     [updateSearch]
   )
   const selectedId = (urlC as ConversationId | undefined) ?? null
+  // Selecting a conversation clears any stale jump target — `?m=` only ever
+  // pairs with the conversation it was opened from (via selectSavedMessage).
   const setSelectedId = useCallback(
-    (id: ConversationId | null) => updateSearch({ c: id ?? undefined }),
+    (id: ConversationId | null) => updateSearch({ c: id ?? undefined, m: undefined }),
+    [updateSearch]
+  )
+  // Open a conversation AND deep-link a specific message (the "Saved for later"
+  // feed): the thread scrolls to it and flashes it on arrival.
+  const targetMessageId = (urlM as ChatMessageId | undefined) ?? null
+  const selectSavedMessage = useCallback(
+    (conversationId: ConversationId, messageId: ChatMessageId) =>
+      updateSearch({ c: conversationId, m: messageId }),
     [updateSearch]
   )
 
@@ -367,7 +383,7 @@ function InboxPage() {
     <div className="flex h-full">
       <InboxNavSidebar nav={nav} onSelect={setNav} search={searchInput} onSearch={setSearchInput} />
       {isSaved ? (
-        <SavedMessagesColumn selectedConversationId={selectedId} onSelect={setSelectedId} />
+        <SavedMessagesColumn selectedConversationId={selectedId} onSelect={selectSavedMessage} />
       ) : (
         <ConversationListColumn
           nav={nav}
@@ -393,6 +409,7 @@ function InboxPage() {
           <ChatThread
             key={selectedId}
             conversationId={selectedId}
+            targetMessageId={targetMessageId}
             onChanged={refreshInbox}
             onBack={() => setSelectedId(null)}
             onSelectConversation={setSelectedId}
@@ -488,8 +505,15 @@ function toggleReactionLocal(
   return { ...m, reactions }
 }
 
+// "Jump to message" tuning: how long the flash plays (must match the
+// flash-highlight keyframe duration) and how many older pages we'll auto-pull
+// chasing a deep-linked message before giving up.
+const FLASH_MS = 2200
+const MAX_JUMP_PAGES = 20
+
 function ChatThread({
   conversationId,
+  targetMessageId,
   onChanged,
   onBack,
   onSelectConversation,
@@ -497,6 +521,8 @@ function ChatThread({
   isOtherAgentTyping,
 }: {
   conversationId: ConversationId
+  /** Deep-link target: scroll to + flash this message once it's loaded. */
+  targetMessageId: ChatMessageId | null
   onChanged: () => void
   /** Mobile-only: return to the conversation list (single-column layout). */
   onBack: () => void
@@ -519,6 +545,17 @@ function ChatThread({
   const noteDocRef = useRef<JSONContent | null>(null)
   const [noteResetSignal, setNoteResetSignal] = useState(0)
   const scrollRef = useRef<HTMLDivElement>(null)
+
+  // "Jump to message" deep-link state. pendingTarget is the message we still
+  // need to scroll to (null once resolved); highlightId is the one currently
+  // flashing. pendingTargetRef mirrors pendingTarget so the auto-scroll-to-
+  // bottom effect can read it without listing it as a dep (which would re-fire
+  // a bottom-scroll the instant the jump resolves).
+  const [pendingTarget, setPendingTarget] = useState<ChatMessageId | null>(targetMessageId)
+  const [highlightId, setHighlightId] = useState<ChatMessageId | null>(null)
+  const pendingTargetRef = useRef<ChatMessageId | null>(targetMessageId)
+  pendingTargetRef.current = pendingTarget
+  const jumpPagesRef = useRef(0)
 
   const sendTyping = useCallback(() => {
     void sendChatTypingFn({ data: { conversationId } }).catch(() => {})
@@ -592,11 +629,49 @@ function ChatThread({
       new Date(lastAgentMessage.createdAt).getTime()
 
   // Keyed on the newest id (not length) so prepending older messages doesn't
-  // yank the view to the bottom.
+  // yank the view to the bottom. Skipped while a jump is pending so it doesn't
+  // fight the scroll-to-target (the ref read avoids re-firing when it resolves).
   useEffect(() => {
+    if (pendingTargetRef.current) return
     const el = scrollRef.current
     if (el) el.scrollTop = el.scrollHeight
   }, [messages.at(-1)?.id, isLoading, isVisitorTyping])
+
+  // Re-arm the jump whenever the URL target changes (e.g. clicking another
+  // "Saved for later" message while this conversation is already open).
+  useEffect(() => {
+    setPendingTarget(targetMessageId)
+    jumpPagesRef.current = 0
+  }, [targetMessageId])
+
+  // Resolve a pending jump: once the target message is loaded, scroll it to
+  // center and flash it; otherwise pull older pages (capped) until it appears
+  // or we run out. Giving up clears pendingTarget so normal scrolling resumes.
+  useEffect(() => {
+    if (!pendingTarget || isLoading) return
+    if (messages.some((m) => m.id === pendingTarget)) {
+      const el = scrollRef.current?.querySelector(
+        `[data-message-id="${CSS.escape(pendingTarget)}"]`
+      )
+      el?.scrollIntoView({ block: 'center' })
+      setHighlightId(pendingTarget)
+      setPendingTarget(null)
+      return
+    }
+    if (hasMoreOlder && !loadingOlder && jumpPagesRef.current < MAX_JUMP_PAGES) {
+      jumpPagesRef.current += 1
+      void loadOlder()
+    } else if (!hasMoreOlder || jumpPagesRef.current >= MAX_JUMP_PAGES) {
+      setPendingTarget(null)
+    }
+  }, [pendingTarget, messages, isLoading, hasMoreOlder, loadingOlder])
+
+  // Clear the flash once it has played through.
+  useEffect(() => {
+    if (!highlightId) return
+    const t = setTimeout(() => setHighlightId(null), FLASH_MS)
+    return () => clearTimeout(t)
+  }, [highlightId])
 
   // Clear the agent-side unread badge when a thread is open and new visitor
   // messages arrive — opening + reading should mark read, not only replying.
@@ -909,6 +984,7 @@ function ChatThread({
                 {m.id === firstUnreadId && <UnreadDivider />}
                 <AdminBubble
                   message={m}
+                  highlighted={m.id === highlightId}
                   onDelete={() => deleteMutation.mutate(m.id)}
                   onToggleReaction={(emoji, hasReacted) =>
                     reactionMutation.mutate({ messageId: m.id, emoji, hasReacted })

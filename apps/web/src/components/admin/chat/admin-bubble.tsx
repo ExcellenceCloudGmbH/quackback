@@ -49,6 +49,8 @@ interface AdminBubbleProps {
   onToggleFlag: (next: boolean) => void
   /** Mark the conversation unread from this message. */
   onMarkUnread: () => void
+  /** Briefly flash this row (deep-link / "Saved for later" jump target). */
+  highlighted?: boolean
 }
 
 export function AdminBubble({
@@ -57,6 +59,7 @@ export function AdminBubble({
   onToggleReaction,
   onToggleFlag,
   onMarkUnread,
+  highlighted = false,
 }: AdminBubbleProps) {
   // Keep the hover toolbar visible while its emoji popover or overflow menu is
   // open (the pointer leaves the row to interact with the portal'd content).
@@ -89,13 +92,19 @@ export function AdminBubble({
 
   return (
     <div
+      // The scroll/flash target for "jump to message" deep-links.
+      data-message-id={message.id}
       className={cn(
         'group relative -mx-2 flex gap-2.5 rounded-md px-2 py-1 transition-colors',
         isFlagged
           ? 'bg-amber-500/10 hover:bg-amber-500/15'
           : isNote
             ? 'bg-amber-400/5 hover:bg-amber-400/10'
-            : 'hover:bg-muted/40'
+            : 'hover:bg-muted/40',
+        // Animated flash for motion users; a static brand ring as the
+        // reduced-motion equivalent (no background fight with the row's tint).
+        highlighted &&
+          'motion-safe:animate-flash-highlight motion-reduce:ring-2 motion-reduce:ring-inset motion-reduce:ring-primary/50'
       )}
     >
       <Avatar
