@@ -10,6 +10,7 @@ import {
 import { FlagIcon } from '@heroicons/react/24/outline'
 import { Avatar } from '@/components/ui/avatar'
 import { ChatAttachmentList } from '@/components/shared/chat-attachments'
+import { ReactionChip } from '@/components/shared/reaction-chip'
 import { NoteContent } from './note-content'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
@@ -147,21 +148,14 @@ export function AdminBubble({
         {message.reactions.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1">
             {message.reactions.map((r) => (
-              <button
+              <ReactionChip
                 key={r.emoji}
-                type="button"
-                aria-pressed={r.hasReacted}
-                onClick={() => onToggleReaction(r.emoji, r.hasReacted)}
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-xs transition-colors',
-                  r.hasReacted
-                    ? 'border-primary/40 bg-primary/10 text-foreground'
-                    : 'border-border bg-muted/40 text-muted-foreground hover:bg-muted'
-                )}
-              >
-                <span>{r.emoji}</span>
-                <span className="tabular-nums">{r.count}</span>
-              </button>
+                emoji={r.emoji}
+                count={r.count}
+                hasReacted={r.hasReacted}
+                reactors={r.reactors}
+                onToggle={() => onToggleReaction(r.emoji, r.hasReacted)}
+              />
             ))}
           </div>
         )}

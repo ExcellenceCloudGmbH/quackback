@@ -115,13 +115,18 @@ async function loadReactionsForMessages(
       chatMessageId: chatMessageReactions.chatMessageId,
       emoji: chatMessageReactions.emoji,
       principalId: chatMessageReactions.principalId,
+      displayName: principal.displayName,
     })
     .from(chatMessageReactions)
+    .leftJoin(principal, eq(principal.id, chatMessageReactions.principalId))
     .where(inArray(chatMessageReactions.chatMessageId, messageIds))
-  const byMessage = new Map<ChatMessageId, Array<{ emoji: string; principalId: string }>>()
+  const byMessage = new Map<
+    ChatMessageId,
+    Array<{ emoji: string; principalId: string; displayName: string | null }>
+  >()
   for (const row of rows) {
     const list = byMessage.get(row.chatMessageId) ?? []
-    list.push({ emoji: row.emoji, principalId: row.principalId })
+    list.push({ emoji: row.emoji, principalId: row.principalId, displayName: row.displayName })
     byMessage.set(row.chatMessageId, list)
   }
   for (const [id, list] of byMessage) {

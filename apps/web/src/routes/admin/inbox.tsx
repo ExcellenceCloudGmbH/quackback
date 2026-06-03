@@ -1,4 +1,4 @@
-import { createFileRoute, Navigate, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, Navigate, useNavigate, useRouteContext } from '@tanstack/react-router'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
@@ -402,23 +402,37 @@ function autoGrowTextarea(el: HTMLTextAreaElement): void {
   el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`
 }
 
-/** Optimistically toggle the caller's reaction with `emoji` on a message. */
+/** Optimistically toggle the caller's reaction with `emoji` on a message,
+ *  attributing it to `myName` so the chip's hover tooltip is right immediately
+ *  (the mutation's onSuccess then reconciles to the server's canonical list). */
 function toggleReactionLocal(
   m: AgentChatMessageDTO,
   emoji: string,
-  hadReacted: boolean
+  hadReacted: boolean,
+  myName: string
 ): AgentChatMessageDTO {
   let reactions: MessageReactionCount[]
   if (hadReacted) {
     reactions = m.reactions
-      .map((r) => (r.emoji === emoji ? { ...r, count: r.count - 1, hasReacted: false } : r))
+      .map((r) =>
+        r.emoji === emoji
+          ? {
+              ...r,
+              count: r.count - 1,
+              hasReacted: false,
+              reactors: (r.reactors ?? []).filter((n) => n !== myName),
+            }
+          : r
+      )
       .filter((r) => r.count > 0)
   } else if (m.reactions.some((r) => r.emoji === emoji)) {
     reactions = m.reactions.map((r) =>
-      r.emoji === emoji ? { ...r, count: r.count + 1, hasReacted: true } : r
+      r.emoji === emoji
+        ? { ...r, count: r.count + 1, hasReacted: true, reactors: [...(r.reactors ?? []), myName] }
+        : r
     )
   } else {
-    reactions = [...m.reactions, { emoji, count: 1, hasReacted: true }]
+    reactions = [...m.reactions, { emoji, count: 1, hasReacted: true, reactors: [myName] }]
   }
   return { ...m, reactions }
 }
@@ -446,6 +460,9 @@ function ChatThread({
 }) {
   const queryClient = useQueryClient()
   const threadKey = ['admin', 'inbox', 'thread', conversationId] as const
+  // The current agent's display name, for attributing optimistic reactions.
+  const { session } = useRouteContext({ from: '__root__' })
+  const myName = session?.user?.name ?? 'You'
   const [reply, setReply] = useState('')
   // Composer mode: a public reply to the visitor, or an internal team note.
   const [noteMode, setNoteMode] = useState(false)
@@ -626,7 +643,24 @@ function ChatThread({
           ? {
               ...prev,
               messages: prev.messages.map((m) =>
-                m.id === vars.messageId ? toggleReactionLocal(m, vars.emoji, vars.hasReacted) : m
+                m.id === vars.messageId
+                  ? toggleReactionLocal(m, vars.emoji, vars.hasReacted, myName)
+                  : m
+              ),
+            }
+          : prev
+      )
+    },
+    // Reconcile to the server's canonical reaction list (real reactor names +
+    // authoritative counts) for just this message — no thread refetch, so loaded
+    // history and scroll position are preserved.
+    onSuccess: (data, vars) => {
+      queryClient.setQueryData(threadKey, (prev: ThreadCache | undefined) =>
+        prev
+          ? {
+              ...prev,
+              messages: prev.messages.map((m) =>
+                m.id === vars.messageId ? { ...m, reactions: data.reactions } : m
               ),
             }
           : prev
