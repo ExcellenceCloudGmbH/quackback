@@ -50,6 +50,7 @@ import { ChatNoteEditor, type ChatNoteEditorHandle } from '@/components/admin/ch
 import {
   InboxNavSidebar,
   inboxNavKey,
+  isInboxView,
   scopeLabelFor,
   useChatTagsWithCounts,
   type InboxNavItem,
@@ -94,13 +95,9 @@ export const Route = createFileRoute('/admin/inbox')({
   // restores the exact open conversation + filters, and links are shareable.
   validateSearch: (search: Record<string, unknown>): InboxSearch => ({
     c: typeof search.c === 'string' ? search.c : undefined,
-    view:
-      search.view === 'mine' ||
-      search.view === 'unassigned' ||
-      search.view === 'all' ||
-      search.view === 'mentions'
-        ? search.view
-        : undefined,
+    // Allowlist tracks CONVERSATION_VIEWS (incl. 'saved') so deep-links can't
+    // silently drop a real view and fall back to the conversation list.
+    view: isInboxView(search.view) ? search.view : undefined,
     // Only accept a well-formed chat-tag id — a malformed `?tag=` would reach a
     // uuid-backed query and 500 the conversation list.
     tag:

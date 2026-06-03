@@ -48,6 +48,16 @@ export const CONVERSATION_VIEWS = [
   { view: 'saved', label: 'Saved for later', Icon: FlagIcon },
 ] as const
 
+/**
+ * URL-safe guard: is `v` one of the canonical conversation views? Derived from
+ * CONVERSATION_VIEWS so the route's `?view=` allowlist tracks the nav definition
+ * and can't drift — a new view is accepted in the URL the moment it's listed
+ * above, instead of needing a second hand-maintained list in validateSearch.
+ */
+export function isInboxView(v: unknown): v is InboxView {
+  return typeof v === 'string' && CONVERSATION_VIEWS.some((c) => c.view === v)
+}
+
 export type ChatTagWithCount = { id: ChatTagId; name: string; color: string; count: number }
 
 const CHAT_TAG_COUNTS_KEY = ['admin', 'inbox', 'chat-tags', 'counts'] as const
