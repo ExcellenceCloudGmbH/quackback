@@ -1,5 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
+import {
+  CalendarIcon,
+  FaceSmileIcon,
+  FlagIcon,
+  InboxArrowDownIcon,
+  TagIcon,
+  UserCircleIcon,
+} from '@heroicons/react/24/outline'
 import type { ConversationId } from '@quackback/ids'
 import type { Channel, ConversationDTO } from '@/lib/shared/chat/types'
 import { listConversationsForUserFn } from '@/lib/server/functions/chat'
@@ -28,12 +36,19 @@ function formatDate(iso: string): string {
   })
 }
 
-/** A metadata-sidebar style row: label on the left, control/value on the right. */
+/**
+ * A metadata row matching the feedback post-detail "Manage" card: an optional
+ * leading outline icon + muted label on the left, the control/value on the
+ * right. Rows with no icon (e.g. Status) sit flush to the card padding, exactly
+ * like the reference sidebar's Status row.
+ */
 function Row({
+  icon: Icon,
   label,
   align = 'center',
   children,
 }: {
+  icon?: React.ComponentType<{ className?: string }>
   label: string
   align?: 'center' | 'start'
   children: React.ReactNode
@@ -45,17 +60,24 @@ function Row({
         align === 'start' ? 'items-start' : 'items-center'
       )}
     >
-      <span className="shrink-0 text-xs text-muted-foreground">{label}</span>
+      {Icon ? (
+        <div className="flex shrink-0 items-center gap-2 text-sm text-muted-foreground">
+          <Icon className="h-4 w-4" />
+          <span>{label}</span>
+        </div>
+      ) : (
+        <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+      )}
       <div className="flex min-w-0 max-w-[62%] justify-end">{children}</div>
     </div>
   )
 }
 
 /**
- * The conversation detail / "Manage" panel — the inbox's right column. Adopts
- * the feedback post-detail metadata-sidebar card pattern (label/control rows)
- * so triage controls, the contact summary, and the visitor's other
- * conversations live in one place instead of scattered across the thread header.
+ * The conversation detail / "Manage" panel — the inbox's right column. Mirrors
+ * the feedback post-detail metadata-sidebar: a floating bordered card with a
+ * "Manage" header, a separator, and icon+label/value rows, then the contact
+ * summary and the visitor's other conversations as border-separated sections.
  */
 export function ConversationDetailPanel({
   conversation,
@@ -89,11 +111,15 @@ export function ConversationDetailPanel({
   const previous = (history?.conversations ?? []).filter((c) => c.id !== conversation.id)
 
   return (
-    <aside className="hidden w-72 shrink-0 flex-col border-l border-border/50 bg-card/30 xl:flex">
+    <aside className="hidden w-72 shrink-0 flex-col xl:flex">
       <ScrollArea className="min-h-0 flex-1">
-        <div className="space-y-5 p-4">
+        <div className="m-3 space-y-5 rounded-xl border border-border/20 bg-card p-4 shadow-sm">
           {/* Manage */}
-          <div className="space-y-3">
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-muted-foreground">Manage</span>
+            </div>
+            <div className="border-t border-border/30" />
             <Row label="Status">
               <StatusControl
                 conversationId={conversation.id}
@@ -101,38 +127,38 @@ export function ConversationDetailPanel({
                 onChanged={onChanged}
               />
             </Row>
-            <Row label="Priority">
+            <Row icon={FlagIcon} label="Priority">
               <PriorityControl
                 conversationId={conversation.id}
                 value={conversation.priority}
                 onChanged={onChanged}
               />
             </Row>
-            <Row label="Assignee">
+            <Row icon={UserCircleIcon} label="Assignee">
               <AssigneeControl
                 conversationId={conversation.id}
                 assignedAgent={conversation.assignedAgent}
                 onChanged={onChanged}
               />
             </Row>
-            <Row label="Tags" align="start">
+            <Row icon={TagIcon} label="Tags" align="start">
               <div className="flex flex-wrap justify-end gap-1">
                 <ConversationTagsEditor conversationId={conversation.id} tags={conversation.tags} />
               </div>
             </Row>
-            <Row label="Channel">
-              <span className="text-xs font-medium text-foreground">
+            <Row icon={InboxArrowDownIcon} label="Channel">
+              <span className="text-sm font-medium text-foreground">
                 {CHANNEL_LABEL[conversation.channel]}
               </span>
             </Row>
-            <Row label="Created">
-              <span className="text-xs font-medium text-foreground">
+            <Row icon={CalendarIcon} label="Created">
+              <span className="text-sm font-medium text-foreground">
                 {formatDate(conversation.createdAt)}
               </span>
             </Row>
             {conversation.csatRating != null && (
-              <Row label="CSAT">
-                <span className="text-xs text-amber-500">
+              <Row icon={FaceSmileIcon} label="CSAT">
+                <span className="text-sm text-amber-500">
                   {'★'.repeat(conversation.csatRating)}
                   <span className="text-muted-foreground/40">
                     {'★'.repeat(Math.max(0, 5 - conversation.csatRating))}
