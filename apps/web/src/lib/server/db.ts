@@ -184,6 +184,12 @@ export {
   conversationsRelations,
   chatMessages,
   chatMessagesRelations,
+  chatTags,
+  chatTagsRelations,
+  conversationTags,
+  conversationTagsRelations,
+  chatMessageMentions,
+  chatMessageMentionsRelations,
   // Schema tables - notifications
   inAppNotifications,
   inAppNotificationsRelations,

@@ -227,11 +227,6 @@ export const chatMessageMentionsRelations = relations(chatMessageMentions, ({ on
   }),
 }))
 
-export type ChatTag = typeof chatTags.$inferSelect
-export type NewChatTag = typeof chatTags.$inferInsert
-export type ChatMessageMention = typeof chatMessageMentions.$inferSelect
-export type NewChatMessageMention = typeof chatMessageMentions.$inferInsert
-
 export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => ({
   conversation: one(conversations, {
     fields: [chatMessages.conversationId],

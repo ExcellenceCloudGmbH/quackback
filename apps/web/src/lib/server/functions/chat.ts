@@ -9,7 +9,14 @@
  */
 import { z } from 'zod'
 import { createServerFn } from '@tanstack/react-start'
-import type { ConversationId, ChatMessageId, PrincipalId, PostId, BoardId } from '@quackback/ids'
+import type {
+  ConversationId,
+  ChatMessageId,
+  PrincipalId,
+  PostId,
+  BoardId,
+  ChatTagId,
+} from '@quackback/ids'
 import {
   MAX_CHAT_MESSAGE_LENGTH,
   MAX_CHAT_ATTACHMENTS,
@@ -59,6 +66,8 @@ const listConversationsSchema = z.object({
   // no agent yet, 'all'/omitted = no assignee constraint.
   assignee: z.enum(['all', 'mine', 'unassigned']).optional(),
   search: z.string().max(200).optional(),
+  // Filter to conversations carrying ANY of these labels.
+  tagIds: z.array(z.string()).optional(),
   before: z.string().optional(),
 })
 
@@ -474,6 +483,7 @@ export const listConversationsFn = createServerFn({ method: 'GET' })
         assignedAgentPrincipalId: data.assignee === 'mine' ? ctx.principal.id : undefined,
         unassignedOnly: data.assignee === 'unassigned',
         search: data.search,
+        tagIds: data.tagIds as ChatTagId[] | undefined,
         before: data.before,
       })
     } catch (error) {
