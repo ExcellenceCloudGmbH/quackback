@@ -80,6 +80,8 @@ export type {
   ChangelogId,
   ConversationId,
   ChatMessageId,
+  ChatTagId,
+  ChatMessageMentionId,
   IntegrationId,
   PlatformCredentialId,
   EventMappingId,

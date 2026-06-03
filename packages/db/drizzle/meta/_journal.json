@@ -701,6 +701,13 @@
       "when": 1781222400000,
       "tag": "0099_agent_availability",
       "breakpoints": true
+    },
+    {
+      "idx": 100,
+      "version": "7",
+      "when": 1781308800000,
+      "tag": "0100_chat_tags_and_message_mentions",
+      "breakpoints": true
     }
   ]
 }

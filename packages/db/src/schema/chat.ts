@@ -1,4 +1,13 @@
-import { pgTable, text, timestamp, index, jsonb, integer, boolean } from 'drizzle-orm/pg-core'
+import {
+  pgTable,
+  text,
+  timestamp,
+  index,
+  uniqueIndex,
+  jsonb,
+  integer,
+  boolean,
+} from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 import { typeIdWithDefault, typeIdColumn, typeIdColumnNullable } from '@quackback/ids/drizzle'
 import { principal } from './auth'
@@ -118,13 +127,115 @@ export const chatMessages = pgTable(
   ]
 )
 
+/**
+ * Conversation tags ("labels") — agent-managed, org-wide, created on the fly
+ * from a conversation and used to filter the inbox. Intentionally SEPARATE from
+ * the feedback `tags` taxonomy: the two share no rows, ids, or lifecycle, so a
+ * label here never leaks into feedback boards and vice-versa.
+ */
+export const chatTags = pgTable(
+  'chat_tags',
+  {
+    id: typeIdWithDefault('chat_tag')('id').primaryKey(),
+    name: text('name').notNull().unique(),
+    color: text('color').default('#6b7280').notNull(),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    // Soft delete: a removed tag detaches from conversations but keeps history.
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [index('chat_tags_deleted_at_idx').on(table.deletedAt)]
+)
+
+/**
+ * Join table: which chat tags are applied to which conversation. Both FKs
+ * cascade, so removing a conversation or hard-deleting a tag row cleans up.
+ */
+export const conversationTags = pgTable(
+  'conversation_tags',
+  {
+    conversationId: typeIdColumn('conversation')('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    chatTagId: typeIdColumn('chat_tag')('chat_tag_id')
+      .notNull()
+      .references(() => chatTags.id, { onDelete: 'cascade' }),
+  },
+  (table) => [
+    uniqueIndex('conversation_tags_pk').on(table.conversationId, table.chatTagId),
+    index('conversation_tags_chat_tag_idx').on(table.chatTagId),
+  ]
+)
+
+/**
+ * Join table: every @-mention of a team member inside a chat message (internal
+ * notes only — mentions stay team-internal). Mirrors post_mentions: one row per
+ * (message, principal), `notifiedAt` watermarks delivery so re-edits don't
+ * re-notify, and (principal_id, created_at DESC) serves the "mentions of me"
+ * inbox view straight from the index.
+ */
+export const chatMessageMentions = pgTable(
+  'chat_message_mentions',
+  {
+    id: typeIdWithDefault('chat_msg_mention')('id').primaryKey(),
+    chatMessageId: typeIdColumn('chat_msg')('chat_message_id')
+      .notNull()
+      .references(() => chatMessages.id, { onDelete: 'cascade' }),
+    principalId: typeIdColumn('principal')('principal_id')
+      .notNull()
+      .references(() => principal.id, { onDelete: 'cascade' }),
+    notifiedAt: timestamp('notified_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('chat_message_mentions_message_principal_uq').on(
+      table.chatMessageId,
+      table.principalId
+    ),
+    index('chat_message_mentions_principal_idx').on(table.principalId, table.createdAt.desc()),
+  ]
+)
+
 export const conversationsRelations = relations(conversations, ({ many }) => ({
   messages: many(chatMessages),
+  tags: many(conversationTags),
 }))
 
-export const chatMessagesRelations = relations(chatMessages, ({ one }) => ({
+export const chatTagsRelations = relations(chatTags, ({ many }) => ({
+  conversationTags: many(conversationTags),
+}))
+
+export const conversationTagsRelations = relations(conversationTags, ({ one }) => ({
+  conversation: one(conversations, {
+    fields: [conversationTags.conversationId],
+    references: [conversations.id],
+  }),
+  chatTag: one(chatTags, {
+    fields: [conversationTags.chatTagId],
+    references: [chatTags.id],
+  }),
+}))
+
+export const chatMessageMentionsRelations = relations(chatMessageMentions, ({ one }) => ({
+  message: one(chatMessages, {
+    fields: [chatMessageMentions.chatMessageId],
+    references: [chatMessages.id],
+  }),
+  principal: one(principal, {
+    fields: [chatMessageMentions.principalId],
+    references: [principal.id],
+  }),
+}))
+
+export type ChatTag = typeof chatTags.$inferSelect
+export type NewChatTag = typeof chatTags.$inferInsert
+export type ChatMessageMention = typeof chatMessageMentions.$inferSelect
+export type NewChatMessageMention = typeof chatMessageMentions.$inferInsert
+
+export const chatMessagesRelations = relations(chatMessages, ({ one, many }) => ({
   conversation: one(conversations, {
     fields: [chatMessages.conversationId],
     references: [conversations.id],
   }),
+  mentions: many(chatMessageMentions),
 }))

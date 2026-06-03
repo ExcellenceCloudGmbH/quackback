@@ -55,6 +55,12 @@ export type ConversationId = TypeId<'conversation'>
 /** Support-inbox message ID - e.g., chat_msg_01h455vb4pex5vsknk084sn02q */
 export type ChatMessageId = TypeId<'chat_msg'>
 
+/** Conversation tag ("label") ID - e.g., chat_tag_01h455vb4pex5vsknk084sn02q */
+export type ChatTagId = TypeId<'chat_tag'>
+
+/** Chat-message @-mention ID - e.g., chat_msg_mention_01h455vb4pex5vsknk084sn02q */
+export type ChatMessageMentionId = TypeId<'chat_msg_mention'>
+
 /** Integration ID - e.g., integration_01h455vb4pex5vsknk084sn02q */
 export type IntegrationId = TypeId<'integration'>
 
@@ -251,6 +257,8 @@ export interface EntityIdMap {
   changelog: ChangelogId
   conversation: ConversationId
   chat_message: ChatMessageId
+  chat_tag: ChatTagId
+  chat_message_mention: ChatMessageMentionId
   integration: IntegrationId
   platform_cred: PlatformCredentialId
   event_mapping: EventMappingId

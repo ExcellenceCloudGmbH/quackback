@@ -31,6 +31,8 @@ export const ID_PREFIXES = {
   // Live chat
   conversation: 'conversation',
   chat_message: 'chat_msg',
+  chat_tag: 'chat_tag',
+  chat_message_mention: 'chat_msg_mention',
 
   // Help center
   category: 'category',
