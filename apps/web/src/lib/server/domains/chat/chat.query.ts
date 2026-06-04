@@ -606,14 +606,26 @@ export async function listConversationsForAgent(
   filter: ConversationListFilter = {}
 ): Promise<ConversationListPage> {
   const limit = Math.min(filter.limit ?? INBOX_PAGE_SIZE, 100)
-  const beforeDate = filter.before ? new Date(filter.before) : null
+  // Keyset cursor = the previous page's last conversation id. Re-read its exact
+  // (lastMessageAt, id) from the DB rather than trusting a client-supplied
+  // timestamp string, so same-millisecond ties and sub-millisecond precision are
+  // handled deterministically (mirrors listMessages). An unknown id → first page,
+  // and a malformed cursor can no longer reach a date parse / 500 the list.
+  let cursor: { at: Date; id: ConversationId } | null = null
+  if (filter.before) {
+    const [row] = await db
+      .select({ at: conversations.lastMessageAt, id: conversations.id })
+      .from(conversations)
+      .where(eq(conversations.id, filter.before as ConversationId))
+      .limit(1)
+    if (row) cursor = { at: row.at, id: row.id }
+  }
   const search = filter.search?.trim()
   // Match the visitor's name or any non-deleted message content. EXISTS keeps
   // the select shape (conversations only) — no join row fan-out. The term is
   // parameter-bound, so `%`/`_` are treated as literals-plus-wildcards, not SQLi.
-  const searchCondition =
-    search && search.length > 0
-      ? sql`(
+  const searchCondition = search
+    ? sql`(
           EXISTS (
             SELECT 1 FROM ${principal} p
             WHERE p.id = ${conversations.visitorPrincipalId}
@@ -626,7 +638,7 @@ export async function listConversationsForAgent(
               AND m.content ILIKE ${'%' + search + '%'}
           )
         )`
-      : undefined
+    : undefined
 
   const rows = await db
     .select()
@@ -678,10 +690,17 @@ export async function listConversationsForAgent(
                 )
             )
           : undefined,
-        beforeDate ? lt(conversations.lastMessageAt, beforeDate) : undefined
+        cursor
+          ? or(
+              lt(conversations.lastMessageAt, cursor.at),
+              and(eq(conversations.lastMessageAt, cursor.at), lt(conversations.id, cursor.id))
+            )
+          : undefined
       )
     )
-    .orderBy(desc(conversations.lastMessageAt))
+    // desc(id) tiebreaker makes same-lastMessageAt ordering deterministic so the
+    // composite keyset above never drops or duplicates a row at a page boundary.
+    .orderBy(desc(conversations.lastMessageAt), desc(conversations.id))
     .limit(limit + 1)
 
   const hasMore = rows.length > limit
@@ -710,6 +729,9 @@ export async function listConversationsForAgent(
         inArray(chatMessages.conversationId, ids),
         eq(chatMessages.senderType, 'visitor'),
         isNull(chatMessages.deletedAt),
+        // Internal notes never count toward unread — defense-in-depth mirroring
+        // unreadCountFor (visitor messages are never internal, but keep it explicit).
+        eq(chatMessages.isInternal, false),
         or(
           isNull(conversations.agentLastReadAt),
           sql`${chatMessages.createdAt} > ${conversations.agentLastReadAt}`
@@ -737,6 +759,7 @@ export async function listConversationsForAgent(
       )
     ),
     hasMore,
-    nextCursor: page.length > 0 ? page[page.length - 1].lastMessageAt.toISOString() : null,
+    // Opaque keyset cursor: the last conversation id, re-resolved on the next call.
+    nextCursor: page[page.length - 1].id,
   }
 }

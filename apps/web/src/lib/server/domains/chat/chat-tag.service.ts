@@ -60,9 +60,10 @@ const toDTO = (t: { id: ChatTagId; name: string; color: string }): ChatTagDTO =>
 export async function createChatTag(input: { name: string; color?: string }): Promise<ChatTag> {
   const { name, color } = normalizeChatTagInput(input)
   // Reuse a LIVE label with the same name (case-insensitive) so inline creation
-  // is idempotent.
-  const existing = await db.query.chatTags.findMany({ where: isNull(chatTags.deletedAt) })
-  const dup = existing.find((t) => t.name.toLowerCase() === name.toLowerCase())
+  // is idempotent — a targeted lower(name) lookup rather than scanning every tag.
+  const dup = await db.query.chatTags.findFirst({
+    where: and(isNull(chatTags.deletedAt), sql`lower(${chatTags.name}) = ${name.toLowerCase()}`),
+  })
   if (dup) return dup
   // The name unique constraint spans soft-deleted rows, and a concurrent create
   // could race the find above. onConflictDoUpdate resurrects a soft-deleted
@@ -109,7 +110,7 @@ export async function listChatTagsWithCounts(): Promise<(ChatTagDTO & { count: n
     .where(isNull(chatTags.deletedAt))
     .groupBy(chatTags.id, chatTags.name, chatTags.color)
     .orderBy(asc(chatTags.name))
-  return rows.map((r) => ({ id: r.id, name: r.name, color: r.color, count: r.count }))
+  return rows.map((r) => ({ ...toDTO(r), count: r.count }))
 }
 
 /**
