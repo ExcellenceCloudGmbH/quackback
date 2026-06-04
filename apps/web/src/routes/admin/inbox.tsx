@@ -222,13 +222,25 @@ function InboxPage() {
           : { kind: 'view', view: urlView ?? 'all' },
     [urlTag, urlSegment, urlView]
   )
-  // Selecting any scope clears the other two so exactly one stays in the URL.
+  // Per-scope memory: each scope (view / tag / segment, keyed by inboxNavKey)
+  // remembers the conversation last open in it, so returning to a scope resumes
+  // where you left off instead of carrying a now-out-of-scope thread across or
+  // dropping to an empty pane. Session-scoped (a refresh restores the current
+  // scope + conversation from the URL). It only ever re-opens a conversation you
+  // yourself had open here — never auto-opens an arbitrary unread one — so it
+  // can't silently clear unread badges the way auto-opening the top would.
+  const scopeMemory = useRef<Map<string, ConversationId>>(new Map())
+  // Selecting any scope clears the other two so exactly one stays in the URL,
+  // and resumes that scope's last-open conversation (or clears to the empty
+  // state when there's nothing remembered).
   const setNav = useCallback(
     (item: InboxNavItem) =>
       updateSearch({
         view: item.kind === 'view' ? item.view : undefined,
         tag: item.kind === 'tag' ? item.tagId : undefined,
         segment: item.kind === 'segment' ? item.segmentId : undefined,
+        c: scopeMemory.current.get(inboxNavKey(item)),
+        m: undefined,
       }),
     [updateSearch]
   )
@@ -250,6 +262,14 @@ function InboxPage() {
     (id: ConversationId | null) => updateSearch({ c: id ?? undefined, m: undefined }),
     [updateSearch]
   )
+  // Keep the active scope's memory in sync with what's open (covers list clicks,
+  // deep-linked `?c=`, and explicit close) so it's already current the moment you
+  // switch away. Closing a conversation forgets it for that scope.
+  useEffect(() => {
+    const key = inboxNavKey(nav)
+    if (selectedId) scopeMemory.current.set(key, selectedId)
+    else scopeMemory.current.delete(key)
+  }, [nav, selectedId])
   // Open a conversation AND deep-link a specific message (the "Saved for later"
   // feed): the thread scrolls to it and flashes it on arrival.
   const targetMessageId = (urlM as ChatMessageId | undefined) ?? null
