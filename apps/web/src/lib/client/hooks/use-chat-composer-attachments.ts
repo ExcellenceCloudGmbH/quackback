@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import type { ChatAttachment } from '@/lib/shared/chat/types'
 import { MAX_CHAT_ATTACHMENTS } from '@/lib/shared/chat/types'
 
@@ -11,10 +11,17 @@ import { MAX_CHAT_ATTACHMENTS } from '@/lib/shared/chat/types'
 export function useChatComposerAttachments(upload: (file: File) => Promise<string>) {
   const [pending, setPending] = useState<ChatAttachment[]>([])
   const [uploading, setUploading] = useState(false)
+  // Mirror pending in a ref so addFiles reads the live count (for the remaining
+  // slot calculation) without a stale closure or re-creating the callback.
+  const pendingRef = useRef<ChatAttachment[]>([])
+  pendingRef.current = pending
 
   const addFiles = useCallback(
     async (files: FileList | File[]) => {
-      const list = Array.from(files).slice(0, MAX_CHAT_ATTACHMENTS)
+      // Only take as many as still fit, so we don't upload files we'd then have
+      // to silently drop past the cap.
+      const slotsLeft = MAX_CHAT_ATTACHMENTS - pendingRef.current.length
+      const list = Array.from(files).slice(0, Math.max(0, slotsLeft))
       if (list.length === 0) return
       setUploading(true)
       try {
@@ -41,6 +48,9 @@ export function useChatComposerAttachments(upload: (file: File) => Promise<strin
   }, [])
 
   const clear = useCallback(() => setPending([]), [])
+  // Re-populate the composer, e.g. to restore a snapshot after a failed send so
+  // the already-uploaded files aren't lost.
+  const restore = useCallback((items: ChatAttachment[]) => setPending(items), [])
 
-  return { pending, addFiles, remove, clear, uploading }
+  return { pending, addFiles, remove, clear, restore, uploading }
 }

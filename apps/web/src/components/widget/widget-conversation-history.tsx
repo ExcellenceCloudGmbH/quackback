@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query'
 import { FormattedMessage } from 'react-intl'
-import { formatDistanceToNow } from 'date-fns'
 import type { ConversationId } from '@quackback/ids'
 import { getMyConversationsFn } from '@/lib/server/functions/chat'
+import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
+import { TimeAgo } from '@/components/ui/time-ago'
 
 const STATUS_LABEL: Record<string, string> = {
   open: 'Open',
@@ -19,7 +20,9 @@ const STATUS_LABEL: Record<string, string> = {
 export function WidgetConversationHistory({ activeId }: { activeId?: ConversationId | null }) {
   const { data } = useQuery({
     queryKey: ['widget', 'my-conversations'],
-    queryFn: () => getMyConversationsFn(),
+    // Forward the widget Bearer token, or token-authed visitors fail the
+    // server-side hasAuthCredentials() guard and always get an empty list.
+    queryFn: () => getMyConversationsFn({ headers: getWidgetAuthHeaders() }),
     staleTime: 30_000,
   })
 
@@ -42,8 +45,7 @@ export function WidgetConversationHistory({ activeId }: { activeId?: Conversatio
                 {c.subject || c.lastMessagePreview || 'Conversation'}
               </span>
               <span className="text-[11px] text-muted-foreground">
-                {STATUS_LABEL[c.status] ?? c.status} ·{' '}
-                {formatDistanceToNow(new Date(c.lastMessageAt), { addSuffix: true })}
+                {STATUS_LABEL[c.status] ?? c.status} · <TimeAgo date={c.lastMessageAt} />
               </span>
             </span>
           </li>

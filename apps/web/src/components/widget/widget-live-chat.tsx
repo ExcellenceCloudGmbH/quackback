@@ -133,6 +133,7 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
     addFiles,
     remove: removeAttachment,
     clear: clearAttachments,
+    restore: restoreAttachments,
     uploading,
   } = useChatComposerAttachments(upload)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -428,7 +429,10 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
 
     const ready = await ensureSession()
     if (!ready) {
+      // Restore the composer (text + already-uploaded files) so a failed send
+      // doesn't silently discard the visitor's attachments.
       setInput(text)
+      restoreAttachments(attachments)
       setSending(false)
       return
     }
@@ -448,6 +452,7 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
       if (needsEmail && emailValid) setEmailKnown(true)
     } catch {
       setInput(text)
+      restoreAttachments(attachments)
     } finally {
       setSending(false)
     }
@@ -464,6 +469,7 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
     ensureSession,
     appendMessage,
     clearAttachments,
+    restoreAttachments,
   ])
 
   const onKeyDown = useCallback(
