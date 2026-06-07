@@ -3,7 +3,10 @@ import { buildChatRows } from '../widget-chat-rows'
 import type { ChatMessageDTO } from '@/lib/shared/chat/types'
 
 // Only `id` matters for row keys; cast minimal stand-ins.
-const msg = (id: string): ChatMessageDTO => ({ id }) as unknown as ChatMessageDTO
+const msg = (idOrOpts: string | (Partial<ChatMessageDTO> & { id?: string })): ChatMessageDTO => {
+  if (typeof idOrOpts === 'string') return { id: idOrOpts } as unknown as ChatMessageDTO
+  return { id: 'msg-1', ...idOrOpts } as unknown as ChatMessageDTO
+}
 
 const base = {
   messages: [] as ChatMessageDTO[],
@@ -66,5 +69,36 @@ describe('buildChatRows', () => {
   it('uses fixed, stable keys for the non-message rows', () => {
     const rows = buildChatRows({ ...base, hasGreeting: true, showTyping: true })
     expect(rows.map((r) => r.key)).toEqual(['greeting', 'typing'])
+  })
+
+  it('emits a draft-post row when the message carries a draft_post card', () => {
+    const m = msg({
+      card: {
+        type: 'draft_post',
+        status: 'proposed',
+        boardId: 'board_1' as any,
+        title: 't',
+        content: 'c',
+      },
+    })
+    const rows = buildChatRows({ ...base, messages: [m] })
+    expect(rows.find((r) => r.type === 'draft-post')).toBeTruthy()
+    // must not also emit a plain 'message' row for this card message
+    expect(
+      rows.filter((r) => 'message' in r && (r as any).message?.id === m.id).map((r) => r.type)
+    ).toEqual(['draft-post'])
+  })
+
+  it('emits a post_ref row when the message carries a post_ref card', () => {
+    const rows = buildChatRows({
+      ...base,
+      messages: [msg({ card: { type: 'post_ref', postId: 'post_1' as any } })],
+    })
+    expect(rows.find((r) => r.type === 'post_ref')).toBeTruthy()
+  })
+
+  it('emits a normal message row when there is no card', () => {
+    const rows = buildChatRows({ ...base, messages: [msg({ card: null })] })
+    expect(rows.find((r) => r.type === 'message')).toBeTruthy()
   })
 })

@@ -10,6 +10,8 @@ export type ChatRow =
   | { type: 'greeting'; key: 'greeting' }
   | { type: 'message'; key: string; message: ChatMessageDTO }
   | { type: 'system'; key: string; message: ChatMessageDTO }
+  | { type: 'draft-post'; key: string; message: ChatMessageDTO }
+  | { type: 'post_ref'; key: string; message: ChatMessageDTO }
   | { type: 'empty'; key: 'empty' }
   | { type: 'seen'; key: 'seen' }
   | { type: 'typing'; key: 'typing' }
@@ -41,6 +43,14 @@ export function buildChatRows(input: ChatRowsInput): ChatRow[] {
   if (input.hasMoreOlder) rows.push({ type: 'load-older', key: 'load-older' })
   if (input.hasGreeting) rows.push({ type: 'greeting', key: 'greeting' })
   for (const message of input.messages) {
+    if (message.card?.type === 'draft_post') {
+      rows.push({ type: 'draft-post', key: message.id, message })
+      continue
+    }
+    if (message.card?.type === 'post_ref') {
+      rows.push({ type: 'post_ref', key: message.id, message })
+      continue
+    }
     // System events (e.g. "assigned to …") render as a centered notice, not a bubble.
     const type = message.senderType === 'system' ? 'system' : 'message'
     rows.push({ type, key: message.id, message })
