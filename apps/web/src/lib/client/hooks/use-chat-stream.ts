@@ -31,6 +31,9 @@ const NAMED_EVENTS = [
   // ever publishes this on the inbox channel, so the visitor stream never
   // receives it even though the event name is registered here.
   'message_updated',
+  // A card on a message changed state (proposed→published/dismissed); fans out
+  // on both the conversation and inbox channels.
+  'card_updated',
 ] as const
 
 /**
