@@ -41,6 +41,9 @@ interface ConvertToPostDialogProps {
   defaultTitle: string
   defaultContent: string
   onConverted?: () => void
+  /** Controlled open state. Omit for an uncontrolled dialog with its own trigger. */
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
 }
 
 /** Agent action: turn the conversation into a feedback post (new or upvote). */
@@ -49,8 +52,12 @@ export function ConvertToPostDialog({
   defaultTitle,
   defaultContent,
   onConverted,
+  open: controlledOpen,
+  onOpenChange,
 }: ConvertToPostDialogProps) {
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = onOpenChange ?? setInternalOpen
   const [title, setTitle] = useState(defaultTitle)
   const [content, setContent] = useState(defaultContent)
   const [boardId, setBoardId] = useState<string>('')
@@ -132,14 +139,16 @@ export function ConvertToPostDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
-        >
-          <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> Create post
-        </button>
-      </DialogTrigger>
+      {controlledOpen === undefined && (
+        <DialogTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-muted transition-colors"
+          >
+            <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> Create post
+          </button>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Create feedback post</DialogTitle>
