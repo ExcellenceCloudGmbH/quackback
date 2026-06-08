@@ -60,10 +60,12 @@ export interface EmbedResolverDeps {
  * Project a resolved post detail into the viewer-safe card shape. The post
  * carries only a `statusId`, so the status name/color is looked up from the
  * public status taxonomy; an absent or unknown status yields null fields.
+ * `baseUrl` is the canonical portal base, used to build the absolute `url`.
  */
 export function projectPostPreview(
   detail: PostDetailInput,
-  statuses: readonly StatusInput[]
+  statuses: readonly StatusInput[],
+  baseUrl: string
 ): EmbedPostPreview {
   const status = detail.statusId ? statuses.find((s) => s.id === detail.statusId) : undefined
   return {
@@ -80,17 +82,29 @@ export function projectPostPreview(
     authorName: detail.authorName,
     authorAvatarUrl: detail.authorAvatarUrl,
     createdAt: toIsoStringOrNull(detail.createdAt),
+    url: joinBase(baseUrl, `/b/${detail.board.slug}/posts/${detail.id}`),
   }
 }
 
 /** Project a published changelog entry into the viewer-safe card shape. */
-export function projectChangelogPreview(entry: ChangelogInput): EmbedChangelogPreview {
+export function projectChangelogPreview(
+  entry: ChangelogInput,
+  baseUrl: string
+): EmbedChangelogPreview {
   return {
     kind: 'changelog',
     entryId: entry.id,
     title: entry.title,
     publishedAt: toIsoStringOrNull(entry.publishedAt),
+    url: joinBase(baseUrl, `/changelog/${entry.id}`),
   }
+}
+
+/** Join a base URL and an absolute path, collapsing any trailing slash on the
+ *  base so `${base}/path` never doubles up (`config.baseUrl` may or may not
+ *  carry one). */
+function joinBase(base: string, path: string): string {
+  return `${base.replace(/\/$/, '')}${path}`
 }
 
 /**
@@ -103,18 +117,19 @@ export async function resolveEmbed(
   kind: 'post' | 'changelog',
   id: string,
   actor: Actor,
-  deps: EmbedResolverDeps
+  deps: EmbedResolverDeps,
+  baseUrl: string
 ): Promise<EmbedPreview> {
   try {
     if (kind === 'post') {
       const detail = await deps.getPostDetail(id as PostId, actor)
       if (!detail) return { unavailable: true }
       const statuses = await deps.listStatuses()
-      return projectPostPreview(detail, statuses)
+      return projectPostPreview(detail, statuses, baseUrl)
     }
     const entry = await deps.getChangelog(id as ChangelogId)
     if (!entry) return { unavailable: true }
-    return projectChangelogPreview(entry)
+    return projectChangelogPreview(entry, baseUrl)
   } catch {
     return { unavailable: true }
   }
@@ -146,13 +161,23 @@ export const getEmbedPreviewFn = createServerFn({ method: 'GET' })
           import('@/lib/server/domains/changelog/changelog.public'),
         ])
 
+      // Canonical portal base for the absolute embed `url` (opened in a new tab
+      // by surfaces like the widget). Imported lazily alongside the read paths.
+      const { config } = await import('@/lib/server/config')
+
       // Slim, null-returning changelog getter: no view-count increment (an embed
       // renders on every page view) and an honest null contract for resolveEmbed.
-      return await resolveEmbed(data.kind, data.id, actor, {
-        getPostDetail: getPublicPostDetail,
-        listStatuses: listPublicStatuses,
-        getChangelog: getPublicChangelogMetaById,
-      })
+      return await resolveEmbed(
+        data.kind,
+        data.id,
+        actor,
+        {
+          getPostDetail: getPublicPostDetail,
+          listStatuses: listPublicStatuses,
+          getChangelog: getPublicChangelogMetaById,
+        },
+        config.baseUrl
+      )
     } catch {
       // Belt-and-braces: portal-access/auth resolution could throw too. A
       // broken embed must never surface an error to the client.

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { isValidTypeId } from '@quackback/ids'
-import { QuackbackEmbedCard } from '@/components/shared/quackback-embed-card'
+import { QuackbackEmbedCard, type EmbedOpenMode } from '@/components/shared/quackback-embed-card'
 
 interface EmbedTarget {
   el: HTMLElement
@@ -23,9 +23,17 @@ interface EmbedTarget {
 export function EmbedHydration({
   children,
   className,
+  openMode,
+  onOpenInModal,
 }: {
   children: ReactNode
   className?: string
+  /** How hydrated embed cards open their target — forwarded to every card. The
+   *  default (same-tab navigation) suits display surfaces; chat surfaces pass
+   *  `newTab` (widget) or `modal` (admin). */
+  openMode?: EmbedOpenMode
+  /** Opens a post in place; required when `openMode` is `modal`. */
+  onOpenInModal?: (postId: string) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [targets, setTargets] = useState<EmbedTarget[]>([])
@@ -55,7 +63,16 @@ export function EmbedHydration({
     <div ref={containerRef} className={className} data-slot="embed-hydration">
       {children}
       {targets.map((t, i) =>
-        createPortal(<QuackbackEmbedCard kind={t.kind} id={t.id} />, t.el, `${t.kind}:${t.id}:${i}`)
+        createPortal(
+          <QuackbackEmbedCard
+            kind={t.kind}
+            id={t.id}
+            openMode={openMode}
+            onOpenInModal={onOpenInModal}
+          />,
+          t.el,
+          `${t.kind}:${t.id}:${i}`
+        )
       )}
     </div>
   )

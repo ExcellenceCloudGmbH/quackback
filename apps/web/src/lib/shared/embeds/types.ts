@@ -31,6 +31,10 @@ export interface EmbedPostPreview {
   authorName: string | null
   authorAvatarUrl: string | null
   createdAt: string | null
+  /** Absolute, viewer-shareable portal URL for the post — built server-side from
+   *  the canonical base so an embed can open it in a new tab (e.g. in the widget,
+   *  whose iframe origin may differ from the portal's). */
+  url: string
 }
 
 /** A resolved (published) changelog-entry embed. */
@@ -39,6 +43,8 @@ export interface EmbedChangelogPreview {
   entryId: string
   title: string
   publishedAt: string | null
+  /** Absolute portal URL for the changelog entry — see {@link EmbedPostPreview.url}. */
+  url: string
 }
 
 /** A broken, deleted, or unauthorized embed — renders as a muted placeholder. */

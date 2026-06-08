@@ -122,6 +122,13 @@ export const Route = createFileRoute('/admin/inbox')({
       ? (search.priority as ConversationPriority | 'all')
       : undefined,
     q: typeof search.q === 'string' && search.q ? search.q : undefined,
+    // Carries the shared `?post=` modal target (the admin layout mounts the
+    // modal) so clicking an embedded post in a chat opens it without leaving the
+    // inbox. Validated to a real post id; a junk value is dropped.
+    post:
+      typeof search.post === 'string' && isValidTypeId(search.post, 'post')
+        ? search.post
+        : undefined,
   }),
   // Re-run the prefetch when the scope / filters / open conversation change, so
   // a client-side navigation re-warms the cache too. ensureQueryData is a no-op

@@ -939,8 +939,10 @@ function ChatBubble({
         </div>
         {contentJson ? (
           // Rich message (inline images / post embeds): hydrate embed cards into
-          // the static rendered HTML, matching the changelog/inbox surfaces.
-          <EmbedHydration>
+          // the static rendered HTML, matching the changelog/inbox surfaces. The
+          // widget's iframe origin may differ from the portal's, so an embedded
+          // post opens its absolute URL in a new tab.
+          <EmbedHydration openMode="newTab">
             <RichTextContent
               content={contentJson}
               className="mt-0.5 text-sm leading-relaxed text-foreground/90"

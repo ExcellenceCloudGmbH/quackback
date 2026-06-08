@@ -1,3 +1,4 @@
+import { type ReactNode } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { ChevronUpIcon } from '@heroicons/react/24/solid'
@@ -64,6 +65,69 @@ const shellCls =
   'quackback-embed not-prose my-2 block w-full max-w-md overflow-hidden rounded-lg border border-border bg-card no-underline'
 
 /**
+ * How clicking a live embed card opens its target — chosen per mounting surface:
+ * - `navigate` (default): same-tab `<a href>` to the relative portal path. Used
+ *   by post bodies / changelog / comments display.
+ * - `newTab`: `<a target="_blank">` to the absolute portal URL. Used by the
+ *   widget chat, whose iframe origin may differ from the portal's.
+ * - `modal`: a clickable region that calls `onOpenInModal(postId)` instead of
+ *   navigating. Used by the admin chat so a shared post opens in place (like
+ *   clicking a roadmap item) rather than leaving the inbox.
+ */
+export type EmbedOpenMode = 'navigate' | 'newTab' | 'modal'
+
+/**
+ * Picks the card's outer element for the active {@link EmbedOpenMode}. A nested
+ * vote button stops propagation, so it never triggers the wrapper's click.
+ */
+function EmbedShell({
+  href,
+  openMode,
+  modalTarget,
+  onOpenInModal,
+  children,
+}: {
+  /** Relative path (navigate) or absolute URL (newTab). Ignored in modal mode. */
+  href: string
+  openMode: EmbedOpenMode
+  /** The post id to open in modal mode; absent for changelog (falls back). */
+  modalTarget?: string
+  onOpenInModal?: (postId: string) => void
+  children: ReactNode
+}) {
+  if (openMode === 'modal' && onOpenInModal && modalTarget) {
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        className={cn(shellCls, 'cursor-pointer text-left')}
+        onClick={() => onOpenInModal(modalTarget)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onOpenInModal(modalTarget)
+          }
+        }}
+      >
+        {children}
+      </div>
+    )
+  }
+  if (openMode === 'newTab') {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className={shellCls}>
+        {children}
+      </a>
+    )
+  }
+  return (
+    <a href={href} className={shellCls}>
+      {children}
+    </a>
+  )
+}
+
+/**
  * A live Quackback link embed. Given a parsed `{ kind, id }`, it resolves the
  * referenced post/changelog *fresh* (votes, status, title, tags all current) and
  * renders a compact card — a miniature of the portal post card. Anything the
@@ -75,12 +139,20 @@ export function QuackbackEmbedCard({
   kind,
   id,
   interactive = true,
+  openMode = 'navigate',
+  onOpenInModal,
 }: {
   kind: 'post' | 'changelog'
   id: string
   /** Live surfaces (default) get a working vote button + a clickable card; the
    *  in-editor preview passes `false` for an inert, non-navigating card. */
   interactive?: boolean
+  /** How a click opens the target — see {@link EmbedOpenMode}. Defaults to
+   *  same-tab navigation; chat surfaces override (widget → newTab, admin →
+   *  modal). Ignored when `interactive` is false. */
+  openMode?: EmbedOpenMode
+  /** Required for `modal` mode: opens the referenced post in place. */
+  onOpenInModal?: (postId: string) => void
 }) {
   const { data, isLoading } = useQuery({
     queryKey: ['embed', kind, id],
@@ -169,12 +241,17 @@ export function QuackbackEmbedCard({
         </div>
       </div>
     )
-    return interactive ? (
-      <a href={`/b/${data.boardSlug}/posts/${data.postId}`} className={shellCls}>
+    if (!interactive) return <div className={shellCls}>{inner}</div>
+    const href = openMode === 'newTab' ? data.url : `/b/${data.boardSlug}/posts/${data.postId}`
+    return (
+      <EmbedShell
+        href={href}
+        openMode={openMode}
+        modalTarget={data.postId}
+        onOpenInModal={onOpenInModal}
+      >
         {inner}
-      </a>
-    ) : (
-      <div className={shellCls}>{inner}</div>
+      </EmbedShell>
     )
   }
 
@@ -192,11 +269,14 @@ export function QuackbackEmbedCard({
       )}
     </div>
   )
-  return interactive ? (
-    <a href={`/changelog/${data.entryId}`} className={shellCls}>
+  if (!interactive) return <div className={shellCls}>{changelogInner}</div>
+  // A changelog entry has no post to open in place, so modal surfaces (admin
+  // chat) open it in a new tab rather than navigating away from the inbox.
+  const clOpenMode = openMode === 'modal' ? 'newTab' : openMode
+  const clHref = clOpenMode === 'newTab' ? data.url : `/changelog/${data.entryId}`
+  return (
+    <EmbedShell href={clHref} openMode={clOpenMode}>
       {changelogInner}
-    </a>
-  ) : (
-    <div className={shellCls}>{changelogInner}</div>
+    </EmbedShell>
   )
 }
