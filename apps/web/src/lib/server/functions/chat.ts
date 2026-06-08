@@ -33,6 +33,7 @@ import {
   requireAuth,
   policyActorFromAuth,
   hasAuthCredentials,
+  type AuthContext,
 } from './auth-helpers'
 import { isTeamMember } from '@/lib/shared/roles'
 
@@ -519,6 +520,16 @@ export const upvotePostFromChatFn = createServerFn({ method: 'POST' })
     }
   })
 
+/** Build the agent-author object used by chat convert/share operations. */
+function agentFromCtx(ctx: AuthContext) {
+  return {
+    principalId: ctx.principal.id,
+    displayName: ctx.user.name,
+    avatarUrl: ctx.user.image,
+    email: ctx.user.email,
+  }
+}
+
 // ── Agent functions ──────────────────────────────────────────────────────
 
 /** Saved replies for the agent composer (team-gated; agent-only, not public). */
@@ -676,12 +687,7 @@ export const createPostFromConversationFn = createServerFn({ method: 'POST' })
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
       const actor = await policyActorFromAuth(ctx)
       const { createPostFromConversation } = await import('@/lib/server/domains/chat/chat.convert')
-      const agent = {
-        principalId: ctx.principal.id,
-        displayName: ctx.user.name,
-        avatarUrl: ctx.user.image,
-        email: ctx.user.email,
-      }
+      const agent = agentFromCtx(ctx)
       return await createPostFromConversation(
         {
           conversationId: data.conversationId as ConversationId,
@@ -739,12 +745,7 @@ export const sharePostFn = createServerFn({ method: 'POST' })
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
       const actor = await policyActorFromAuth(ctx)
       const { sharePost } = await import('@/lib/server/domains/chat/chat.cards')
-      const agent = {
-        principalId: ctx.principal.id,
-        displayName: ctx.user.name,
-        avatarUrl: ctx.user.image,
-        email: ctx.user.email,
-      }
+      const agent = agentFromCtx(ctx)
       const r = await sharePost(
         {
           conversationId: data.conversationId as ConversationId,

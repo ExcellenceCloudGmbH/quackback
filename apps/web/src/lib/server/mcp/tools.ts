@@ -207,6 +207,11 @@ async function requireHelpCenterWrite(auth: McpAuthContext): Promise<CallToolRes
   )
 }
 
+/** Build the agent-author object used by the chat write tools (reply, suggest, share). */
+function agentFromMcpAuth(auth: McpAuthContext) {
+  return { principalId: auth.principalId, displayName: auth.name, email: auth.email }
+}
+
 /** Format a help center article as a tool result. */
 function articleResult(article: {
   id: string
@@ -2153,7 +2158,7 @@ Example: reply_to_conversation({ conversationId: "conversation_01abc...", conten
           principalType: auth.userId ? ('user' as const) : ('service' as const),
           segmentIds: new Set<SegmentId>(),
         }
-        const agent = { principalId: auth.principalId, displayName: auth.name, email: auth.email }
+        const agent = agentFromMcpAuth(auth)
         const result = await sendAgentMessage(
           args.conversationId as ConversationId,
           args.content,
@@ -2203,7 +2208,7 @@ Example: suggest_post({ conversationId: "conversation_01...", boardId: "board_01
           principalType: auth.userId ? ('user' as const) : ('service' as const),
           segmentIds: new Set<SegmentId>(),
         }
-        const agent = { principalId: auth.principalId, displayName: auth.name, email: auth.email }
+        const agent = agentFromMcpAuth(auth)
         const r = await suggestPost(
           {
             conversationId: args.conversationId as ConversationId,
@@ -2244,7 +2249,7 @@ Example: share_post({ conversationId: "conversation_01...", postId: "post_01..."
           principalType: auth.userId ? ('user' as const) : ('service' as const),
           segmentIds: new Set<SegmentId>(),
         }
-        const agent = { principalId: auth.principalId, displayName: auth.name, email: auth.email }
+        const agent = agentFromMcpAuth(auth)
         const r = await sharePost(
           { conversationId: args.conversationId as ConversationId, postId: args.postId as PostId },
           { agentActor: actor, agentPrincipalId: auth.principalId, agent }
