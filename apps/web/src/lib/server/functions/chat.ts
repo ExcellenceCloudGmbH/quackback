@@ -88,6 +88,9 @@ const csatSchema = z.object({
 const agentSendSchema = z.object({
   conversationId: z.string(),
   content: z.string().max(MAX_CHAT_MESSAGE_LENGTH).default(''),
+  // Rich-composer TipTap doc (inline embeds / images). Sanitized server-side;
+  // the plain `content` is the doc's text, kept for previews/notifications/search.
+  contentJson: z.unknown().nullable().optional(),
   attachments: z.array(attachmentSchema).max(MAX_CHAT_ATTACHMENTS).optional(),
 })
 
@@ -667,7 +670,8 @@ export const sendAgentMessageFn = createServerFn({ method: 'POST' })
           avatarUrl: ctx.user.image,
         },
         actor,
-        data.attachments as ChatAttachment[] | undefined
+        data.attachments as ChatAttachment[] | undefined,
+        (data.contentJson ?? null) as import('@/lib/shared/db-types').TiptapContent | null
       )
     } catch (error) {
       console.error('[fn:chat] sendAgentMessageFn failed:', error)

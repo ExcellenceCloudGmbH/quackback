@@ -335,13 +335,19 @@ export async function sendAgentMessage(
   rawContent: string,
   agent: ChatAuthorInput,
   actor: Actor,
-  rawAttachments?: ChatAttachment[]
+  rawAttachments?: ChatAttachment[],
+  contentJson?: TiptapContent | null
 ): Promise<SendAgentMessageResult> {
   const decision = canActAsAgent(actor)
   if (!decision.allowed) throw new ForbiddenError('FORBIDDEN', decision.reason)
 
   const attachments = validateAttachments(rawAttachments)
-  const content = validateContent(rawContent, attachments.length > 0)
+  // Rich-composer doc (inline embeds/images): sanitized on write like the note
+  // path, but no mention extraction — replies carry no team @-mentions.
+  const safeContentJson = contentJson ? sanitizeTiptapContent(contentJson) : null
+  // A rich message can be embed/image-only (no text), so empty content is valid
+  // when there are attachments OR a non-empty doc.
+  const content = validateContent(rawContent, attachments.length > 0 || !!safeContentJson)
 
   const txResult = await db.transaction(async (tx) => {
     const [existing] = await tx
@@ -360,6 +366,7 @@ export async function sendAgentMessage(
         principalId: agent.principalId,
         senderType: 'agent',
         content,
+        contentJson: safeContentJson,
         attachments: attachments.length > 0 ? attachments : null,
       })
       .returning()
