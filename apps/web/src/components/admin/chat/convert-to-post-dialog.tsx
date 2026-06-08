@@ -36,6 +36,9 @@ interface ConvertToPostDialogProps {
   conversationId: ConversationId
   defaultTitle: string
   defaultContent: string
+  /** Pre-select this board when the dialog opens (e.g. an AI suggestion's
+   *  board). Falls back to the first board when unset or not a real board. */
+  defaultBoardId?: string
   onConverted?: () => void
   /** Controlled open state. Omit for an uncontrolled dialog with its own trigger. */
   open?: boolean
@@ -47,6 +50,7 @@ export function ConvertToPostDialog({
   conversationId,
   defaultTitle,
   defaultContent,
+  defaultBoardId,
   onConverted,
   open: controlledOpen,
   onOpenChange,
@@ -59,16 +63,24 @@ export function ConvertToPostDialog({
   const [boardId, setBoardId] = useState<string>('')
 
   // Reset the draft to the conversation's content each time the dialog opens.
+  // A supplied defaultBoardId seeds the board too (validated against the loaded
+  // boards in the effect below).
   useEffect(() => {
     if (open) {
       setTitle(defaultTitle)
       setContent(defaultContent)
+      if (defaultBoardId) setBoardId(defaultBoardId)
     }
-  }, [open, defaultTitle, defaultContent])
+  }, [open, defaultTitle, defaultContent, defaultBoardId])
 
   const { data: boards = [] } = useQuery(adminQueries.boards())
+  // Default/repair the board selection: fall back to the first board when none
+  // is chosen yet or the seeded id isn't a real board.
   useEffect(() => {
-    if (!boardId && boards.length > 0) setBoardId(boards[0].id as string)
+    if (boards.length === 0) return
+    if (!boardId || !boards.some((b) => (b.id as string) === boardId)) {
+      setBoardId(boards[0].id as string)
+    }
   }, [boards, boardId])
 
   // Debounced dedupe: find existing posts similar to the draft title.

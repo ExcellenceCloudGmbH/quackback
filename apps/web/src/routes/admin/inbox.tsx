@@ -646,6 +646,13 @@ function ChatThread({
   // (controlled) track dialog and the share-post picker, respectively.
   const [suggestMsg, setSuggestMsg] = useState<AgentChatMessageDTO | null>(null)
   const [shareMsg, setShareMsg] = useState<AgentChatMessageDTO | null>(null)
+  // An AI "Track as post" suggestion the agent accepted from a note chip: seeds
+  // the same (controlled) convert dialog with the suggested board/title/content.
+  const [suggestionSeed, setSuggestionSeed] = useState<{
+    boardId: string
+    title: string
+    content: string
+  } | null>(null)
 
   // "Jump to message" deep-link state. pendingTarget is the message we still
   // need to scroll to (null once resolved); highlightId is the one currently
@@ -1056,16 +1063,21 @@ function ChatThread({
               />
             </div>
           )}
-          {/* Per-message "Suggest as post" quick actions: separate controlled
-              dialogs driven by the message the agent picked from the thread. */}
+          {/* Per-message "Suggest as post" quick actions: one controlled dialog
+              driven by either a thread message the agent picked or an AI
+              "Track as post" suggestion the agent accepted from a note chip. */}
           <ConvertToPostDialog
-            open={!!suggestMsg}
+            open={!!suggestMsg || !!suggestionSeed}
             onOpenChange={(o) => {
-              if (!o) setSuggestMsg(null)
+              if (!o) {
+                setSuggestMsg(null)
+                setSuggestionSeed(null)
+              }
             }}
             conversationId={conversationId}
-            defaultTitle={suggestMsg?.content.trim().slice(0, 200) ?? ''}
-            defaultContent={suggestMsg?.content ?? ''}
+            defaultTitle={suggestionSeed?.title ?? suggestMsg?.content.trim().slice(0, 200) ?? ''}
+            defaultContent={suggestionSeed?.content ?? suggestMsg?.content ?? ''}
+            defaultBoardId={suggestionSeed?.boardId}
             onConverted={refreshThread}
           />
           <SharePostDialog
@@ -1134,6 +1146,7 @@ function ChatThread({
                   onMarkUnread={() => markUnreadMutation.mutate(m.id)}
                   onSharePost={() => setShareMsg(m)}
                   onTrackAsPost={() => setSuggestMsg(m)}
+                  onTrackSuggestion={(s) => setSuggestionSeed(s)}
                 />
               </div>
             ))}

@@ -8,6 +8,8 @@ import {
   FlagIcon as FlagSolidIcon,
   ChatBubbleLeftRightIcon,
   AdjustmentsHorizontalIcon,
+  LightBulbIcon,
+  ArrowTopRightOnSquareIcon,
 } from '@heroicons/react/24/solid'
 import { FlagIcon } from '@heroicons/react/24/outline'
 import { Avatar } from '@/components/ui/avatar'
@@ -59,6 +61,9 @@ interface AdminBubbleProps {
   onSharePost?: () => void
   /** Visitor-only: open the full dialog prefilled from this message. */
   onTrackAsPost?: () => void
+  /** Internal-note only: act on the AI's `suggest_post` suggestion — opens the
+   *  convert dialog seeded with the suggested board/title/content. */
+  onTrackSuggestion?: (s: { boardId: string; title: string; content: string }) => void
   /** Open an embedded post in the inbox's in-place `?post=` modal (the host owns
    *  the route-bound navigation so the agent never leaves the conversation). */
   onOpenPost?: (postId: string) => void
@@ -74,6 +79,7 @@ export function AdminBubble({
   onMarkUnread,
   onSharePost,
   onTrackAsPost,
+  onTrackSuggestion,
   onOpenPost,
   highlighted = false,
 }: AdminBubbleProps) {
@@ -125,6 +131,11 @@ export function AdminBubble({
   // agent replies or internal notes) and only when the host wired them up.
   const showTrackActions =
     message.senderType === 'visitor' && !isNote && !!(onTrackAsPost || onSharePost)
+  // Agent-only AI suggestion to track this note as a post (populated only on
+  // internal notes the AI wrote via `suggest_post`); the chip is the one-click
+  // entry into the convert dialog. Captured as a const so the click handler can
+  // safely pass the narrowed (non-null) value into `onTrackSuggestion`.
+  const suggestion = isNote ? message.postSuggestion : null
 
   return (
     <div
@@ -177,11 +188,27 @@ export function AdminBubble({
           )}
         </div>
         {isNote ? (
-          <NoteContent
-            content={message.content}
-            contentJson={message.contentJson}
-            className="mt-0.5 text-sm text-foreground/90"
-          />
+          <>
+            <NoteContent
+              content={message.content}
+              contentJson={message.contentJson}
+              className="mt-0.5 text-sm text-foreground/90"
+            />
+            {suggestion && onTrackSuggestion && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-md border border-amber-400/30 bg-amber-400/10 px-2 py-1.5">
+                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-amber-700 dark:text-amber-300">
+                  <LightBulbIcon className="h-3.5 w-3.5" /> AI suggests tracking this as a post
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onTrackSuggestion(suggestion)}
+                  className="ml-auto inline-flex items-center gap-1 rounded-md bg-primary px-2 py-1 text-[11px] font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                >
+                  <ArrowTopRightOnSquareIcon className="h-3.5 w-3.5" /> Track as post
+                </button>
+              </div>
+            )}
+          </>
         ) : message.contentJson ? (
           // Rich reply (inline embeds / images). No mention overlay — replies
           // carry no @-mentions, unlike internal notes. An embedded post opens
