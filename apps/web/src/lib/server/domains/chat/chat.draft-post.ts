@@ -133,13 +133,23 @@ export async function proposePost(
   return result
 }
 
+/** Drop a post_ref card (an embedded existing post) into the conversation. */
+export function dropPostRefCard(
+  conversationId: ConversationId,
+  postId: PostId,
+  content: string,
+  ctx: DraftPostAgentCtx
+): Promise<SendAgentMessageResult> {
+  const card: ChatCard = { type: 'post_ref', postId }
+  return insertCardMessage(conversationId, content, card, ctx)
+}
+
 /** Agent shares (embeds) an existing post into the conversation. */
 export function sharePost(
   input: { conversationId: ConversationId; postId: PostId },
   ctx: DraftPostAgentCtx
 ): Promise<SendAgentMessageResult> {
-  const card: ChatCard = { type: 'post_ref', postId: input.postId }
-  return insertCardMessage(input.conversationId, `🔼 Shared a related idea`, card, ctx)
+  return dropPostRefCard(input.conversationId, input.postId, `🔼 Shared a related idea`, ctx)
 }
 
 /**

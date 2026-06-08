@@ -15,6 +15,7 @@ const canActAsAgent = vi.fn()
 const assertConversationViewable = vi.fn()
 const addVoteOnBehalf = vi.fn()
 const createPost = vi.fn()
+const dropPostRefCard = vi.fn()
 const insertedLinks: Record<string, unknown>[] = []
 let onConflictHit = false
 
@@ -37,6 +38,12 @@ vi.mock('@/lib/server/domains/posts/post.voting', () => ({
 }))
 vi.mock('@/lib/server/domains/posts/post.service', () => ({
   createPost: (...args: unknown[]) => createPost(...args),
+}))
+
+// Mocked so the dynamic import inside createPostFromConversation is intercepted
+// without loading the real module (which carries its own heavy deps).
+vi.mock('../chat.draft-post', () => ({
+  dropPostRefCard: (...args: unknown[]) => dropPostRefCard(...args),
 }))
 
 vi.mock('@/lib/server/db', () => {
@@ -99,6 +106,7 @@ beforeEach(() => {
   assertConversationViewable.mockResolvedValue(freshConversation())
   createPost.mockResolvedValue({ id: 'post_new' as PostId, boardSlug: 'feature-requests' })
   addVoteOnBehalf.mockResolvedValue(undefined)
+  dropPostRefCard.mockResolvedValue(undefined)
 })
 
 describe('createPostFromConversation authorization guard', () => {
@@ -246,5 +254,36 @@ describe('createPostFromConversation upvote-existing path', () => {
       integrationType: 'live_chat',
       externalId: conversationId,
     })
+  })
+})
+
+describe('createPostFromConversation confirmation card', () => {
+  const existingPostId = 'post_existing' as PostId
+
+  it('drops a post_ref card into the conversation after creating a new post', async () => {
+    await createPostFromConversation({ conversationId, boardId, title: 'Add dark mode' }, ctx)
+
+    expect(dropPostRefCard).toHaveBeenCalledTimes(1)
+    const [cidArg, pidArg, contentArg, ctxArg] = dropPostRefCard.mock.calls[0]
+    expect(cidArg).toBe(conversationId)
+    expect(pidArg).toBe('post_new')
+    expect(contentArg).toEqual(expect.stringMatching(/track/i))
+    expect(ctxArg).toMatchObject({
+      agentActor,
+      agentPrincipalId,
+    })
+  })
+
+  it('drops a post_ref card into the conversation after upvoting an existing post', async () => {
+    await createPostFromConversation(
+      { conversationId, boardId, asUpvoteOfPostId: existingPostId },
+      ctx
+    )
+
+    expect(dropPostRefCard).toHaveBeenCalledTimes(1)
+    const [cidArg, pidArg, contentArg] = dropPostRefCard.mock.calls[0]
+    expect(cidArg).toBe(conversationId)
+    expect(pidArg).toBe(existingPostId)
+    expect(contentArg).toEqual(expect.stringMatching(/track/i))
   })
 })
