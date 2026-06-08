@@ -305,7 +305,7 @@ export async function publishProposedPost(
       title: input.title,
       content: input.content,
     },
-    { agentActor, agentPrincipalId }
+    { agentActor, agentPrincipalId, agent: { principalId: agentPrincipalId } }
   )
 
   const next: ChatCard = {

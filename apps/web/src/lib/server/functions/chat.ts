@@ -725,6 +725,12 @@ export const createPostFromConversationFn = createServerFn({ method: 'POST' })
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
       const actor = await policyActorFromAuth(ctx)
       const { createPostFromConversation } = await import('@/lib/server/domains/chat/chat.convert')
+      const agent = {
+        principalId: ctx.principal.id,
+        displayName: ctx.user.name,
+        avatarUrl: ctx.user.image,
+        email: ctx.user.email,
+      }
       return await createPostFromConversation(
         {
           conversationId: data.conversationId as ConversationId,
@@ -733,7 +739,7 @@ export const createPostFromConversationFn = createServerFn({ method: 'POST' })
           content: data.content,
           asUpvoteOfPostId: data.asUpvoteOfPostId as PostId | undefined,
         },
-        { agentActor: actor, agentPrincipalId: ctx.principal.id }
+        { agentActor: actor, agentPrincipalId: ctx.principal.id, agent }
       )
     } catch (error) {
       console.error('[fn:chat] createPostFromConversationFn failed:', error)

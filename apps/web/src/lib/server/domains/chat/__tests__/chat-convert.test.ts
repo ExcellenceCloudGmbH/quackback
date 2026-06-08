@@ -72,7 +72,14 @@ const agentActor: Actor = {
   segmentIds: new Set(),
 }
 
-const ctx = { agentActor, agentPrincipalId }
+const agent = {
+  principalId: agentPrincipalId,
+  displayName: 'Agent Smith',
+  avatarUrl: null,
+  email: 'agent@example.test',
+}
+
+const ctx = { agentActor, agentPrincipalId, agent }
 
 function freshConversation(extra: Record<string, unknown> = {}) {
   return {
@@ -189,6 +196,14 @@ describe('createPostFromConversation create-new path', () => {
     assertConversationViewable.mockResolvedValue(freshConversation({ subject: undefined }))
     await createPostFromConversation({ conversationId, boardId, title: 'Add dark mode' }, ctx)
     expect(insertedLinks[0].externalDisplayId).toBeNull()
+  })
+
+  it('records the acting agent as trackedByPrincipalId on the created post', async () => {
+    await createPostFromConversation({ conversationId, boardId, title: 'Add dark mode' }, ctx)
+
+    expect(createPost).toHaveBeenCalledTimes(1)
+    const [postInput] = createPost.mock.calls[0]
+    expect(postInput).toMatchObject({ trackedByPrincipalId: agentPrincipalId })
   })
 })
 
