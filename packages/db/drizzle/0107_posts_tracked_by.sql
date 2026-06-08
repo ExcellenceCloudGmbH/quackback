@@ -4,7 +4,7 @@
 -- Additive + backfill-safe (existing rows get NULL). Set null if the agent's
 -- principal is later removed.
 
-ALTER TABLE "posts" ADD COLUMN "tracked_by_principal_id" varchar;
+ALTER TABLE "posts" ADD COLUMN "tracked_by_principal_id" uuid;
 
 ALTER TABLE "posts"
   ADD CONSTRAINT "posts_tracked_by_principal_id_fk"
