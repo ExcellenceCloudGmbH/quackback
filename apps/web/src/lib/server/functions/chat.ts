@@ -501,25 +501,6 @@ export const deleteChatMessageFn = createServerFn({ method: 'POST' })
     }
   })
 
-/** Visitor upvotes a post shared into chat via a post_ref card. */
-export const upvotePostFromChatFn = createServerFn({ method: 'POST' })
-  .inputValidator(z.object({ messageId: z.string(), postId: z.string() }))
-  .handler(async ({ data }) => {
-    try {
-      const ctx = await requireAuth({ roles: ['admin', 'member', 'user'] })
-      await assertVisitorChatAccess(ctx.principal.role)
-      const actor = await policyActorFromAuth(ctx)
-      const { upvotePostFromChat } = await import('@/lib/server/domains/chat/chat.cards')
-      return await upvotePostFromChat(
-        { messageId: data.messageId as ChatMessageId, postId: data.postId as PostId },
-        actor
-      )
-    } catch (error) {
-      console.error('[fn:chat] upvotePostFromChatFn failed:', error)
-      throw error
-    }
-  })
-
 /** Build the agent-author object used by chat convert/share operations. */
 function agentFromCtx(ctx: AuthContext) {
   return {

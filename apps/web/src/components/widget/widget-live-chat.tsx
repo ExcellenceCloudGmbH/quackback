@@ -3,7 +3,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { FormattedMessage, useIntl } from 'react-intl'
 import { buildChatRows, type ChatRow } from './widget-chat-rows'
-import { PostRefCard } from './post-ref-card'
 import { ChatPresenceBadge } from './chat-presence-badge'
 import { chatAvailable } from '@/lib/shared/chat/presence'
 import { useChatPresence, markAgentPresentInCache } from './use-chat-presence'
@@ -243,12 +242,6 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
         setAgentReadAt(evt.at)
       } else if (evt.kind === 'message_deleted') {
         setMessages((prev) => prev.filter((m) => m.id !== evt.messageId))
-      } else if (evt.kind === 'card_updated') {
-        // A card's state changed (proposed→published/dismissed) — swap the card
-        // on its message in place so the open widget re-renders the new state.
-        setMessages((prev) =>
-          prev.map((m) => (m.id === evt.messageId ? { ...m, card: evt.card } : m))
-        )
       } else if (evt.kind === 'conversation' && evt.conversation.id === conversationId) {
         setConversationStatus(evt.conversation.status)
         setCsatRating(evt.conversation.csatRating)
@@ -552,10 +545,6 @@ export function WidgetLiveChat({ helpEnabled, onArticleSelect }: WidgetLiveChatP
           </div>
         )
       }
-      case 'post_ref':
-        return row.message.card?.type === 'post_ref' ? (
-          <PostRefCard messageId={row.message.id} postId={row.message.card.postId} />
-        ) : null
       case 'empty':
         return (
           <div className="flex flex-col items-center justify-center text-center py-8 px-4">

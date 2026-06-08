@@ -71,24 +71,14 @@ describe('buildChatRows', () => {
     expect(rows.map((r) => r.key)).toEqual(['greeting', 'typing'])
   })
 
-  it('emits a post_ref row when the message carries a post_ref card', () => {
-    const m = msg({ card: { type: 'post_ref', postId: 'post_1' as any } })
+  it('routes an embed message (contentJson) to a normal message row', () => {
+    const m = msg({
+      contentJson: {
+        type: 'doc',
+        content: [{ type: 'quackbackEmbed', attrs: { kind: 'post', id: 'post_1' } }],
+      } as any,
+    })
     const rows = buildChatRows({ ...base, messages: [m] })
-    expect(rows.find((r) => r.type === 'post_ref')).toBeTruthy()
-    // must not also emit a plain 'message' row for this card message
-    expect(
-      rows.filter((r) => 'message' in r && (r as any).message?.id === m.id).map((r) => r.type)
-    ).toEqual(['post_ref'])
-  })
-
-  it('renders a plain message row for a message carrying an unknown card type', () => {
-    const m = msg({ card: { type: 'legacy_card' } as any })
-    const rows = buildChatRows({ ...base, messages: [m] })
-    expect(rows.filter((r) => r.type === 'message' && r.key === m.id)).toHaveLength(1)
-  })
-
-  it('emits a normal message row when there is no card', () => {
-    const rows = buildChatRows({ ...base, messages: [msg({ card: null })] })
-    expect(rows.find((r) => r.type === 'message')).toBeTruthy()
+    expect(rows.filter((r) => r.type === 'message' && r.key === 'msg-1')).toHaveLength(1)
   })
 })

@@ -1,12 +1,11 @@
 /**
- * Card-in-chat sends: sharePost inserts an agent message carrying a post_ref
- * card. It mirrors sendAgentMessage (server-decided 'agent' sender, conversation
- * touch, realtime broadcast) but stashes the card under metadata.card so it flows
- * to the DTO. upvotePostFromChat is the visitor-side action on that shared card —
- * it votes on the referenced post as the conversation's visitor.
+ * Post-in-chat sends: sharePost sends an embed-only agent message whose
+ * contentJson is a quackbackEmbed of the post. It routes through sendAgentMessage
+ * (server-decided 'agent' sender, conversation touch, realtime broadcast); the
+ * empty text is valid because the doc carries the embed node.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { PrincipalId, ConversationId, PostId, ChatMessageId } from '@quackback/ids'
+import type { PrincipalId, ConversationId, PostId } from '@quackback/ids'
 import type { Actor } from '@/lib/server/policy/types'
 import { ForbiddenError } from '@/lib/shared/errors'
 
@@ -33,8 +32,11 @@ vi.mock('@/lib/server/realtime/chat-channels', () => ({
   publishConversationUpdate: (...args: unknown[]) => publishConversationUpdate(...args),
 }))
 
-vi.mock('@/lib/server/domains/posts/post.voting', () => ({
-  addVoteOnBehalf: vi.fn(async () => ({ voted: true, voteCount: 1 })),
+// The embed message routes through sendAgentMessage, which fires a (fire-and-
+// forget) reply notification — stub it so no real notify pipeline runs.
+vi.mock('../chat.notify', () => ({
+  notifyVisitorMessage: vi.fn(),
+  notifyAgentReply: vi.fn(),
 }))
 
 vi.mock('@/lib/server/config', () => ({
@@ -48,14 +50,14 @@ vi.mock('../chat.query', () => ({
     status: c.status,
   })),
   // Project the fields the assertions read: server-decided senderType and the
-  // card stashed under metadata.card (mirrors the real toMessageDTO).
+  // rich doc (mirrors the real toMessageDTO).
   toMessageDTO: vi.fn((m: Record<string, unknown>) => ({
     id: m.id,
     conversationId: m.conversationId,
     senderType: m.senderType,
     content: m.content,
+    contentJson: m.contentJson ?? null,
     author: { principalId: m.principalId, displayName: null, avatarUrl: null },
-    card: (m.metadata as { card?: unknown } | null)?.card ?? null,
   })),
   resolveAuthor: vi.fn(async (a: { principalId: string }) => ({
     principalId: a.principalId,
@@ -85,39 +87,16 @@ vi.mock('@/lib/server/db', () => {
     updatedAt: null,
   }
 
-  // A post_ref chat message owned by the visitor — loadOwnedCardMessage reads
-  // only its conversationId, then asserts the caller owns that conversation.
-  function buildMessageRow() {
-    return {
-      id: 'chat_msg_card' as unknown as ChatMessageId,
-      conversationId: 'conversation_1' as unknown as ConversationId,
-      principalId: 'principal_agent',
-      senderType: 'agent' as const,
-      content: '🔼 Shared a related idea',
-      metadata: { card: { type: 'post_ref', postId: 'post_1' } },
-      createdAt: new Date(),
-    }
-  }
-
   function chain(label: string) {
     const c: Record<string, unknown> = {}
-    let fromTable: string | undefined
     c.values = vi.fn((row: Record<string, unknown>) => {
       if (label === 'chat_messages') insertedMessages.push(row)
       return c
     })
     c.set = vi.fn(() => c)
-    c.from = vi.fn((table?: { __name?: string }) => {
-      fromTable = table?.__name
-      return c
-    })
+    c.from = vi.fn(() => c)
     c.where = vi.fn(() => c)
-    // A direct select resolves to the table-appropriate row; the in-transaction
-    // conversation lookup still resolves to an existing conversation.
-    c.limit = vi.fn(async () => {
-      if (fromTable === 'chat_messages') return [buildMessageRow()]
-      return [conversationRow]
-    })
+    c.limit = vi.fn(async () => [conversationRow])
     c.orderBy = vi.fn(() => c)
     c.returning = vi.fn(async () => {
       if (label === 'chat_messages') {
@@ -151,8 +130,7 @@ vi.mock('@/lib/server/db', () => {
   }
 })
 
-import { addVoteOnBehalf } from '@/lib/server/domains/posts/post.voting'
-import { sharePost, upvotePostFromChat } from '../chat.cards'
+import { sharePost } from '../chat.cards'
 
 const conversationId = 'conversation_1' as ConversationId
 const postId = 'post_1' as PostId
@@ -174,32 +152,31 @@ const visitorActor: Actor = {
   principalType: 'anonymous',
   segmentIds: new Set(),
 }
-// Owns a different conversation — fails the visitor-owns-conversation guard.
-const strangerActor: Actor = {
-  principalId: 'principal_stranger' as PrincipalId,
-  role: 'user',
-  principalType: 'anonymous',
-  segmentIds: new Set(),
-}
-const messageId = 'chat_msg_card' as ChatMessageId
 
 beforeEach(() => {
   insertedMessages.length = 0
   vi.clearAllMocks()
 })
 
+/** Find the quackbackEmbed node in a sanitized doc, if any. */
+function embedNode(doc: unknown): { type: string } | undefined {
+  const content = (doc as { content?: Array<{ type: string }> } | null)?.content
+  return content?.find((n) => n.type === 'quackbackEmbed')
+}
+
 describe('sharePost', () => {
-  it('inserts an agent message carrying a post_ref card', async () => {
+  it('sends an embed-only agent message carrying a quackbackEmbed post node', async () => {
     const shared = await sharePost(
       { conversationId, postId },
       { agentActor, agentPrincipalId, agent }
     )
     expect(shared.message.senderType).toBe('agent')
-    expect(shared.message.card).toEqual({ type: 'post_ref', postId })
-    expect(insertedMessages[0]).toMatchObject({
-      senderType: 'agent',
-      metadata: { card: { type: 'post_ref', postId } },
-    })
+    // The broadcast DTO carries the embed doc, not a card.
+    expect(embedNode(shared.message.contentJson)).toBeTruthy()
+    // The persisted row is an empty-text agent message whose contentJson embeds
+    // the post.
+    expect(insertedMessages[0]).toMatchObject({ senderType: 'agent', content: '' })
+    expect(embedNode(insertedMessages[0].contentJson)).toBeTruthy()
   })
 
   it('refuses a non-agent actor before any write', async () => {
@@ -207,27 +184,5 @@ describe('sharePost', () => {
       sharePost({ conversationId, postId }, { agentActor: visitorActor, agentPrincipalId, agent })
     ).rejects.toBeInstanceOf(ForbiddenError)
     expect(insertedMessages).toHaveLength(0)
-  })
-})
-
-describe('upvotePostFromChat', () => {
-  it('adds a vote on the visitor’s behalf and returns the vote count', async () => {
-    const res = await upvotePostFromChat({ messageId, postId }, visitorActor)
-    expect(res.voteCount).toBeGreaterThanOrEqual(1)
-    // Votes for the conversation's visitor, attributed to the live-chat source.
-    expect(addVoteOnBehalf).toHaveBeenCalledWith(
-      postId,
-      'principal_visitor',
-      { type: 'live_chat', externalUrl: 'http://localhost:3000/admin/inbox?c=conversation_1' },
-      null,
-      visitorActor.principalId
-    )
-  })
-
-  it('rejects a caller who does not own the conversation', async () => {
-    await expect(upvotePostFromChat({ messageId, postId }, strangerActor)).rejects.toBeInstanceOf(
-      ForbiddenError
-    )
-    expect(addVoteOnBehalf).not.toHaveBeenCalled()
   })
 })

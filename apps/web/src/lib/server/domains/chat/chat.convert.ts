@@ -109,16 +109,18 @@ export async function createPostFromConversation(
     })
     .onConflictDoNothing()
 
-  // Confirmation card to the customer thread so they can follow/upvote the post.
+  // Confirmation embed to the customer thread so they can follow/upvote the post.
   // The embed resolver viewer-scopes the card's content at render time, so a post
   // the visitor can't see degrades to "unavailable" — no gated content leaks.
-  const { dropPostRefCard } = await import('./chat.cards')
-  await dropPostRefCard(
+  const { sendAgentMessage } = await import('./chat.service')
+  const { postEmbedDoc } = await import('./chat.cards')
+  await sendAgentMessage(
     input.conversationId,
-    postId,
-    `📌 Tracked as a feature request — follow it here`,
-    { agentActor: ctx.agentActor, agentPrincipalId: ctx.agentPrincipalId, agent: ctx.agent },
-    'tracked'
+    '',
+    ctx.agent,
+    ctx.agentActor,
+    undefined,
+    postEmbedDoc(postId)
   )
 
   return { postId, created, boardSlug }

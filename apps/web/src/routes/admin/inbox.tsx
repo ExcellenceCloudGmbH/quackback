@@ -410,21 +410,6 @@ function InboxPage() {
                 }
               : prev
         )
-      } else if (evt.kind === 'card_updated' && evt.conversationId === selectedId) {
-        // A post_ref card changed (e.g. its vote count) — patch it onto the
-        // matching message so the agent view updates live.
-        queryClient.setQueryData(
-          ['admin', 'inbox', 'thread', selectedId],
-          (prev: ThreadCache | undefined) =>
-            prev
-              ? {
-                  ...prev,
-                  messages: prev.messages.map((m) =>
-                    m.id === evt.messageId ? { ...m, card: evt.card } : m
-                  ),
-                }
-              : prev
-        )
       } else if (evt.kind === 'message_deleted' && evt.conversationId === selectedId) {
         queryClient.setQueryData(
           ['admin', 'inbox', 'thread', selectedId],
@@ -513,7 +498,6 @@ function asAgentMessage(m: ChatMessageDTO | AgentChatMessageDTO): AgentChatMessa
     ...m,
     reactions: 'reactions' in m ? m.reactions : [],
     flaggedAt: 'flaggedAt' in m ? m.flaggedAt : null,
-    cardView: 'cardView' in m ? m.cardView : null,
     postSuggestion: 'postSuggestion' in m ? m.postSuggestion : null,
   }
 }

@@ -13,9 +13,14 @@ import { ForbiddenError, ValidationError } from '@/lib/shared/errors'
 // Module-level handles so we can assert calls + drive return values per test.
 const canActAsAgent = vi.fn()
 const assertConversationViewable = vi.fn()
+const sendAgentMessage = vi.fn()
 const addVoteOnBehalf = vi.fn()
 const createPost = vi.fn()
-const dropPostRefCard = vi.fn()
+// Sentinel embed doc so assertions can match the post id that was embedded.
+const postEmbedDoc = vi.fn((...a: unknown[]) => ({
+  type: 'doc',
+  content: [{ type: 'quackbackEmbed', attrs: { kind: 'post', id: a[0] } }],
+}))
 const createComment = vi.fn()
 const insertedLinks: Record<string, unknown>[] = []
 let onConflictHit = false
@@ -27,6 +32,7 @@ vi.mock('@/lib/server/policy/chat', () => ({
 vi.mock('../chat.service', () => ({
   assertConversationViewable: (id: ConversationId, actor: Actor) =>
     assertConversationViewable(id, actor),
+  sendAgentMessage: (...args: unknown[]) => sendAgentMessage(...args),
 }))
 
 vi.mock('@/lib/server/config', () => ({
@@ -44,7 +50,7 @@ vi.mock('@/lib/server/domains/posts/post.service', () => ({
 // Mocked so the dynamic import inside createPostFromConversation is intercepted
 // without loading the real module (which carries its own heavy deps).
 vi.mock('../chat.cards', () => ({
-  dropPostRefCard: (...args: unknown[]) => dropPostRefCard(...args),
+  postEmbedDoc: (...args: unknown[]) => postEmbedDoc(...args),
 }))
 
 vi.mock('@/lib/server/domains/comments/comment.service', () => ({
@@ -111,7 +117,7 @@ beforeEach(() => {
   assertConversationViewable.mockResolvedValue(freshConversation())
   createPost.mockResolvedValue({ id: 'post_new' as PostId, boardSlug: 'feature-requests' })
   addVoteOnBehalf.mockResolvedValue(undefined)
-  dropPostRefCard.mockResolvedValue(undefined)
+  sendAgentMessage.mockResolvedValue(undefined)
   createComment.mockResolvedValue(undefined)
 })
 
@@ -297,33 +303,39 @@ describe('createPostFromConversation upvote-existing path', () => {
   })
 })
 
-describe('createPostFromConversation confirmation card', () => {
+describe('createPostFromConversation confirmation embed', () => {
   const existingPostId = 'post_existing' as PostId
 
-  it('drops a post_ref card into the conversation after creating a new post', async () => {
+  it('sends a post embed message into the conversation after creating a new post', async () => {
     await createPostFromConversation({ conversationId, boardId, title: 'Add dark mode' }, ctx)
 
-    expect(dropPostRefCard).toHaveBeenCalledTimes(1)
-    const [cidArg, pidArg, contentArg, ctxArg] = dropPostRefCard.mock.calls[0]
+    expect(postEmbedDoc).toHaveBeenCalledWith('post_new')
+    expect(sendAgentMessage).toHaveBeenCalledTimes(1)
+    // sendAgentMessage(conversationId, '', agent, agentActor, undefined, embedDoc)
+    const [cidArg, contentArg, agentArg, actorArg, attachmentsArg, docArg] =
+      sendAgentMessage.mock.calls[0]
     expect(cidArg).toBe(conversationId)
-    expect(pidArg).toBe('post_new')
-    expect(contentArg).toEqual(expect.stringMatching(/track/i))
-    expect(ctxArg).toMatchObject({
-      agentActor,
-      agentPrincipalId,
-    })
+    expect(contentArg).toBe('')
+    expect(agentArg).toBe(agent)
+    expect(actorArg).toBe(agentActor)
+    expect(attachmentsArg).toBeUndefined()
+    expect(docArg.content[0]).toMatchObject({ type: 'quackbackEmbed', attrs: { id: 'post_new' } })
   })
 
-  it('drops a post_ref card into the conversation after upvoting an existing post', async () => {
+  it('sends a post embed message into the conversation after upvoting an existing post', async () => {
     await createPostFromConversation(
       { conversationId, boardId, asUpvoteOfPostId: existingPostId },
       ctx
     )
 
-    expect(dropPostRefCard).toHaveBeenCalledTimes(1)
-    const [cidArg, pidArg, contentArg] = dropPostRefCard.mock.calls[0]
+    expect(postEmbedDoc).toHaveBeenCalledWith(existingPostId)
+    expect(sendAgentMessage).toHaveBeenCalledTimes(1)
+    const [cidArg, contentArg, , , , docArg] = sendAgentMessage.mock.calls[0]
     expect(cidArg).toBe(conversationId)
-    expect(pidArg).toBe(existingPostId)
-    expect(contentArg).toEqual(expect.stringMatching(/track/i))
+    expect(contentArg).toBe('')
+    expect(docArg.content[0]).toMatchObject({
+      type: 'quackbackEmbed',
+      attrs: { id: existingPostId },
+    })
   })
 })

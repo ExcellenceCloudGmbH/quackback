@@ -341,18 +341,6 @@ export interface ChatSystemEvent {
   agentName?: string
 }
 
-// A rich card carried on a chat message. Kept as a discriminated union so more
-// card types can be added without new columns.
-export interface PostRefCard {
-  type: 'post_ref'
-  postId: string
-  /** Present only on the confirmation card dropped after an agent TRACKS a
-   *  conversation as a new feedback post; absent for a plainly shared post.
-   *  Drives the agent card's header label ("Tracked…" vs "Shared a post"). */
-  origin?: 'tracked'
-}
-export type ChatCard = PostRefCard
-
 // An agent-only suggestion (carried on an internal note) to track a resolved
 // conversation as a feedback post. Surfaced exclusively via the agent DTO — it
 // never reaches the visitor.
@@ -370,7 +358,6 @@ export interface ChatMessageMetadata {
   /** For 'system' messages: the structured event, so clients can localize the
    *  notice instead of rendering the stored (English) content. */
   systemEvent?: ChatSystemEvent
-  card?: ChatCard // an embedded existing post shared into the conversation
   /** Agent-only suggestion (on an internal note) to track this conversation as a
    *  feedback post. Surfaced only via the agent DTO, never to the visitor. */
   postSuggestion?: PostSuggestion

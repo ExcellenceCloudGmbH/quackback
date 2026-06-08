@@ -13,7 +13,6 @@ import { ForbiddenError, ValidationError } from '@/lib/shared/errors'
 const insertedMessages: Record<string, unknown>[] = []
 const publishChatEvent = vi.fn()
 const publishConversationUpdate = vi.fn()
-const publishCardUpdated = vi.fn()
 const publishAgentChatEvent = vi.fn()
 
 // Mutable state the db mock reads: the conversation status drives the
@@ -50,7 +49,6 @@ vi.mock('@/lib/server/realtime/chat-channels', () => ({
   publishChatEvent: (...args: unknown[]) => publishChatEvent(...args),
   publishAgentChatEvent: (...args: unknown[]) => publishAgentChatEvent(...args),
   publishConversationUpdate: (...args: unknown[]) => publishConversationUpdate(...args),
-  publishCardUpdated: (...args: unknown[]) => publishCardUpdated(...args),
 }))
 
 vi.mock('@/lib/server/domains/posts/post.voting', () => ({
@@ -76,7 +74,6 @@ vi.mock('../chat.query', () => ({
     content: m.content,
     isInternal: m.isInternal,
     author: { principalId: m.principalId, displayName: null, avatarUrl: null },
-    card: (m.metadata as { card?: unknown } | null)?.card ?? null,
   })),
   resolveAuthor: vi.fn(async (a: { principalId: string }) => ({
     principalId: a.principalId,

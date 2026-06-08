@@ -17,25 +17,16 @@ function msg(overrides: any) {
   } as any
 }
 
-describe('toMessageDTO card', () => {
-  it('surfaces a post_ref card from metadata', () => {
-    const dto = toMessageDTO(
-      msg({
-        metadata: {
-          card: {
-            type: 'post_ref',
-            postId: 'post_1',
-          },
-        },
-      }),
-      null
-    )
-    expect(dto.card).toEqual({
-      type: 'post_ref',
-      postId: 'post_1',
-    })
+describe('toMessageDTO embed', () => {
+  it('surfaces a quackbackEmbed post doc on contentJson', () => {
+    const doc = {
+      type: 'doc',
+      content: [{ type: 'quackbackEmbed', attrs: { kind: 'post', id: 'post_1' } }],
+    }
+    const dto = toMessageDTO(msg({ contentJson: doc }), null)
+    expect(dto.contentJson).toEqual(doc)
   })
-  it('is null when there is no card', () => {
-    expect(toMessageDTO(msg({}), null).card).toBeNull()
+  it('is null when there is no rich content', () => {
+    expect(toMessageDTO(msg({}), null).contentJson).toBeNull()
   })
 })

@@ -8,12 +8,7 @@ import type { ConversationId, ChatMessageId, ChatTagId, PrincipalId } from '@qua
 // Sourced from the DB enum (CONVERSATION_STATUSES) via the browser-safe bridge,
 // so the client type can never drift from the column's allowed values. Imported
 // locally (used below) and re-exported for the module's consumers.
-import type {
-  ConversationStatus,
-  ChatSystemEvent,
-  TiptapContent,
-  ChatCard,
-} from '@/lib/shared/db-types'
+import type { ConversationStatus, ChatSystemEvent, TiptapContent } from '@/lib/shared/db-types'
 export type { ConversationStatus, ChatSystemEvent }
 export type ConversationPriority = 'none' | 'low' | 'medium' | 'high' | 'urgent'
 // 'system' = a status event (e.g. assignment) shown to both sides, rendered as
@@ -88,8 +83,6 @@ export interface ChatMessageDTO {
   /** Structured event for a 'system' message, so clients can localize it; null
    *  for ordinary messages (and legacy system rows, which fall back to content). */
   systemEvent: ChatSystemEvent | null
-  /** An embedded-post card shared into this message; null otherwise. */
-  card: ChatCard | null
 }
 
 /** One emoji reaction bucket on a message. `hasReacted` is viewer-relative
@@ -104,25 +97,7 @@ export interface MessageReactionCount {
 }
 
 /**
- * Server-resolved display data for a `post_ref` card: the referenced post's
- * title, current vote count, status chip, and owning board — everything the
- * agent card needs to render without a second client round trip.
- */
-export interface PostRefCardView {
-  type: 'post_ref'
-  title: string
-  voteCount: number
-  statusName: string | null
-  statusColor: string | null
-  boardName: string
-  boardSlug: string
-}
-
-/** The enriched, display-ready view of a `ChatCard`, built agent-side. */
-export type ChatCardView = PostRefCardView
-
-/**
- * A chat message as surfaced to an AGENT, extending the base DTO with two
+ * A chat message as surfaced to an AGENT, extending the base DTO with
  * agent-only fields. These MUST NOT reach the visitor: they are populated only
  * by `enrichMessagesForAgent` (never by the shared `toMessageDTO`), and the one
  * realtime event that carries them (`message_updated`) is published on the
@@ -135,9 +110,6 @@ export interface AgentChatMessageDTO extends ChatMessageDTO {
   reactions: MessageReactionCount[]
   /** ISO timestamp when this message was flagged for the team, or null. */
   flaggedAt: string | null
-  /** Display-ready enrichment of `card` (board/post names, vote count, status);
-   *  null when the message carries no card or the referenced entity is gone. */
-  cardView: ChatCardView | null
   /** Agent-only AI suggestion to track this conversation as a post; null
    *  otherwise. Never on the base DTO, so it never reaches the visitor. */
   postSuggestion: { boardId: string; title: string; content: string } | null
@@ -216,12 +188,6 @@ export type ChatStreamEvent =
   // Carries the enriched AgentChatMessageDTO and is published on the inbox
   // channel ONLY (publishAgentChatEvent) — it never reaches the visitor.
   | { kind: 'message_updated'; conversationId: ConversationId; message: AgentChatMessageDTO }
-  | {
-      kind: 'card_updated'
-      conversationId: ConversationId
-      messageId: ChatMessageId
-      card: ChatCard
-    }
 
 /** Hard caps shared by client + server validation. */
 export const MAX_CHAT_MESSAGE_LENGTH = 4000

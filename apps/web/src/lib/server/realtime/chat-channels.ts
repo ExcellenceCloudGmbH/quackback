@@ -8,8 +8,7 @@
  * A new message is published to BOTH so the visitor's thread and every
  * agent's inbox update at once. Clients dedupe by message id.
  */
-import type { ConversationId, ChatMessageId, PrincipalId } from '@quackback/ids'
-import type { ChatCard } from '@/lib/shared/db-types'
+import type { ConversationId, PrincipalId } from '@quackback/ids'
 import type { ChatStreamEvent, ConversationDTO } from '@/lib/shared/chat/types'
 import { publish } from './pubsub'
 
@@ -78,16 +77,6 @@ export function shouldSuppressOwnAgentTyping(message: string, selfPrincipalId: s
  */
 export function publishAgentChatEvent(event: ChatStreamEvent): void {
   publish(CHAT_INBOX_CHANNEL, event)
-}
-
-/** A card's state changed (e.g. draft proposed→published). Visitor-visible, so
- *  both channels — unlike message_updated which is inbox-only. */
-export function publishCardUpdated(
-  conversationId: ConversationId,
-  messageId: ChatMessageId,
-  card: ChatCard
-): void {
-  publishChatEvent(conversationId, { kind: 'card_updated', conversationId, messageId, card })
 }
 
 /**

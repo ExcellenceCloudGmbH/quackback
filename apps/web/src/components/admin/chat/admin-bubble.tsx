@@ -16,7 +16,6 @@ import { Avatar } from '@/components/ui/avatar'
 import { ChatAttachmentList } from '@/components/shared/chat-attachments'
 import { ReactionChip } from '@/components/shared/reaction-chip'
 import { NoteContent } from './note-content'
-import { PostRefCardAdmin } from './post-ref-card-admin'
 import { RichTextContent } from '@/components/ui/rich-text-editor'
 import { EmbedHydration } from '@/components/shared/embed-hydration'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -87,18 +86,6 @@ export function AdminBubble({
   // open (the pointer leaves the row to interact with the portal'd content).
   const [emojiOpen, setEmojiOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
-
-  // A post_ref card the agent shared: render it read-only (the visitor is the
-  // one who acts) — no avatar/toolbar, just the content + its current state,
-  // which the card_updated stream keeps live. Any other card type (e.g. a
-  // leftover legacy card) falls through to the normal message rendering.
-  if (message.card?.type === 'post_ref') {
-    return (
-      <div className="py-1">
-        <PostRefCardAdmin card={message.card} cardView={message.cardView} />
-      </div>
-    )
-  }
 
   // System events (e.g. "assigned to …") are status notices, not messages:
   // centered, no avatar, no actions.
