@@ -16,6 +16,8 @@ import { ChatAttachmentList } from '@/components/shared/chat-attachments'
 import { ReactionChip } from '@/components/shared/reaction-chip'
 import { NoteContent } from './note-content'
 import { DraftPostCardAdmin } from './draft-post-card-admin'
+import { RichTextContent } from '@/components/ui/rich-text-editor'
+import { EmbedHydration } from '@/components/shared/embed-hydration'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import {
   DropdownMenu,
@@ -182,6 +184,15 @@ export function AdminBubble({
             contentJson={message.contentJson}
             className="mt-0.5 text-sm text-foreground/90"
           />
+        ) : message.contentJson ? (
+          // Rich reply (inline embeds / images). No mention overlay — replies
+          // carry no @-mentions, unlike internal notes.
+          <EmbedHydration>
+            <RichTextContent
+              content={message.contentJson}
+              className="mt-0.5 text-sm leading-relaxed text-foreground/90"
+            />
+          </EmbedHydration>
         ) : (
           message.content && (
             <div className="mt-0.5 whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground/90">

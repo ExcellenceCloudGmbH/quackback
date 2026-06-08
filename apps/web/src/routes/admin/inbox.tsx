@@ -48,6 +48,10 @@ import { ConversationListColumn } from '@/components/admin/chat/conversation-lis
 import { SavedMessagesColumn } from '@/components/admin/chat/saved-messages-column'
 import { ChatNoteEditor, type ChatNoteEditorHandle } from '@/components/admin/chat/chat-note-editor'
 import {
+  ChatRichComposer,
+  type ChatRichComposerHandle,
+} from '@/components/admin/chat/chat-rich-composer'
+import {
   InboxNavSidebar,
   isInboxView,
   scopeLabelFor,
@@ -526,11 +530,14 @@ function mergeAgentMessage(
   }
 }
 
-/** Grow a composer textarea to fit its content, up to a max height (px). */
-const COMPOSER_MAX_HEIGHT = 128
-function autoGrowTextarea(el: HTMLTextAreaElement): void {
-  el.style.height = 'auto'
-  el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_HEIGHT)}px`
+/** True when the composer doc carries an inline image or post embed, which makes
+ *  a message worth sending even with no typed text. Walks the doc since these are
+ *  block atoms at the top level (and defensively, any nesting). */
+function replyDocHasContentNode(doc: JSONContent | null): boolean {
+  if (!doc) return false
+  const walk = (nodes: JSONContent[] | undefined): boolean =>
+    !!nodes?.some((n) => n.type === 'chatImage' || n.type === 'quackbackEmbed' || walk(n.content))
+  return walk(doc.content)
 }
 
 /** Optimistically toggle the caller's reaction with `emoji` on a message,
@@ -599,7 +606,15 @@ function ChatThread({
   // The current agent's display name, for attributing optimistic reactions.
   const { session } = useRouteContext({ from: '__root__' })
   const myName = session?.user?.name ?? 'You'
-  const [reply, setReply] = useState('')
+  // Reply composer is a rich TipTap doc (inline images + post embeds). `replyText`
+  // is the doc's plain text (gates send + drives typing); `replyDocRef` holds the
+  // doc persisted as contentJson; `replyResetSignal` clears the editor after send.
+  const [replyText, setReplyText] = useState('')
+  const replyDocRef = useRef<JSONContent | null>(null)
+  // Reactive mirror of "doc carries an inline image/embed" so the send gate
+  // enables for a no-text, image-only message (a ref read wouldn't re-render).
+  const [replyHasContentNode, setReplyHasContentNode] = useState(false)
+  const [replyResetSignal, setReplyResetSignal] = useState(0)
   // Composer mode: a public reply to the visitor, or an internal team note.
   const [noteMode, setNoteMode] = useState(false)
   // Internal-note composer state (separate from the plain reply textarea): the
@@ -640,7 +655,7 @@ function ChatThread({
     uploading,
   } = useChatComposerAttachments(upload)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const replyComposerRef = useRef<HTMLTextAreaElement>(null)
+  const replyComposerRef = useRef<ChatRichComposerHandle>(null)
   const noteEditorRef = useRef<ChatNoteEditorHandle>(null)
 
   // Shared factory (same key as `threadKey`) so a `?c=` deep-link prefetched by
@@ -776,12 +791,11 @@ function ChatThread({
   }
 
   const sendMutation = useMutation({
-    mutationFn: (vars: { content: string; attachments?: ChatAttachment[] }) =>
+    mutationFn: (vars: { content: string; contentJson: JSONContent | null }) =>
       sendAgentMessageFn({
-        data: { conversationId, content: vars.content, attachments: vars.attachments },
+        data: { conversationId, content: vars.content, contentJson: vars.contentJson },
       }),
     onSuccess: (res) => {
-      clearAttachments()
       appendToThread(res)
     },
     onError: () => toast.error('Failed to send message'),
@@ -945,7 +959,7 @@ function ChatThread({
   const cannedReplies = cannedData?.cannedReplies ?? []
 
   const insertCanned = useCallback((body: string) => {
-    setReply((r) => (r.trim() ? `${r}\n${body}` : body))
+    replyComposerRef.current?.insertText(body)
   }, [])
 
   const onSend = useCallback(() => {
@@ -964,16 +978,17 @@ function ChatThread({
       setNoteResetSignal((n) => n + 1)
       return
     }
-    const text = reply.trim()
-    if ((!text && pendingAttachments.length === 0) || sendMutation.isPending || uploading) return
-    setReply('')
-    // Collapse the auto-grown composer back to a single row after sending.
-    if (replyComposerRef.current) replyComposerRef.current.style.height = 'auto'
-    sendMutation.mutate({
-      content: text,
-      attachments: pendingAttachments.length > 0 ? pendingAttachments : undefined,
-    })
-  }, [reply, noteText, noteMode, noteMutation, pendingAttachments, uploading, sendMutation])
+    // Reply is rich: send the plain text (preview/search) + the doc (inline
+    // images/embeds). A doc with only an image/embed and no text is still valid.
+    const text = replyText.trim()
+    const doc = replyDocRef.current
+    if ((!text && !replyDocHasContentNode(doc)) || sendMutation.isPending) return
+    sendMutation.mutate({ content: text, contentJson: doc })
+    setReplyText('')
+    replyDocRef.current = null
+    setReplyHasContentNode(false)
+    setReplyResetSignal((n) => n + 1)
+  }, [replyText, noteText, noteMode, noteMutation, pendingAttachments, uploading, sendMutation])
 
   if (isLoading) {
     return (
@@ -1170,7 +1185,8 @@ function ChatThread({
               </button>
             ))}
           </div>
-          {pendingAttachments.length > 0 && (
+          {/* Attachment tray is note-only — replies put images inline instead. */}
+          {noteMode && pendingAttachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5 px-1 pb-2">
               {pendingAttachments.map((a, i) => {
                 const isImage = a.contentType?.startsWith('image/') && a.url
@@ -1222,7 +1238,21 @@ function ChatThread({
               multiple
               className="hidden"
               onChange={(e) => {
-                if (e.target.files) void addFiles(e.target.files)
+                const files = e.target.files
+                if (files && files.length > 0) {
+                  if (noteMode) {
+                    // Notes keep the attachment tray.
+                    void addFiles(files)
+                  } else {
+                    // Replies inline the image: upload, then insert a chatImage
+                    // node — matching paste/drop in the composer.
+                    Array.from(files).forEach((file) => {
+                      void upload(file)
+                        .then((url) => replyComposerRef.current?.insertImage(url))
+                        .catch(() => toast.error('Failed to upload image'))
+                    })
+                  }
+                }
                 e.target.value = ''
               }}
             />
@@ -1238,23 +1268,19 @@ function ChatThread({
                 onSubmit={onSend}
               />
             ) : (
-              <textarea
+              <ChatRichComposer
                 ref={replyComposerRef}
-                value={reply}
-                onChange={(e) => {
-                  setReply(e.target.value)
-                  onLocalInput()
-                  autoGrowTextarea(e.target)
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault()
-                    onSend()
-                  }
-                }}
-                rows={1}
+                resetSignal={replyResetSignal}
+                disabled={sendMutation.isPending}
                 placeholder="Type your reply…"
-                className="w-full resize-none bg-transparent px-1 py-1 text-sm outline-none max-h-32"
+                onChange={(text, doc) => {
+                  setReplyText(text)
+                  replyDocRef.current = doc
+                  setReplyHasContentNode(replyDocHasContentNode(doc))
+                }}
+                onSubmit={onSend}
+                onLocalInput={onLocalInput}
+                uploadImage={upload}
               />
             )}
             <div className="flex items-center gap-0.5 pt-1">
@@ -1272,7 +1298,7 @@ function ChatThread({
                 className="size-8"
                 onSelect={(emoji) => {
                   if (noteMode) noteEditorRef.current?.insertText(emoji)
-                  else setReply((prev) => prev + emoji)
+                  else replyComposerRef.current?.insertText(emoji)
                 }}
               />
               {!noteMode && cannedReplies.length > 0 && (
@@ -1315,9 +1341,7 @@ function ChatThread({
                 disabled={
                   noteMode
                     ? !noteText.trim() || noteMutation.isPending
-                    : (!reply.trim() && pendingAttachments.length === 0) ||
-                      sendMutation.isPending ||
-                      uploading
+                    : (!replyText.trim() && !replyHasContentNode) || sendMutation.isPending
                 }
                 className={cn(
                   'flex size-8 shrink-0 items-center justify-center rounded-md text-primary-foreground disabled:opacity-40 transition-opacity',

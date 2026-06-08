@@ -29,6 +29,9 @@ interface ChatRichComposerProps {
 /** Imperative handle so the composer's toolbar (emoji, etc.) can drive the editor. */
 export interface ChatRichComposerHandle {
   insertText: (text: string) => void
+  /** Insert an already-uploaded image as an inline, removable node — used by the
+   *  explicit "attach image" button so it matches paste/drop behavior. */
+  insertImage: (src: string) => void
   focus: () => void
 }
 
@@ -75,6 +78,13 @@ export const ChatRichComposer = forwardRef<ChatRichComposerHandle, ChatRichCompo
       () => ({
         insertText: (text: string) => {
           editorRef.current?.chain().focus().insertContent(text).run()
+        },
+        insertImage: (src: string) => {
+          editorRef.current
+            ?.chain()
+            .focus()
+            .insertContent({ type: 'chatImage', attrs: { src } })
+            .run()
         },
         focus: () => {
           editorRef.current?.chain().focus().run()
