@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { isValidTypeId } from '@quackback/ids'
+import { isValidArticleSlug } from '@/lib/shared/embeds/parse-embed-url'
 import { QuackbackEmbedCard, type EmbedOpenMode } from '@/components/shared/quackback-embed-card'
 
 interface EmbedTarget {
   el: HTMLElement
-  kind: 'post' | 'changelog'
+  kind: 'post' | 'changelog' | 'article'
   id: string
 }
 
@@ -58,11 +59,15 @@ export function EmbedHydration({
     root.querySelectorAll<HTMLElement>('[data-quackback-embed]').forEach((el) => {
       const kind = el.getAttribute('data-kind')
       const id = el.getAttribute('data-id')
-      // Re-validate kind AND the id's TypeID shape (defense in depth): a stray
-      // placeholder that ever slipped past the write sanitizer can't trigger a
-      // lookup with a junk id.
-      if ((kind === 'post' || kind === 'changelog') && id && isValidTypeId(id, kind))
-        found.push({ el, kind, id })
+      // Re-validate kind AND the id (defense in depth): a stray placeholder that
+      // ever slipped past the write sanitizer can't trigger a lookup with a junk
+      // id. post/changelog ids are TypeIDs; an article id is a help-center slug.
+      if (!id) return
+      const valid =
+        kind === 'article'
+          ? isValidArticleSlug(id)
+          : (kind === 'post' || kind === 'changelog') && isValidTypeId(id, kind)
+      if (valid) found.push({ el, kind: kind as EmbedTarget['kind'], id })
     })
     setTargets(found)
   }, [children])

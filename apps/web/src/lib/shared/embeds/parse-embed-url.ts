@@ -8,6 +8,15 @@ import { isValidTypeId } from '@quackback/ids'
  */
 export type EmbedRef = { kind: 'post' | 'changelog' | 'article'; id: string }
 
+// Help-center article slugs: lowercase alphanumeric, hyphens only, max 300 chars
+// (mirrors `slugify()` in shared/utils/string). Article embeds key on the slug,
+// not a TypeID — so this is the validity check the sanitizer AND the display-time
+// hydration use for `kind: 'article'`, just as they use isValidTypeId for the rest.
+export const ARTICLE_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,299}$/
+export function isValidArticleSlug(id: string): boolean {
+  return ARTICLE_SLUG_RE.test(id)
+}
+
 // Path shapes we recognise. The captured segment is the candidate identifier.
 //   - post:      /b/<board-slug>/posts/<post-id>               → TypeID (validated)
 //   - changelog: /changelog/<changelog-id>                     → TypeID (validated)

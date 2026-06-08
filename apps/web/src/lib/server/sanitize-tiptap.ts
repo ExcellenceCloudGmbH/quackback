@@ -13,15 +13,12 @@
 import { isValidTypeId } from '@quackback/ids'
 import { sanitizeUrl, sanitizeImageUrl, safePositiveInt } from '@/lib/shared/utils/sanitize'
 import { isTrustedAttachmentUrl } from '@/lib/server/storage/trusted-url'
+import { ARTICLE_SLUG_RE } from '@/lib/shared/embeds/parse-embed-url'
 import type { TiptapContent } from '@/lib/shared/schemas/posts'
 
 // A flat width cap (paired with the depth cap) so a tampered client can't
 // doc-bomb thousands of sibling nodes — generous enough for any real document.
 const MAX_NODES = 5000
-
-// Help-center article slugs: lowercase alphanumeric, hyphens only, max 300 chars.
-// Mirrors what `slugify()` in shared/utils/string produces.
-const ARTICLE_SLUG_RE = /^[a-z0-9][a-z0-9-]{0,299}$/
 
 // Node types that match the TipTap editor extensions
 const ALLOWED_NODE_TYPES = new Set([
