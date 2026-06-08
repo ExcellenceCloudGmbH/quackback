@@ -78,10 +78,10 @@ export interface ChatMessageDTO {
   attachments: ChatAttachment[]
   /** Agent-only internal note — only ever present on agent-facing payloads. */
   isInternal: boolean
-  /** Rich TipTap doc for messages that carry structured content (agent notes
-   *  with @-mention chips). Null for plain live-chat/email messages, which
-   *  render from `content`. Only ever populated on internal notes, which never
-   *  reach the visitor. */
+  /** Rich TipTap doc for messages that carry structured content: internal-note
+   *  @-mention chips, and rich agent replies / visitor messages from the rich
+   *  composer (inline embeds + images). Null for plain live-chat/email messages,
+   *  which render from `content`. Sanitized on write. */
   contentJson: TiptapContent | null
   /** True when this message arrived via the email channel (inbound reply). */
   viaEmail: boolean

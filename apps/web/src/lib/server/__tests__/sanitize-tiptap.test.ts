@@ -1,4 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
+
+// The sanitizer now resolves `chatImage` src against the app base (trusted-upload
+// check), which reads `config` — provide a valid base (the full env isn't loaded
+// in unit tests). Mirrors the chat-send-service test's config mock.
+vi.mock('@/lib/server/config', () => ({
+  config: { s3PublicUrl: undefined, baseUrl: 'http://localhost:3000' },
+}))
+
 import { sanitizeTiptapContent } from '../sanitize-tiptap'
 import type { TiptapContent } from '@/lib/server/db'
 
@@ -642,15 +650,27 @@ describe('sanitizeTiptapContent', () => {
       content: [
         {
           type: 'chatImage',
-          attrs: { src: '/uploads/chat-images/photo.png', alt: 'A screenshot' },
+          attrs: { src: '/api/storage/chat-images/photo.png', alt: 'A screenshot' },
         },
       ],
     }
     const result = sanitizeTiptapContent(input)
     const node = result.content!.find((n) => n.type === 'chatImage')
     expect(node).toBeDefined()
-    expect(node!.attrs!.src).toBe('/uploads/chat-images/photo.png')
+    expect(node!.attrs!.src).toBe('/api/storage/chat-images/photo.png')
     expect(node!.attrs!.alt).toBe('A screenshot')
+  })
+
+  it('strips an external (non-upload) chatImage src — no third-party tracking pixel', () => {
+    const input = {
+      type: 'doc',
+      content: [
+        { type: 'chatImage', attrs: { src: 'https://evil.example.com/track.gif', alt: 'x' } },
+      ],
+    }
+    const result = sanitizeTiptapContent(input)
+    const node = result.content!.find((n) => n.type === 'chatImage')
+    expect(node!.attrs!.src).toBe('')
   })
 
   it('strips a javascript: src on a chatImage (node neutralized)', () => {
@@ -697,7 +717,7 @@ describe('sanitizeTiptapContent', () => {
         {
           type: 'chatImage',
           attrs: {
-            src: 'https://example.com/photo.jpg',
+            src: '/api/storage/chat-images/photo.jpg',
             alt: 'a'.repeat(1000),
             onerror: 'alert(1)',
             class: 'evil',
@@ -707,9 +727,23 @@ describe('sanitizeTiptapContent', () => {
     }
     const result = sanitizeTiptapContent(input)
     const node = result.content!.find((n) => n.type === 'chatImage')
-    expect(node!.attrs!.src).toBe('https://example.com/photo.jpg')
+    expect(node!.attrs!.src).toBe('/api/storage/chat-images/photo.jpg')
     expect((node!.attrs!.alt as string).length).toBe(500)
     expect(node!.attrs!.onerror).toBeUndefined()
     expect(node!.attrs!.class).toBeUndefined()
+  })
+
+  it('caps total node count (doc-bomb protection)', () => {
+    const input = {
+      type: 'doc',
+      content: Array.from({ length: 6000 }, () => ({
+        type: 'paragraph',
+        content: [{ type: 'text', text: 'x' }],
+      })),
+    }
+    const result = sanitizeTiptapContent(input)
+    // The doc node + paragraphs + their text nodes are all counted; the tree is
+    // truncated well below the 6000 paragraphs once the 5000-node budget is hit.
+    expect(result.content!.length).toBeLessThan(6000)
   })
 })

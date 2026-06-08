@@ -24,7 +24,7 @@ import { isTeamMember } from '@/lib/shared/roles'
 import type { ChatAttachment } from '@/lib/server/db'
 import type { ConversationId, ChatMessageId, PrincipalId, SegmentId } from '@quackback/ids'
 import { NotFoundError, ValidationError, ForbiddenError } from '@/lib/shared/errors'
-import { config } from '@/lib/server/config'
+import { isTrustedAttachmentUrl } from '@/lib/server/storage/trusted-url'
 import {
   canSendVisitorMessage,
   canStartConversation,
@@ -90,30 +90,6 @@ function systemActor(): Actor {
 const PREVIEW_LENGTH = 120
 // Matches the 5 MB cap enforced by the upload endpoints.
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
-
-/**
- * Only accept attachment URLs that came from our own upload pipeline. Parse the
- * URL and match scheme + host + path STRUCTURALLY — a substring check is
- * bypassable (e.g. `javascript:'/api/storage/'` or `https://evil/api/storage/`)
- * and would become stored XSS when rendered into an href/src.
- */
-function isTrustedAttachmentUrl(url: string): boolean {
-  if (typeof url !== 'string' || url.length === 0) return false
-  try {
-    // Resolve against the app base so relative paths are handled AND dot-segments
-    // are canonicalized (`/api/storage/../x` normalizes to `/x` and is rejected).
-    const appBase = new URL(config.baseUrl)
-    const u = new URL(url, appBase)
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') return false
-    if (config.s3PublicUrl) {
-      const base = new URL(config.s3PublicUrl)
-      if (u.hostname === base.hostname && u.pathname.startsWith(base.pathname)) return true
-    }
-    return u.hostname === appBase.hostname && u.pathname.startsWith('/api/storage/')
-  } catch {
-    return false
-  }
-}
 
 function validateAttachments(attachments?: ChatAttachment[]): ChatAttachment[] {
   if (!attachments || attachments.length === 0) return []
