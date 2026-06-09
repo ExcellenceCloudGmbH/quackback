@@ -6,7 +6,11 @@ import type { Editor, JSONContent } from '@tiptap/core'
 import { QuackbackEmbed } from '@/components/ui/quackback-embed-extension'
 import { ChatImage } from '@/components/ui/chat-image-node'
 import { ChatLink, LinkBackspaceUnlink } from '@/components/ui/chat-link'
-import { hasActiveSuggestion, createEmojiExtension } from '@/components/ui/rich-text-editor'
+import {
+  hasActiveSuggestion,
+  createEmojiExtension,
+  withLiveEditor,
+} from '@/components/ui/rich-text-editor'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/shared/utils'
 
@@ -85,19 +89,13 @@ export const ChatRichComposer = forwardRef<ChatRichComposerHandle, ChatRichCompo
     useImperativeHandle(
       ref,
       () => ({
-        insertText: (text: string) => {
-          editorRef.current?.chain().focus().insertContent(text).run()
-        },
-        insertImage: (src: string) => {
-          editorRef.current
-            ?.chain()
-            .focus()
-            .insertContent({ type: 'chatImage', attrs: { src } })
-            .run()
-        },
-        focus: () => {
-          editorRef.current?.chain().focus().run()
-        },
+        insertText: (text: string) =>
+          withLiveEditor(editorRef.current, (e) => e.chain().focus().insertContent(text).run()),
+        insertImage: (src: string) =>
+          withLiveEditor(editorRef.current, (e) =>
+            e.chain().focus().insertContent({ type: 'chatImage', attrs: { src } }).run()
+          ),
+        focus: () => withLiveEditor(editorRef.current, (e) => e.chain().focus().run()),
       }),
       []
     )
@@ -109,7 +107,10 @@ export const ChatRichComposer = forwardRef<ChatRichComposerHandle, ChatRichCompo
       if (!upload) return
       upload(file)
         .then((src) => {
-          editorRef.current?.chain().insertContent({ type: 'chatImage', attrs: { src } }).run()
+          // The editor can unmount during the await — guard before inserting.
+          withLiveEditor(editorRef.current, (e) =>
+            e.chain().insertContent({ type: 'chatImage', attrs: { src } }).run()
+          )
         })
         .catch((err) => {
           console.error('[ChatRichComposer] Image upload failed:', err)
@@ -118,9 +119,6 @@ export const ChatRichComposer = forwardRef<ChatRichComposerHandle, ChatRichCompo
 
     const editor = useEditor({
       editable: !disabled,
-      onCreate: ({ editor }) => {
-        editorRef.current = editor
-      },
       extensions: [
         StarterKit.configure({
           heading: false,
@@ -191,9 +189,17 @@ export const ChatRichComposer = forwardRef<ChatRichComposerHandle, ChatRichCompo
       },
     })
 
-    // Clear on send (parent bumps resetSignal).
+    // Keep the ref on the LIVE editor every render (same pattern as the callback
+    // refs above). TipTap can recreate the editor — e.g. React StrictMode's
+    // double-mount destroys the first instance — and a ref captured only in
+    // onCreate would be left pointing at the destroyed one, so imperative calls
+    // like insertText() would hit a null commandManager and throw.
+    editorRef.current = editor
+
+    // Clear on send (parent bumps resetSignal) and keep focus so the agent can
+    // type the next message without re-clicking the composer.
     useEffect(() => {
-      if (resetSignal > 0) editor?.commands.clearContent()
+      if (resetSignal > 0) editor?.chain().clearContent().focus().run()
     }, [resetSignal, editor])
 
     useEffect(() => {

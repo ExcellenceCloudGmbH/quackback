@@ -6,7 +6,11 @@ import type { Editor, JSONContent } from '@tiptap/core'
 import { TeamMentionExtension } from '@/components/ui/mention-extension'
 import { QuackbackEmbed } from '@/components/ui/quackback-embed-extension'
 import { ChatLink, LinkBackspaceUnlink } from '@/components/ui/chat-link'
-import { hasActiveSuggestion, createEmojiExtension } from '@/components/ui/rich-text-editor'
+import {
+  hasActiveSuggestion,
+  createEmojiExtension,
+  withLiveEditor,
+} from '@/components/ui/rich-text-editor'
 import { cn } from '@/lib/shared/utils'
 
 interface ChatNoteEditorProps {
@@ -61,18 +65,14 @@ export const ChatNoteEditor = forwardRef<ChatNoteEditorHandle, ChatNoteEditorPro
     useImperativeHandle(
       ref,
       () => ({
-        insertText: (text: string) => {
-          editorRef.current?.chain().focus().insertContent(text).run()
-        },
+        insertText: (text: string) =>
+          withLiveEditor(editorRef.current, (e) => e.chain().focus().insertContent(text).run()),
       }),
       []
     )
 
     const editor = useEditor({
       editable: !disabled,
-      onCreate: ({ editor }) => {
-        editorRef.current = editor
-      },
       extensions: [
         StarterKit.configure({
           heading: false,
@@ -138,9 +138,15 @@ export const ChatNoteEditor = forwardRef<ChatNoteEditorHandle, ChatNoteEditorPro
       onUpdate: ({ editor }) => onChangeRef.current(editor.getText().trim(), editor.getJSON()),
     })
 
-    // Clear on send (parent bumps resetSignal).
+    // Keep the ref on the LIVE editor every render: TipTap can recreate the
+    // editor (e.g. React StrictMode double-mount), leaving an onCreate-only ref
+    // pointing at a destroyed instance whose commandManager is null.
+    editorRef.current = editor
+
+    // Clear on send (parent bumps resetSignal) and keep focus so the next note
+    // can be typed without re-clicking the editor.
     useEffect(() => {
-      if (resetSignal > 0) editor?.commands.clearContent()
+      if (resetSignal > 0) editor?.chain().clearContent().focus().run()
     }, [resetSignal, editor])
 
     useEffect(() => {

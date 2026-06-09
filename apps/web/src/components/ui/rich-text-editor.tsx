@@ -254,6 +254,17 @@ export function hasActiveSuggestion(editor: Pick<Editor, 'state'>): boolean {
   return false
 }
 
+/**
+ * Run a command against the editor only when it's live — guards both the
+ * not-yet-created (null) and torn-down (isDestroyed) states. TipTap can recreate
+ * or destroy the editor out from under an imperative ref (e.g. React StrictMode's
+ * double-mount, or a call that lands after unmount during an async upload), and
+ * chaining off a destroyed editor hits a null commandManager and throws.
+ */
+export function withLiveEditor(editor: Editor | null, run: (editor: Editor) => void): void {
+  if (editor && !editor.isDestroyed) run(editor)
+}
+
 // ============================================================================
 // Types
 // ============================================================================
