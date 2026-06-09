@@ -5,6 +5,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import type { Editor, JSONContent } from '@tiptap/core'
 import { QuackbackEmbed } from '@/components/ui/quackback-embed-extension'
 import { ChatImage } from '@/components/ui/chat-image-node'
+import { ChatLink, LinkBackspaceUnlink } from '@/components/ui/chat-link'
 import { hasActiveSuggestion, createEmojiExtension } from '@/components/ui/rich-text-editor'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { cn } from '@/lib/shared/utils'
@@ -121,11 +122,19 @@ export const ChatRichComposer = forwardRef<ChatRichComposerHandle, ChatRichCompo
         editorRef.current = editor
       },
       extensions: [
-        StarterKit.configure({ heading: false, codeBlock: false, horizontalRule: false }),
+        StarterKit.configure({
+          heading: false,
+          codeBlock: false,
+          horizontalRule: false,
+          link: false,
+        }),
         Placeholder.configure({
           placeholder: placeholder ?? 'Write a reply…',
           emptyEditorClass: 'is-editor-empty',
         }),
+        // Autolink typed/pasted URLs; Backspace at a link edge unlinks.
+        ChatLink,
+        LinkBackspaceUnlink,
         // Pasting a Quackback post/changelog link becomes a live embed card.
         QuackbackEmbed.configure({ enablePaste: true }),
         // Inline, removable images inserted on paste/drop upload.

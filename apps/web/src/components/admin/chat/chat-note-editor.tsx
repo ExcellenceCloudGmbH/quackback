@@ -5,6 +5,7 @@ import Placeholder from '@tiptap/extension-placeholder'
 import type { Editor, JSONContent } from '@tiptap/core'
 import { TeamMentionExtension } from '@/components/ui/mention-extension'
 import { QuackbackEmbed } from '@/components/ui/quackback-embed-extension'
+import { ChatLink, LinkBackspaceUnlink } from '@/components/ui/chat-link'
 import { hasActiveSuggestion, createEmojiExtension } from '@/components/ui/rich-text-editor'
 import { cn } from '@/lib/shared/utils'
 
@@ -73,11 +74,19 @@ export const ChatNoteEditor = forwardRef<ChatNoteEditorHandle, ChatNoteEditorPro
         editorRef.current = editor
       },
       extensions: [
-        StarterKit.configure({ heading: false, codeBlock: false, horizontalRule: false }),
+        StarterKit.configure({
+          heading: false,
+          codeBlock: false,
+          horizontalRule: false,
+          link: false,
+        }),
         Placeholder.configure({
           placeholder: placeholder ?? 'Add an internal note for your team…',
           emptyEditorClass: 'is-editor-empty',
         }),
+        // Autolink typed/pasted URLs; Backspace at a link edge unlinks.
+        ChatLink,
+        LinkBackspaceUnlink,
         TeamMentionExtension,
         // Pasting a Quackback post/changelog link becomes a live embed card.
         QuackbackEmbed.configure({ enablePaste: true }),
