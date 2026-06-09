@@ -29,6 +29,7 @@ import { EmbedHydration } from '@/components/shared/embed-hydration'
 import type { JSONContent } from '@tiptap/core'
 import type { TiptapContent } from '@/lib/shared/db-types'
 import type { ChatAttachment, ChatMessageDTO } from '@/lib/shared/chat/types'
+import { isJumboEmojiMessage, JUMBO_EMOJI_CLASS } from '@/lib/shared/chat/jumbo-emoji'
 import {
   getMyChatFn,
   sendChatMessageFn,
@@ -914,7 +915,10 @@ function ChatBubble({
           )}
           {time && <span className="shrink-0 text-[10px] text-muted-foreground/50">{time}</span>}
         </div>
-        {contentJson ? (
+        {isJumboEmojiMessage(content, contentJson) ? (
+          // A lone-emoji message renders large (Slack/iMessage style).
+          <div className={JUMBO_EMOJI_CLASS}>{content}</div>
+        ) : contentJson ? (
           // Rich message (inline images / post embeds): hydrate embed cards into
           // the static rendered HTML, matching the changelog/inbox surfaces. The
           // widget's iframe origin may differ from the portal's, so an embedded

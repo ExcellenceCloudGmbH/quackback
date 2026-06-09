@@ -16,6 +16,7 @@ import { Avatar } from '@/components/ui/avatar'
 import { ChatAttachmentList } from '@/components/shared/chat-attachments'
 import { ReactionChip } from '@/components/shared/reaction-chip'
 import { NoteContent } from './note-content'
+import { isJumboEmojiMessage, JUMBO_EMOJI_CLASS } from '@/lib/shared/chat/jumbo-emoji'
 import { RichTextContent } from '@/components/ui/rich-text-editor'
 import { EmbedHydration } from '@/components/shared/embed-hydration'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
@@ -192,6 +193,9 @@ export function AdminBubble({
               </div>
             )}
           </>
+        ) : isJumboEmojiMessage(message.content, message.contentJson) ? (
+          // A lone-emoji message renders large (Slack/iMessage style).
+          <div className={JUMBO_EMOJI_CLASS}>{message.content}</div>
         ) : message.contentJson ? (
           // Rich reply (inline embeds / images). No mention overlay — replies
           // carry no @-mentions, unlike internal notes. An embedded post opens
