@@ -75,7 +75,9 @@ function ArticleDetailPage() {
   const { categorySlug } = Route.useParams()
   const { category, articles, allCategories } = categoryApi.useLoaderData()
   const { helpCenterConfig } = helpCenterApi.useLoaderData()
-  const { baseUrl } = Route.useRouteContext()
+  const { baseUrl, settings } = Route.useRouteContext()
+  const supportEnabled =
+    !!settings?.featureFlags?.supportInbox && !!settings?.portalConfig?.support?.enabled
 
   const breadcrumbs = buildCategoryBreadcrumbs({
     allCategories,
@@ -219,7 +221,10 @@ function ArticleDetailPage() {
               )}
             </div>
 
-            <HelpCenterArticleFeedback articleId={article.id} />
+            <HelpCenterArticleFeedback
+              articleId={article.id}
+              supportHref={supportEnabled ? '/support/new' : null}
+            />
 
             <HelpCenterPrevNext categorySlug={categorySlug} prev={prev} next={next} />
           </article>

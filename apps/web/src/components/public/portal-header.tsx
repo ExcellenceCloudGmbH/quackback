@@ -27,7 +27,9 @@ import {
 } from '@heroicons/react/24/solid'
 import { useAuthPopoverSafe } from '@/components/auth/auth-popover-context'
 import { hasAnyPortalAuthMethod } from '@/components/auth/oauth-buttons'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { getMyConversationsFn } from '@/lib/server/functions/chat'
+import { PORTAL_MY_CONVERSATIONS_QUERY_KEY } from '@/lib/client/queries/portal-support'
 import { useAuthBroadcast } from '@/lib/client/hooks/use-auth-broadcast'
 import { NotificationBell } from '@/components/notifications'
 
@@ -61,8 +63,10 @@ export function PortalHeader({
 
   const helpCenterEnabled =
     !!settings?.featureFlags?.helpCenter && !!settings?.helpCenterConfig?.enabled
+  const supportEnabled =
+    !!settings?.featureFlags?.supportInbox && !!settings?.portalConfig?.support?.enabled
   const onHelpPages = pathname === '/hc' || pathname.startsWith('/hc/')
-  const navItems = buildNavItems({ helpCenterEnabled })
+  const navItems = buildNavItems({ helpCenterEnabled, supportEnabled })
 
   // Hide Log in / Sign up when no portal sign-in surface is usable.
   // Team members can still reach /admin/login directly.
@@ -94,6 +98,19 @@ export function PortalHeader({
   // Get user info from session (anonymous sessions don't count as logged in)
   const user = session?.user
   const isLoggedIn = !!user && user.principalType !== 'anonymous'
+
+  // Unread count for the Support tab badge — one light query, shared with the
+  // Support pages via the query key. Skipped entirely when signed out.
+  const myConversationsQuery = useQuery({
+    queryKey: PORTAL_MY_CONVERSATIONS_QUERY_KEY,
+    queryFn: () => getMyConversationsFn(),
+    enabled: supportEnabled && isLoggedIn,
+    staleTime: 30_000,
+  })
+  const supportUnreadTotal = (myConversationsQuery.data?.conversations ?? []).reduce(
+    (sum, c) => sum + (c.unreadCount ?? 0),
+    0
+  )
 
   // Use initialUserData (which includes properly fetched avatar from blob storage)
   // falling back to session data
@@ -136,6 +153,20 @@ export function PortalHeader({
             )}
           >
             {intl.formatMessage({ id: item.messageId, defaultMessage: item.defaultMessage })}
+            {item.to === '/support' && supportUnreadTotal > 0 && (
+              <span
+                className="ms-1.5 inline-flex min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold leading-[18px] text-primary-foreground"
+                aria-label={intl.formatMessage(
+                  {
+                    id: 'portal.support.unreadBadge',
+                    defaultMessage: '{count} unread',
+                  },
+                  { count: supportUnreadTotal }
+                )}
+              >
+                {supportUnreadTotal > 99 ? '99+' : supportUnreadTotal}
+              </span>
+            )}
           </Link>
         )
       })}
