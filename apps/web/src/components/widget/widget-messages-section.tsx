@@ -5,7 +5,7 @@ import { chatAvailable } from '@/lib/shared/chat/presence'
 import { useChatSummary } from './use-chat-summary'
 import { WidgetResumeCard } from './widget-resume-card'
 import { WidgetConversationHistory } from './widget-conversation-history'
-import { ChatPresenceBadge } from './chat-presence-badge'
+import { ChatPresenceBadge } from '@/components/shared/chat/chat-presence-badge'
 
 interface WidgetMessagesSectionProps {
   /** Open a conversation: an id opens that thread, 'new' starts a fresh one,
