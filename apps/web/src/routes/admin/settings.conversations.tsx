@@ -7,8 +7,13 @@ import type { CannedReply } from '@/lib/server/domains/settings/settings.types'
 import { DEFAULT_OFFICE_HOURS } from '@/lib/server/domains/settings/settings.types'
 import type { OfficeHoursConfig } from '@/lib/shared/chat/types'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
+import { useQuery } from '@tanstack/react-query'
 import { settingsQueries } from '@/lib/client/queries/settings'
-import { updatePortalConfigFn, updateWidgetConfigFn } from '@/lib/server/functions/settings'
+import {
+  getEmailChannelStatusFn,
+  updatePortalConfigFn,
+  updateWidgetConfigFn,
+} from '@/lib/server/functions/settings'
 import { BackLink } from '@/components/ui/back-link'
 import { PageHeader } from '@/components/shared/page-header'
 import { SettingsCard } from '@/components/admin/settings/settings-card'
@@ -476,6 +481,8 @@ function ConversationsSettingsPage() {
         </div>
       </SettingsCard>
 
+      <EmailChannelStatusCard />
+
       <SettingsCard
         title="Conversation Routing"
         description="Decide how new conversations reach your team."
@@ -504,5 +511,78 @@ function ConversationsSettingsPage() {
         </div>
       </SettingsCard>
     </div>
+  )
+}
+
+/** One row of the email-channel status card: label, value, and an on/off dot. */
+function EmailStatusRow({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+  return (
+    <div className="flex items-center justify-between py-1.5">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="flex items-center gap-2 text-sm">
+        <span
+          className={
+            ok ? 'size-2 rounded-full bg-emerald-500' : 'size-2 rounded-full bg-muted-foreground/40'
+          }
+          aria-hidden
+        />
+        {value}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * Read-only status of the email channel (outbound provider, from-address,
+ * inbound reply threading). Configuration itself is environment-based; this
+ * card just makes the resolved state visible to admins.
+ */
+function EmailChannelStatusCard() {
+  const { data } = useQuery({
+    queryKey: ['settings', 'email-channel-status'],
+    queryFn: () => getEmailChannelStatusFn(),
+    staleTime: 60_000,
+  })
+
+  if (!data) return null
+
+  const outboundLabel =
+    data.provider === 'smtp' ? 'SMTP' : data.provider === 'resend' ? 'Resend' : 'Not configured'
+
+  return (
+    <SettingsCard
+      title="Email channel"
+      description="How conversation emails are sent and received. Configured via environment variables on the server."
+    >
+      <div className="divide-y divide-border/40">
+        <EmailStatusRow
+          label="Outbound email"
+          value={outboundLabel}
+          ok={data.provider !== 'console'}
+        />
+        <EmailStatusRow
+          label="From address"
+          value={data.fromAddress ?? 'Not set'}
+          ok={!!data.fromAddress}
+        />
+        <EmailStatusRow
+          label="Inbound replies"
+          value={data.inboundConfigured ? (data.inboundDomain ?? 'Configured') : 'Not configured'}
+          ok={data.inboundConfigured}
+        />
+      </div>
+      {!data.inboundConfigured && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          With inbound replies configured, users can answer conversation emails directly from their
+          inbox and the reply lands back in the thread.
+        </p>
+      )}
+      {data.provider === 'console' && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Without an outbound provider, conversation emails are logged to the server console only —
+          offline users and new outbound conversations won&apos;t receive email.
+        </p>
+      )}
+    </SettingsCard>
   )
 }

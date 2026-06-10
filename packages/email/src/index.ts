@@ -59,6 +59,11 @@ export function isEmailConfigured(): boolean {
   return getProvider() !== 'console'
 }
 
+/** Which outbound provider is active — for read-only admin status surfaces. */
+export function getEmailProvider(): EmailProvider {
+  return getProvider()
+}
+
 function getProvider(): EmailProvider {
   if (getEnv('EMAIL_SMTP_HOST')) return 'smtp'
   if (getResendApiKey()) return 'resend'
