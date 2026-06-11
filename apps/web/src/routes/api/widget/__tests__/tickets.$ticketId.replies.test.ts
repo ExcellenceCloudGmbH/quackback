@@ -111,6 +111,34 @@ describe('POST /api/widget/tickets/:ticketId/replies', () => {
     const res = await handleReplyToWidgetTicket({ request: req, params: { ticketId: 'ticket_42' } })
     expect(res.status).toBe(400)
   })
+
+  it('passes bodyJson when provided alongside bodyText', async () => {
+    vi.mocked(getWidgetSession).mockResolvedValueOnce(makeWidgetSession())
+    const bodyJson = {
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: 'Hello' }] }],
+    }
+    addPortalReplyMock.mockResolvedValueOnce({
+      id: 'thread_rich',
+      ticketId: 'ticket_42',
+      audience: 'public',
+      createdAt: new Date('2026-04-02T00:00:00Z'),
+    })
+    const res = await handleReplyToWidgetTicket({
+      request: makeRequest(URL_BASE, {
+        method: 'POST',
+        body: { bodyText: 'Hello', bodyJson },
+      }),
+      params: { ticketId: 'ticket_42' },
+    })
+    expect(res.status).toBe(200)
+    expect(addPortalReplyMock).toHaveBeenCalledWith({
+      userId: 'user_test1',
+      ticketId: 'ticket_42',
+      bodyJson,
+      bodyText: 'Hello',
+    })
+  })
 })
 
 describe('ticketing gate', () => {

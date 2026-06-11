@@ -2,7 +2,7 @@
  * Unit tests for `POST /api/widget/tickets/:ticketId/resolve`.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { NotFoundError } from '@/lib/shared/errors'
+import { ConflictError, NotFoundError } from '@/lib/shared/errors'
 import { makeRequest, makeWidgetSession } from './widget-ticket-fixtures'
 
 vi.mock('@/lib/server/functions/widget-auth', () => ({
@@ -181,6 +181,28 @@ describe('POST /api/widget/tickets/:ticketId/resolve', () => {
     })
     expect(res.status).toBe(409)
     expect(await res.json()).toMatchObject({ error: { code: 'TICKET_NO_SOLVED_STATUS' } })
+  })
+
+  it('returns 409 on concurrent resolve race (ConflictError from stale updatedAt)', async () => {
+    vi.mocked(getWidgetSession).mockResolvedValueOnce(makeWidgetSession())
+    getTicketForPortalUserMock.mockResolvedValueOnce({
+      id: 'ticket_42',
+      statusId: 'tstatus_open',
+      updatedAt: NOW,
+    })
+    findFirstStatusMock
+      .mockResolvedValueOnce({ id: 'tstatus_open', name: 'Open', category: 'open' })
+      .mockResolvedValueOnce({ id: 'tstatus_solved', name: 'Solved', category: 'solved' })
+    transitionStatusMock.mockRejectedValueOnce(
+      new ConflictError('TICKET_STALE', 'ticket was modified concurrently')
+    )
+
+    const res = await handleResolveWidgetTicket({
+      request: makeRequest(URL_BASE, { method: 'POST' }),
+      params: { ticketId: 'ticket_42' },
+    })
+    expect(res.status).toBe(409)
+    expect(await res.json()).toMatchObject({ error: { code: 'TICKET_STALE' } })
   })
 })
 

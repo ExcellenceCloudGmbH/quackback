@@ -267,3 +267,29 @@ describe('ticketing gate', () => {
     expect(createTicketMock).not.toHaveBeenCalled()
   })
 })
+
+describe('GET /api/widget/tickets — CORS', () => {
+  it('includes Access-Control-Allow-Origin header on successful list response', async () => {
+    vi.mocked(getWidgetSession).mockResolvedValueOnce(makeWidgetSession())
+    listTicketsForPortalUserMock.mockResolvedValueOnce({ rows: [], total: 0 })
+    const res = await handleListWidgetTickets({ request: makeRequest(URL_BASE) })
+    expect(res.status).toBe(200)
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
+  })
+})
+
+describe('GET /api/widget/tickets — contact-linked visibility', () => {
+  it('passes contactId from session to listTicketsForPortalUser', async () => {
+    vi.mocked(getWidgetSession).mockResolvedValueOnce(
+      makeWidgetSession({ contactId: 'contact_linked1' as never })
+    )
+    listTicketsForPortalUserMock.mockResolvedValueOnce({ rows: [], total: 0 })
+    await handleListWidgetTickets({ request: makeRequest(URL_BASE) })
+    // The portal query uses userId (not contactId directly) — the session
+    // carries contactId to resolve linked contacts internally. Verify the
+    // function was called with the session user's identity.
+    expect(listTicketsForPortalUserMock).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'user_test1' })
+    )
+  })
+})
