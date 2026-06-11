@@ -87,7 +87,7 @@ export async function attachToThread(input: AttachInput): Promise<TicketAttachme
           displayName: 'ticket-system',
         })
       : { type: 'service' as const, displayName: 'ticket-system' }
-    await dispatchTicketAttachmentAdded(actor, {
+    await dispatchTicketAttachmentAdded(actor, { id: thread.ticketId } as Record<string, unknown>, {
       id: created.id,
       threadId: input.threadId,
       filename,
@@ -141,6 +141,7 @@ export async function removeAttachment(
         : { type: 'service' as const, displayName: 'ticket-system' }
       await dispatchTicketAttachmentRemoved(
         actor,
+        { id: thread.ticketId } as Record<string, unknown>,
         { id: attachmentId, threadId: existing.threadId, filename: existing.filename },
         actorPrincipalId
       )

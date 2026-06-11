@@ -43,8 +43,8 @@ async function fireStatusEvent(
           displayName: 'ticket-status-system',
         })
       : { type: 'service' as const, displayName: 'ticket-status-system' }
-    if (kind === 'created') await dispatchTicketStatusCreated(eventActor, status)
-    else await dispatchTicketStatusUpdated(eventActor, status, changedFields ?? [])
+    if (kind === 'created') await dispatchTicketStatusCreated(eventActor, status as never)
+    else await dispatchTicketStatusUpdated(eventActor, status as never, changedFields ?? [])
   } catch (err) {
     console.warn(`[ticket-statuses] dispatchTicketStatus${kind} failed`, err)
   }

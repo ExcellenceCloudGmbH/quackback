@@ -44,9 +44,10 @@ async function fireTeamEvent(
           displayName: 'team-system',
         })
       : { type: 'service' as const, displayName: 'team-system' }
-    if (kind === 'created') await dispatchTeamCreated(eventActor, team)
-    else if (kind === 'updated') await dispatchTeamUpdated(eventActor, team, changedFields ?? [])
-    else await dispatchTeamArchived(eventActor, team)
+    if (kind === 'created') await dispatchTeamCreated(eventActor, team as never)
+    else if (kind === 'updated')
+      await dispatchTeamUpdated(eventActor, team as never, changedFields ?? [])
+    else await dispatchTeamArchived(eventActor, team as never)
   } catch (err) {
     console.warn(`[teams] dispatchTeam${kind} failed`, err)
   }

@@ -6,6 +6,7 @@ export interface Webhook {
   events: string[]
   boardIds: string[] | null
   inboxIds: string[] | null
+  secret: string
   status: 'active' | 'disabled'
   failureCount: number
   lastError: string | null
@@ -13,6 +14,7 @@ export interface Webhook {
   createdAt: Date
   updatedAt: Date
   createdById: PrincipalId
+  deletedAt: Date | null
 }
 
 export interface CreateWebhookInput {

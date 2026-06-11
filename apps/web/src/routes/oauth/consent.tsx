@@ -91,6 +91,8 @@ function groupScopes(scopes: string[]): ScopeGroup[] {
       write: 'write:contacts',
       label: 'Contacts',
       description: 'Contacts and customer organizations',
+    },
+    {
       read: 'read:chat',
       write: 'write:chat',
       label: 'Conversations',

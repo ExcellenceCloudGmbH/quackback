@@ -447,6 +447,8 @@ vi.mock('@/lib/server/domains/organizations/organization.service', () => ({
   updateOrganization: vi.fn().mockResolvedValue({ id: 'organization_01new' }),
   archiveOrganization: vi.fn().mockResolvedValue(undefined),
   unarchiveOrganization: vi.fn().mockResolvedValue(undefined),
+}))
+
 vi.mock('@/lib/server/domains/chat/chat.query', () => ({
   listConversationsForAgent: vi.fn(),
   listMessages: vi.fn(),

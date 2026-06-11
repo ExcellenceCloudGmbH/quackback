@@ -124,7 +124,7 @@ const SAMPLE_ORG_REF = {
   updatedAt: SAMPLE_TIMESTAMP,
 }
 
-const SAMPLES: { [K in EventType]: EventData } = {
+const SAMPLES: Partial<{ [K in EventType]: EventData }> & Record<string, EventData> = {
   'post.created': {
     ...envelope('post.created', 'evt_sample_post_created'),
     data: {
@@ -445,11 +445,11 @@ const SAMPLES: { [K in EventType]: EventData } = {
  * (use structuredClone if you need to tweak fields like `id` for a test fire).
  */
 export function getSampleEventPayload(type: EventType): EventData {
-  return SAMPLES[type]
+  return SAMPLES[type]!
 }
 
 /** All samples keyed by event type (for the GET preview endpoint). */
-export function getAllSampleEventPayloads(): Record<EventType, EventData> {
+export function getAllSampleEventPayloads(): Partial<Record<EventType, EventData>> {
   return SAMPLES
 }
 

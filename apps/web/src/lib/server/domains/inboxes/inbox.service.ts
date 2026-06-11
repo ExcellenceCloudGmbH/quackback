@@ -4,9 +4,21 @@
  * Permission checks are the caller's responsibility; this layer is pure.
  */
 
-import { db, eq, and, isNull, ilike, or, asc, inboxes, type Inbox } from '@/lib/server/db'
-import type { TicketPriority, TicketVisibilityScope } from '@/lib/server/db'
+import {
+  db,
+  eq,
+  and,
+  isNull,
+  ilike,
+  or,
+  asc,
+  inboxes,
+  type Inbox,
+  type TicketPriority,
+  type TicketVisibilityScope,
+} from '@/lib/server/db'
 import type { InboxId, TeamId, TicketStatusId, PrincipalId, UserId } from '@quackback/ids'
+import type { EventInboxRef } from '@/lib/server/events/types'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/shared/errors'
 
 /**
@@ -40,10 +52,13 @@ async function fireInboxEvent(
           displayName: 'inbox-system',
         })
       : { type: 'service' as const, displayName: 'inbox-system' }
-    if (kind === 'created') await dispatchInboxCreated(eventActor, inbox)
-    else if (kind === 'updated') await dispatchInboxUpdated(eventActor, inbox, changedFields ?? [])
-    else if (kind === 'archived') await dispatchInboxArchived(eventActor, inbox)
-    else await dispatchInboxUnarchived(eventActor, inbox)
+    if (kind === 'created')
+      await dispatchInboxCreated(eventActor, inbox as unknown as EventInboxRef)
+    else if (kind === 'updated')
+      await dispatchInboxUpdated(eventActor, inbox as unknown as EventInboxRef, changedFields ?? [])
+    else if (kind === 'archived')
+      await dispatchInboxArchived(eventActor, inbox as unknown as EventInboxRef)
+    else await dispatchInboxUnarchived(eventActor, inbox as unknown as EventInboxRef)
   } catch (err) {
     console.warn(`[inboxes] dispatchInbox${kind} failed`, err)
   }

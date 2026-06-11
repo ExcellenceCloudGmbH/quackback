@@ -69,6 +69,8 @@ export interface CreateTicketInput {
   /** SLA policy bound at ticket creation (Phase 5). When omitted, the engine selects via scope precedence. */
   slaPolicyId?: SlaPolicyId | null
   createdByPrincipalId?: PrincipalId | null
+  /** Set by integration inbound handlers to prevent echo loops in the event dispatcher. */
+  syncSourceIntegrationId?: string | null
 }
 
 function validateSubject(subject: string): string {
@@ -282,12 +284,16 @@ export interface UpdateTicketInput {
   expectedUpdatedAt: Date
   actorPrincipalId: PrincipalId | null
   subject?: string
+  descriptionJson?: TiptapContent | null
+  descriptionText?: string | null
   priority?: TicketPriority
   visibilityScope?: TicketVisibilityScope
   primaryTeamId?: TeamId | null
   organizationId?: OrganizationId | null
   requesterContactId?: ContactId | null
   inboxId?: InboxId | null
+  /** Set by integration inbound handlers to prevent echo loops. */
+  syncSourceIntegrationId?: string | null
 }
 
 export async function updateTicket(ticketId: TicketId, input: UpdateTicketInput): Promise<Ticket> {
@@ -304,6 +310,14 @@ export async function updateTicket(ticketId: TicketId, input: UpdateTicketInput)
       patch.subject = next
       diff.subject = { from: existing.subject, to: next }
     }
+  }
+  if (input.descriptionJson !== undefined) {
+    patch.descriptionJson = input.descriptionJson
+    diff.descriptionJson = { from: '[rich-text]', to: '[rich-text]' }
+  }
+  if (input.descriptionText !== undefined) {
+    patch.descriptionText = input.descriptionText
+    diff.descriptionText = { from: existing.descriptionText, to: input.descriptionText }
   }
   if (input.priority !== undefined && input.priority !== existing.priority) {
     if (!TICKET_PRIORITIES.includes(input.priority)) {
@@ -366,6 +380,8 @@ export interface AssignTicketInput {
   actorPrincipalId: PrincipalId | null
   assigneePrincipalId?: PrincipalId | null
   assigneeTeamId?: TeamId | null
+  /** Set by integration inbound handlers to prevent echo loops. */
+  syncSourceIntegrationId?: string | null
 }
 
 export async function assignTicket(ticketId: TicketId, input: AssignTicketInput): Promise<Ticket> {
@@ -467,6 +483,8 @@ export interface TransitionStatusInput {
   expectedUpdatedAt: Date
   actorPrincipalId: PrincipalId | null
   statusId: TicketStatusId
+  /** Set by integration inbound handlers to prevent echo loops. */
+  syncSourceIntegrationId?: string | null
 }
 
 /**
@@ -603,6 +621,47 @@ export async function softDeleteTicket(
     targetType: 'ticket',
     targetId: ticketId,
   })
+  return updated
+}
+
+export async function restoreTicket(
+  ticketId: TicketId,
+  actorPrincipalId: PrincipalId | null
+): Promise<Ticket> {
+  const existing = await getTicket(ticketId)
+  if (!existing) throw new NotFoundError('TICKET_NOT_FOUND', `ticket ${ticketId} not found`)
+  if (!existing.deletedAt)
+    throw new NotFoundError('TICKET_NOT_DELETED', `ticket ${ticketId} is not deleted`)
+  const now = new Date()
+  const [updated] = await db
+    .update(tickets)
+    .set({
+      deletedAt: null,
+      deletedByPrincipalId: null,
+      lastActivityAt: now,
+    })
+    .where(eq(tickets.id, ticketId))
+    .returning()
+  await writeActivity(ticketId, actorPrincipalId, 'ticket.restored', {})
+  void recordEvent({
+    principalId: actorPrincipalId,
+    action: 'ticket.restored',
+    targetType: 'ticket',
+    targetId: ticketId,
+  })
+  try {
+    const { dispatchTicketRestored, buildEventActor } = await import('@/lib/server/events/dispatch')
+    const actor = actorPrincipalId
+      ? buildEventActor({ principalId: actorPrincipalId })
+      : { type: 'service' as const, displayName: 'ticket-system' }
+    await dispatchTicketRestored(
+      actor,
+      updated as unknown as Record<string, unknown>,
+      actorPrincipalId
+    )
+  } catch (err) {
+    console.warn('[tickets] dispatchTicketRestored failed', err)
+  }
   return updated
 }
 

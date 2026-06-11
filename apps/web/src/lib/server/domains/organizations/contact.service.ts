@@ -63,18 +63,18 @@ async function fireContactEvent(
           displayName: 'contacts-system',
         })
       : { type: 'service' as const, displayName: 'contacts-system' }
-    if (kind === 'created') await dispatchContactCreated(eventActor, contact)
+    if (kind === 'created') await dispatchContactCreated(eventActor, contact as never)
     else if (kind === 'updated')
-      await dispatchContactUpdated(eventActor, contact, extra?.changedFields ?? [])
-    else if (kind === 'archived') await dispatchContactArchived(eventActor, contact)
+      await dispatchContactUpdated(eventActor, contact as never, extra?.changedFields ?? [])
+    else if (kind === 'archived') await dispatchContactArchived(eventActor, contact as never)
     else if (kind === 'linked')
       await dispatchContactLinked(
         eventActor,
-        contact,
+        contact as never,
         String(extra?.userId ?? ''),
         extra?.linkedByPrincipalId ?? null
       )
-    else await dispatchContactUnlinked(eventActor, contact, String(extra?.userId ?? ''))
+    else await dispatchContactUnlinked(eventActor, contact as never, String(extra?.userId ?? ''))
   } catch (err) {
     console.warn(`[contacts] dispatchContact${kind} failed`, err)
   }

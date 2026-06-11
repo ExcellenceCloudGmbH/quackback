@@ -10,14 +10,18 @@ import type { BoardId, ChangelogId, CommentId, PostId, PrincipalId, UserId } fro
 
 import type {
   EventActor,
-  EventConversationData,
-  EventConversationRef,
   EventData,
-  EventMessageData,
   EventPostRef,
   EventTicketRef,
+  EventConversationData,
+  EventConversationRef,
+  EventMessageData,
+  EventInboxRef,
+  EventTeamRef,
+  EventTicketStatusRef,
+  EventContactRef,
+  EventOrganizationRef,
 } from './types.js'
-import { realEmail } from '@/lib/shared/anonymous-email'
 
 // Re-export EventActor for API routes that need to construct actor objects
 export type { EventActor } from './types.js'
@@ -25,33 +29,22 @@ export type { EventActor } from './types.js'
 /**
  * Build an EventActor from a principal with optional user details.
  * Constructs a 'user' actor when userId is present, otherwise a 'service' actor.
- *
- * `displayName` is preserved on user actors too (not just service) so
- * downstream handlers — notification text, mention email "by X" line —
- * can render the actor's name instead of falling back to "Anonymous user".
- * `name` is accepted as a fallback so callers passing a plain `author`
- * object (which uses `name`, not `displayName`) don't need to remap.
  */
 export function buildEventActor(actor: {
   principalId: PrincipalId
   userId?: UserId
   email?: string
   displayName?: string
-  name?: string
 }): EventActor {
-  const displayName = actor.displayName ?? actor.name
   if (actor.userId) {
     return {
       type: 'user',
       principalId: actor.principalId,
       userId: actor.userId,
-      // Anonymous users carry a synthetic placeholder email — never put it on
-      // the event actor (it reaches webhooks, integrations, the pipeline).
-      email: realEmail(actor.email) ?? undefined,
-      displayName,
+      email: actor.email,
     }
   }
-  return { type: 'service', principalId: actor.principalId, displayName }
+  return { type: 'service', principalId: actor.principalId, displayName: actor.displayName }
 }
 
 export interface PostCreatedInput {
@@ -142,33 +135,6 @@ export async function dispatchCommentCreated(
     ...eventEnvelope(actor),
     type: 'comment.created',
     data: { comment, post },
-  })
-}
-
-export interface PostMentionedInput {
-  postId: PostId
-  postTitle: string
-  postUrl: string
-  mentionedPrincipalId: PrincipalId
-  mentioningPrincipalId: PrincipalId
-  excerpt: string
-}
-
-export async function dispatchPostMentioned(
-  actor: EventActor,
-  input: PostMentionedInput
-): Promise<void> {
-  await dispatchEvent({
-    ...eventEnvelope(actor),
-    type: 'post.mentioned',
-    data: {
-      postId: input.postId,
-      postTitle: input.postTitle,
-      postUrl: input.postUrl,
-      mentionedPrincipalId: input.mentionedPrincipalId,
-      mentioningPrincipalId: input.mentioningPrincipalId,
-      excerpt: input.excerpt,
-    },
   })
 }
 
@@ -306,11 +272,12 @@ function ticketRef(t: Record<string, unknown>): EventTicketRef {
   return {
     id: String(t.id),
     subject: (t.subject as string | null) ?? null,
+    descriptionText: (t.descriptionText as string | null) ?? null,
     statusId: (t.statusId as string | null) ?? null,
     statusCategory: (t.statusCategory as string | null) ?? null,
     priority: (t.priority as string | null) ?? null,
     channel: (t.channel as string | null) ?? null,
-    visibility: (t.visibilityScope as string | null) ?? (t.visibility as string | null) ?? null,
+    visibility: (t.visibility as string | null) ?? null,
     inboxId: (t.inboxId as string | null) ?? null,
     primaryTeamId: (t.primaryTeamId as string | null) ?? null,
     assigneePrincipalId: (t.assigneePrincipalId as string | null) ?? null,
@@ -378,12 +345,38 @@ export async function dispatchTicketThreadAdded(
   ticket: Record<string, unknown>,
   threadId: string,
   audience: 'public' | 'internal' | 'shared_team',
-  sharedWithTeamId: string | null
+  sharedWithTeamId: string | null,
+  thread?: {
+    bodyTextPreview: string
+    bodyTextTruncated: boolean
+    authorPrincipalId: string | null
+    isFromRequester: boolean
+    createdAt: Date | string
+  }
 ): Promise<void> {
+  const threadSnapshot = thread
+    ? {
+        id: threadId,
+        audience,
+        bodyTextPreview: thread.bodyTextPreview,
+        bodyTextTruncated: thread.bodyTextTruncated,
+        authorPrincipalId: thread.authorPrincipalId,
+        isFromRequester: thread.isFromRequester,
+        sharedWithTeamId,
+        createdAt:
+          typeof thread.createdAt === 'string' ? thread.createdAt : thread.createdAt.toISOString(),
+      }
+    : undefined
   await dispatchEvent({
     ...eventEnvelope(actor),
     type: 'ticket.thread_added',
-    data: { ticket: ticketRef(ticket), threadId, audience, sharedWithTeamId },
+    data: {
+      ticket: ticketRef(ticket),
+      threadId,
+      audience,
+      sharedWithTeamId,
+      thread: threadSnapshot,
+    },
   })
 }
 
@@ -462,6 +455,112 @@ export async function dispatchTicketSlaBreach(
   })
 }
 
+export async function dispatchTicketRestored(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  restoredByPrincipalId: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.restored',
+    data: { ticket: ticketRef(ticket), restoredByPrincipalId },
+  })
+}
+
+export async function dispatchTicketUpdated(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  changedFields: string[],
+  diff: Record<string, { from: unknown; to: unknown }>
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.updated',
+    data: { ticket: ticketRef(ticket), changedFields, diff },
+  })
+}
+
+export async function dispatchTicketFirstResponse(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  threadId: string,
+  firstResponseAt: string
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.first_response',
+    data: { ticket: ticketRef(ticket), threadId, firstResponseAt },
+  })
+}
+
+export async function dispatchTicketAttachmentAdded(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  attachment: {
+    id: string
+    threadId: string
+    filename: string
+    mimeType: string
+    sizeBytes: number
+    uploadedByPrincipalId: string | null
+    publicUrl: string | null
+  }
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.attachment_added',
+    data: { ticket: ticketRef(ticket), attachment },
+  })
+}
+
+export async function dispatchTicketAttachmentRemoved(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  attachment: { id: string; threadId: string; filename: string },
+  removedByPrincipalId: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.attachment_removed',
+    data: { ticket: ticketRef(ticket), attachment, removedByPrincipalId },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Post mention events
+// ---------------------------------------------------------------------------
+
+export interface PostMentionedInput {
+  postId: PostId
+  postTitle: string
+  postUrl: string
+  mentionedPrincipalId: PrincipalId
+  mentioningPrincipalId: PrincipalId
+  excerpt: string
+}
+
+export async function dispatchPostMentioned(
+  actor: EventActor,
+  input: PostMentionedInput
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'post.mentioned',
+    data: {
+      postId: input.postId,
+      postTitle: input.postTitle,
+      postUrl: input.postUrl,
+      mentionedPrincipalId: input.mentionedPrincipalId,
+      mentioningPrincipalId: input.mentioningPrincipalId,
+      excerpt: input.excerpt,
+    },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Conversation / message events (live-chat bridge)
+// ---------------------------------------------------------------------------
+
 export async function dispatchConversationCreated(
   actor: EventActor,
   conversation: EventConversationData
@@ -489,13 +588,13 @@ export async function dispatchConversationStatusChanged(
 export async function dispatchConversationAssigned(
   actor: EventActor,
   conversation: EventConversationRef,
-  assignedAgentPrincipalId: string | null,
-  previousAgentPrincipalId: string | null
+  previousAgentPrincipalId: string | null,
+  newAgentPrincipalId: string | null
 ): Promise<void> {
   await dispatchEvent({
     ...eventEnvelope(actor),
     type: 'conversation.assigned',
-    data: { conversation, assignedAgentPrincipalId, previousAgentPrincipalId },
+    data: { conversation, assignedAgentPrincipalId: newAgentPrincipalId, previousAgentPrincipalId },
   })
 }
 
@@ -516,13 +615,18 @@ export async function dispatchConversationCsatSubmitted(
   actor: EventActor,
   conversation: EventConversationRef,
   rating: number,
-  comment: string | null,
-  submittedAt: string
+  comment?: string | null,
+  submittedAt?: string
 ): Promise<void> {
   await dispatchEvent({
     ...eventEnvelope(actor),
     type: 'conversation.csat_submitted',
-    data: { conversation, rating, comment, submittedAt },
+    data: {
+      conversation,
+      rating,
+      comment: comment ?? null,
+      submittedAt: submittedAt ?? new Date().toISOString(),
+    },
   })
 }
 
@@ -559,5 +663,202 @@ export async function dispatchMessageDeleted(
     ...eventEnvelope(actor),
     type: 'message.deleted',
     data: { message, conversation },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Inbox events
+// ---------------------------------------------------------------------------
+
+export async function dispatchInboxCreated(actor: EventActor, inbox: EventInboxRef): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'inbox.created',
+    data: { inbox },
+  })
+}
+
+export async function dispatchInboxUpdated(
+  actor: EventActor,
+  inbox: EventInboxRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'inbox.updated',
+    data: { inbox, changedFields },
+  })
+}
+
+export async function dispatchInboxArchived(
+  actor: EventActor,
+  inbox: EventInboxRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'inbox.archived',
+    data: { inbox },
+  })
+}
+
+export async function dispatchInboxUnarchived(
+  actor: EventActor,
+  inbox: EventInboxRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'inbox.unarchived',
+    data: { inbox },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Team events
+// ---------------------------------------------------------------------------
+
+export async function dispatchTeamCreated(actor: EventActor, team: EventTeamRef): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'team.created', data: { team } })
+}
+
+export async function dispatchTeamUpdated(
+  actor: EventActor,
+  team: EventTeamRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'team.updated',
+    data: { team, changedFields },
+  })
+}
+
+export async function dispatchTeamArchived(actor: EventActor, team: EventTeamRef): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'team.archived', data: { team } })
+}
+
+// ---------------------------------------------------------------------------
+// Ticket status events
+// ---------------------------------------------------------------------------
+
+export async function dispatchTicketStatusCreated(
+  actor: EventActor,
+  status: EventTicketStatusRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'ticket_status.created', data: { status } })
+}
+
+export async function dispatchTicketStatusUpdated(
+  actor: EventActor,
+  status: EventTicketStatusRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket_status.updated',
+    data: { status, changedFields },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Contact events
+// ---------------------------------------------------------------------------
+
+export async function dispatchContactCreated(
+  actor: EventActor,
+  contact: EventContactRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'contact.created', data: { contact } })
+}
+
+export async function dispatchContactUpdated(
+  actor: EventActor,
+  contact: EventContactRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'contact.updated',
+    data: { contact, changedFields },
+  })
+}
+
+export async function dispatchContactArchived(
+  actor: EventActor,
+  contact: EventContactRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'contact.archived', data: { contact } })
+}
+
+export async function dispatchContactLinked(
+  actor: EventActor,
+  contact: EventContactRef,
+  userId: string,
+  linkedByPrincipalId: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'contact.linked',
+    data: { contact, userId, linkedByPrincipalId },
+  })
+}
+
+export async function dispatchContactUnlinked(
+  actor: EventActor,
+  contact: EventContactRef,
+  userId: string
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'contact.unlinked',
+    data: { contact, userId },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Organization events
+// ---------------------------------------------------------------------------
+
+export async function dispatchOrganizationCreated(
+  actor: EventActor,
+  organization: EventOrganizationRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'organization.created',
+    data: { organization },
+  })
+}
+
+export async function dispatchOrganizationUpdated(
+  actor: EventActor,
+  organization: EventOrganizationRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'organization.updated',
+    data: { organization, changedFields },
+  })
+}
+
+export async function dispatchOrganizationArchived(
+  actor: EventActor,
+  organization: EventOrganizationRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'organization.archived',
+    data: { organization },
+  })
+}
+
+export async function dispatchOrganizationUnarchived(
+  actor: EventActor,
+  organization: EventOrganizationRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'organization.unarchived',
+    data: { organization },
   })
 }

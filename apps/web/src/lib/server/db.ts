@@ -360,6 +360,8 @@ export type {
   InboxChannelKind,
   InboxMembershipRole,
   OrgMetadata,
+  TicketPriority,
+  TicketVisibilityScope,
 } from '@quackback/db'
 
 // Re-export types (for client components that need types without side effects)

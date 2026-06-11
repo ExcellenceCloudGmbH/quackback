@@ -245,5 +245,7 @@ function mapWebhook(w: typeof webhooks.$inferSelect): Webhook {
     createdAt: w.createdAt,
     updatedAt: w.updatedAt,
     createdById: w.createdById,
+    secret: w.secret,
+    deletedAt: w.deletedAt,
   }
 }

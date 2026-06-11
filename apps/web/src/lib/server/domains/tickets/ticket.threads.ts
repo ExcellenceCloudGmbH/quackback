@@ -178,7 +178,7 @@ export async function addThread(input: AddThreadInput): Promise<TicketThread> {
         actor,
         refreshedTicket as unknown as Record<string, unknown>,
         created.id,
-        now
+        typeof now === 'string' ? now : now.toISOString()
       )
     }
     const PREVIEW_MAX = 500

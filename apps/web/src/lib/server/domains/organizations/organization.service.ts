@@ -21,8 +21,8 @@ import {
   desc,
   organizations,
   type Organization,
+  type OrgMetadata,
 } from '@/lib/server/db'
-import type { OrgMetadata } from '@/lib/server/db'
 import type { OrganizationId, PrincipalId, UserId } from '@quackback/ids'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { normalizeDomain } from './normalize'
@@ -60,11 +60,11 @@ async function fireOrganizationEvent(
           displayName: 'organizations-system',
         })
       : { type: 'service' as const, displayName: 'organizations-system' }
-    if (kind === 'created') await dispatchOrganizationCreated(eventActor, org)
+    if (kind === 'created') await dispatchOrganizationCreated(eventActor, org as never)
     else if (kind === 'updated')
-      await dispatchOrganizationUpdated(eventActor, org, changedFields ?? [])
-    else if (kind === 'archived') await dispatchOrganizationArchived(eventActor, org)
-    else await dispatchOrganizationUnarchived(eventActor, org)
+      await dispatchOrganizationUpdated(eventActor, org as never, changedFields ?? [])
+    else if (kind === 'archived') await dispatchOrganizationArchived(eventActor, org as never)
+    else await dispatchOrganizationUnarchived(eventActor, org as never)
   } catch (err) {
     console.warn(`[organizations] dispatchOrganization${kind} failed`, err)
   }

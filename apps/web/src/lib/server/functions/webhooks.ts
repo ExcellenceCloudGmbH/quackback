@@ -237,5 +237,6 @@ export const redeliverWebhookDeliveryFn = createServerFn({ method: 'POST' })
 export const fetchSamplePayloadsFn = createServerFn({ method: 'GET' }).handler(async () => {
   await requireAuth({ roles: ['admin'] })
   const { getAllSampleEventPayloads } = await import('@/lib/server/events/sample-payloads')
-  return getAllSampleEventPayloads()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return getAllSampleEventPayloads() as any
 })

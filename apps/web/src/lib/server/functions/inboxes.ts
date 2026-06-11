@@ -82,7 +82,7 @@ export const createInboxFn = createServerFn({ method: 'POST' })
   )
   .handler(async ({ data }) => {
     const ctx = await requirePermission(PERMISSIONS.INBOX_MANAGE)
-    const inbox = await createInbox(data)
+    const inbox = await createInbox(data, { principalId: ctx.principal.id })
     await recordEvent({
       principalId: ctx.principal.id,
       action: 'inbox.created',
@@ -110,7 +110,7 @@ export const updateInboxFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const ctx = await requirePermission(PERMISSIONS.INBOX_MANAGE)
     const { inboxId, ...patch } = data
-    const inbox = await updateInbox(inboxId, patch)
+    const inbox = await updateInbox(inboxId, patch, { principalId: ctx.principal.id })
     await recordEvent({
       principalId: ctx.principal.id,
       action: 'inbox.updated',
@@ -125,7 +125,7 @@ export const archiveInboxFn = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ inboxId: inboxIdSchema }))
   .handler(async ({ data }) => {
     const ctx = await requirePermission(PERMISSIONS.INBOX_MANAGE)
-    const inbox = await archiveInbox(data.inboxId)
+    const inbox = await archiveInbox(data.inboxId, { principalId: ctx.principal.id })
     await recordEvent({
       principalId: ctx.principal.id,
       action: 'inbox.archived',
@@ -139,7 +139,7 @@ export const unarchiveInboxFn = createServerFn({ method: 'POST' })
   .inputValidator(z.object({ inboxId: inboxIdSchema }))
   .handler(async ({ data }) => {
     const ctx = await requirePermission(PERMISSIONS.INBOX_MANAGE)
-    const inbox = await unarchiveInbox(data.inboxId)
+    const inbox = await unarchiveInbox(data.inboxId, { principalId: ctx.principal.id })
     await recordEvent({
       principalId: ctx.principal.id,
       action: 'inbox.unarchived',
