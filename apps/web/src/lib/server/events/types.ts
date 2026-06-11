@@ -408,6 +408,14 @@ export type EventData =
   | OrganizationUpdatedEvent
   | OrganizationArchivedEvent
   | OrganizationUnarchivedEvent
+  | ConversationCreatedEvent
+  | ConversationStatusChangedEvent
+  | ConversationAssignedEvent
+  | ConversationPriorityChangedEvent
+  | ConversationCsatSubmittedEvent
+  | MessageCreatedEvent
+  | MessageNoteCreatedEvent
+  | MessageDeletedEvent
 
 // ============================================================================
 // Ticket Events (Phase 7.5)
@@ -861,11 +869,3 @@ export interface OrganizationArchivedEvent extends EventBase<'organization.archi
 export interface OrganizationUnarchivedEvent extends EventBase<'organization.unarchived'> {
   data: OrganizationUnarchivedPayload
 }
-  | ConversationCreatedEvent
-  | ConversationStatusChangedEvent
-  | ConversationAssignedEvent
-  | ConversationPriorityChangedEvent
-  | ConversationCsatSubmittedEvent
-  | MessageCreatedEvent
-  | MessageNoteCreatedEvent
-  | MessageDeletedEvent

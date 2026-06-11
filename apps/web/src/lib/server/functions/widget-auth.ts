@@ -4,7 +4,6 @@ import { getRequestHeaders } from '@tanstack/react-start/server'
 import type { Role } from '@/lib/server/auth'
 import { auth } from '@/lib/server/auth'
 import { db, session, principal, contactUserLinks, eq, and, gt } from '@/lib/server/db'
-import { db, session, principal, eq, and, gt } from '@/lib/server/db'
 import { shouldRollSession, WIDGET_SESSION_TTL_MS } from './widget-session-roll'
 
 export interface WidgetAuthContext {
@@ -40,20 +39,16 @@ export interface WidgetAuthContext {
  * object so headers are read directly instead of relying on TanStack Start's
  * `getRequestHeaders()` async-context (which may not be available in extracted
  * handler references).
- */
-export async function getWidgetSession(request?: Request): Promise<WidgetAuthContext | null> {
- * Returns widget auth context from `Authorization: Bearer <token>`, or null if
- * invalid/expired.
  *
  * `roll` extends an active anonymous session's 7-day TTL on use (at most once
  * per 24h, mirroring Better Auth's updateAge) — set it only on the validation-
- * only `/api/widget/session` endpoint, never on per-message hot paths. The raw
- * token lookup is unchanged; the roll is an additive UPDATE after validation, so
- * the proven validation path can't regress.
+ * only `/api/widget/session` endpoint, never on per-message hot paths.
  */
-export async function getWidgetSession(opts?: {
-  roll?: boolean
-}): Promise<WidgetAuthContext | null> {
+export async function getWidgetSession(
+  arg?: Request | { request?: Request; roll?: boolean }
+): Promise<WidgetAuthContext | null> {
+  const request = arg instanceof Request ? arg : arg?.request
+  const roll = arg instanceof Request ? false : (arg?.roll ?? false)
   console.log(`[fn:widget-auth] getWidgetSession`)
   try {
     const headers = request ? request.headers : getRequestHeaders()
@@ -69,8 +64,6 @@ export async function getWidgetSession(opts?: {
     // so we strip it before querying. Tokens from the identify flow are already
     // bare, so splitting on '.' and taking the first segment is safe for both.
     const token = rawToken.split('.')[0]
-    // Bearer is the widget's sole credential — the visitor's localStorage token.
-    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) || null : null
     if (!token) return null
 
     const sessionRecord = await db.query.session.findFirst({
@@ -115,7 +108,7 @@ export async function getWidgetSession(opts?: {
     // Roll the session's expiry forward on active use so a returning visitor
     // isn't cut off 7 days after their first mint. Gated to ≥24h since the last
     // touch so rapid reloads don't each write.
-    if (opts?.roll && shouldRollSession(sessionRecord.updatedAt, Date.now())) {
+    if (roll && shouldRollSession(sessionRecord.updatedAt, Date.now())) {
       const nowDate = new Date()
       await db
         .update(session)

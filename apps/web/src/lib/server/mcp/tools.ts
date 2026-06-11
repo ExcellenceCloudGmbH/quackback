@@ -2238,6 +2238,13 @@ Examples:
         return compactJsonResult({
           tickets: result.rows.map(ticketResult),
           total: result.total,
+        })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
   // list_conversations
   server.tool(
     'list_conversations',
@@ -3382,6 +3389,13 @@ Examples:
           unlinked: true,
           contactId: args.contactId,
           userId: args.userId,
+        })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
   // get_conversation
   server.tool(
     'get_conversation',
@@ -3619,6 +3633,11 @@ Examples:
             }
           }
         }
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
 
   // reply_to_conversation
   server.tool(
