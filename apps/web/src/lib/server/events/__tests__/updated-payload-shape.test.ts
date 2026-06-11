@@ -29,7 +29,7 @@ const FORBIDDEN_KEYS = ['before', 'previous', 'previousValues', 'prior', 'oldVal
 describe('*.updated payload shape (Phase 6 housekeeping)', () => {
   it.each(CASES)('$type carries only { $refKey, changedFields }', ({ type, refKey }) => {
     const event = getSampleEventPayload(type)
-    const data = event.data as Record<string, unknown>
+    const data = event.data as unknown as Record<string, unknown>
 
     // changedFields is required, non-empty, all strings
     expect(Array.isArray(data.changedFields)).toBe(true)

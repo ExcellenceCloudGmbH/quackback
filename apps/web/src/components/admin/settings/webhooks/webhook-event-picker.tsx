@@ -55,7 +55,7 @@ export function WebhookEventPicker({ value, onChange, disabled }: WebhookEventPi
   }
 
   const clearCategory = (category: WebhookEventCategory) => {
-    const ids = new Set(
+    const ids = new Set<string>(
       WEBHOOK_EVENT_CONFIG.filter((e) => e.category === category).map((e) => e.id)
     )
     onChange(value.filter((id) => !ids.has(id)))

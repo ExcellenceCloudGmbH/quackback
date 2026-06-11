@@ -96,4 +96,22 @@ export const ticketQueries = {
       queryFn: () => listMyInboxesFn(),
       staleTime: 60_000,
     }),
+  /** External links (GitHub issues etc.) for a ticket. TODO: wire to server function in Phase 8. */
+  externalLinks: (ticketId: TicketId) =>
+    queryOptions({
+      queryKey: ['tickets', 'externalLinks', ticketId] as const,
+      queryFn: () =>
+        Promise.resolve(
+          [] as Array<{
+            id: string
+            integrationId: string | null
+            integrationType: string
+            externalId: string
+            externalDisplayId: string | null
+            externalUrl: string | null
+            syncDirection: string
+          }>
+        ),
+      staleTime: 30_000,
+    }),
 }

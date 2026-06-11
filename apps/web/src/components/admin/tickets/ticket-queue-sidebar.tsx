@@ -52,11 +52,7 @@ export function TicketQueueSidebar({ activeScope, activeInboxId }: TicketQueueSi
             <Link
               key={v.scope}
               to="/admin/tickets"
-              search={(prev: TicketsSearch) => ({
-                ...prev,
-                scope: v.scope,
-                inboxId: undefined,
-              })}
+              search={{ scope: v.scope } as TicketsSearch}
               className={cn(
                 'flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors',
                 isActive
@@ -98,11 +94,7 @@ export function TicketQueueSidebar({ activeScope, activeInboxId }: TicketQueueSi
                 <Link
                   key={inbox.id}
                   to="/admin/tickets"
-                  search={(prev: TicketsSearch) => ({
-                    ...prev,
-                    scope: 'inbox',
-                    inboxId: inbox.id,
-                  })}
+                  search={{ scope: 'inbox', inboxId: inbox.id } as TicketsSearch}
                   className={cn(
                     'flex items-center gap-2 rounded px-2 py-1.5 text-sm transition-colors',
                     isActive

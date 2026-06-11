@@ -14,6 +14,7 @@ import { createServerFn } from '@tanstack/react-start'
 import type {
   TicketId,
   TicketStatusId,
+  TicketThreadId,
   TicketShareId,
   TicketParticipantId,
   PrincipalId,
@@ -73,6 +74,7 @@ import type { AuditJsonValue } from '@/lib/shared/db-types'
 
 const ticketIdSchema = z.string().min(1) as z.ZodType<TicketId>
 const ticketStatusIdSchema = z.string().min(1) as z.ZodType<TicketStatusId>
+const _ticketThreadIdSchema = z.string().min(1) as z.ZodType<TicketThreadId>
 const ticketShareIdSchema = z.string().min(1) as z.ZodType<TicketShareId>
 const ticketParticipantIdSchema = z.string().min(1) as z.ZodType<TicketParticipantId>
 const principalIdSchema = z.string().min(1) as z.ZodType<PrincipalId>
@@ -586,4 +588,23 @@ export const listTicketActivityFn = createServerFn({ method: 'GET' })
       actorName: string | null
       actorAvatarUrl: string | null
     }>
+  })
+
+// ---------------------------------------------------------------------------
+// GitHub integration stubs (Phase 8 — not yet implemented)
+// ---------------------------------------------------------------------------
+
+/** Manually trigger a push/pull sync for a linked ticket. TODO: implement in Phase 8. */
+export const manualSyncTicketFn = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      ticketId: ticketIdSchema,
+      integrationId: z.string().min(1),
+      direction: z.enum(['push', 'pull']),
+    })
+  )
+  .handler(async ({ data: _data }) => {
+    await requirePermission(PERMISSIONS.TICKET_EDIT_FIELDS)
+    // TODO: implement bidirectional manual sync in Phase 8
+    return { success: false, error: 'Manual sync not yet implemented' } as const
   })

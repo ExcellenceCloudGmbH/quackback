@@ -19,7 +19,7 @@ export function TicketLinkedIssues({ ticketId }: TicketLinkedIssuesProps) {
       manualSyncTicketFn({
         data: { ticketId, integrationId: params.integrationId, direction: params.direction },
       }),
-    onSuccess: (result) => {
+    onSuccess: (result: { success: boolean; error?: string }) => {
       if (result.success) {
         toast.success('Sync completed')
         queryClient.invalidateQueries({ queryKey: ['tickets', 'externalLinks', ticketId] })

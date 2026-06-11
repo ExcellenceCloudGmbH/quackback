@@ -43,6 +43,8 @@ export const ID_PREFIXES = {
   integration: 'integration',
   platform_cred: 'platform_cred',
   event_mapping: 'event_mapping',
+  // Shared prefix for both post_external_links and ticket_external_links.
+  // Same semantic concept (external tracker link); separate FK columns disambiguate.
   linked_entity: 'linked_entity',
   sync_log: 'sync_log',
   slack_monitor: 'slack_monitor',
@@ -82,6 +84,9 @@ export const ID_PREFIXES = {
   permission: 'perm',
   role_permission: 'role_perm',
   role_assignment: 'role_asgn',
+  // Shares 'audit' prefix with audit_log (better-auth security events).
+  // Both store UUIDs internally; prefix is display-layer only. Safe because no
+  // code resolves entity type from a TypeID prefix string across tables.
   audit_event: 'audit',
 
   // Ticketing — Phase 2: organizations & contacts
@@ -130,6 +135,8 @@ export const ID_PREFIXES = {
   domain: 'domain',
   transfer_token: 'transfer_token',
   two_factor: 'two_factor',
+  // Shares 'audit' prefix with audit_event (ticketing operational audit).
+  // See audit_event comment for rationale.
   audit_log: 'audit',
   sso_recovery_code: 'rcode',
 

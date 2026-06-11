@@ -362,6 +362,7 @@ export type {
   OrgMetadata,
   TicketPriority,
   TicketVisibilityScope,
+  TicketStatusCategory,
 } from '@quackback/db'
 
 // Re-export types (for client components that need types without side effects)
