@@ -11,10 +11,11 @@ import type { FeatureFlags } from '@/lib/server/domains/settings/settings.types'
 export const updateFeatureFlagsFn = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
-      analytics: z.boolean().optional(),
       helpCenter: z.boolean().optional(),
       aiFeedbackExtraction: z.boolean().optional(),
       tickets: z.boolean().optional(),
+      supportInbox: z.boolean().optional(),
+      linkPreviews: z.boolean().optional(),
     })
   )
   .handler(async ({ data }): Promise<FeatureFlags> => {

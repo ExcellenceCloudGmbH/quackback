@@ -7,6 +7,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import type { NotificationId } from '@quackback/ids'
+import type { NotificationType } from '@/lib/shared/types'
 import { getNotificationsFn, getUnreadCountFn } from '@/lib/server/functions/notifications'
 
 // ============================================================================
@@ -42,11 +43,14 @@ export interface SerializedNotification {
     | 'ticket_unshared'
     | 'ticket_sla_warning'
     | 'ticket_sla_breach'
+  type: NotificationType
   title: string
   body: string | null
   postId: string | null
   commentId: string | null
   ticketId: string | null
+  /** Target conversation for chat notifications (from metadata); null otherwise. */
+  conversationId: string | null
   readAt: string | null
   archivedAt: string | null
   createdAt: string

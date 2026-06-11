@@ -152,6 +152,7 @@ Example: \`post_01h455vb4pex5vsknk084sn02q\`
       { name: 'Audit', description: 'Workspace audit log' },
       { name: 'API Keys', description: 'Scoped API keys (legacy compat + per-key scopes)' },
       { name: 'Webhooks', description: 'Webhook delivery audit log' },
+      { name: 'Conversations', description: 'Manage support conversations' },
     ],
     paths: registeredPaths,
     components: {

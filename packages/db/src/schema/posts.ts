@@ -62,6 +62,12 @@ export const posts = pgTable(
         onDelete: 'set null',
       }
     ),
+    // Team member who tracked this post from a support conversation on the
+    // customer's behalf. The author (principalId) stays the customer.
+    trackedByPrincipalId: typeIdColumnNullable('principal')('tracked_by_principal_id').references(
+      () => principal.id,
+      { onDelete: 'set null' }
+    ),
     voteCount: integer('vote_count').default(0).notNull(),
     // Denormalized comment count for performance
     // Maintained by application code in comment.service.ts (create/delete operations)
@@ -121,6 +127,7 @@ export const posts = pgTable(
     index('posts_status_id_idx').on(table.statusId),
     index('posts_principal_id_idx').on(table.principalId),
     index('posts_owner_principal_id_idx').on(table.ownerPrincipalId),
+    index('posts_tracked_by_principal_id_idx').on(table.trackedByPrincipalId),
     index('posts_created_at_idx').on(table.createdAt),
     index('posts_vote_count_idx').on(table.voteCount),
     // Composite indexes for post listings sorted by "top" and "new"
@@ -275,6 +282,12 @@ export const comments = pgTable(
     // Composite index for comment listings
     index('comments_post_created_at_idx').on(table.postId, table.createdAt),
     index('comments_moderation_state_idx').on(table.moderationState),
+    // Partial index for the time-to-resolution analytics query, which joins
+    // comments to post_statuses via status_change_to_id. The column is NULL on
+    // ordinary comments, so the partial keeps the index to the sparse rows.
+    index('comments_status_change_to_id_idx')
+      .on(table.statusChangeToId)
+      .where(sql`status_change_to_id IS NOT NULL`),
   ]
 )
 

@@ -74,8 +74,8 @@ function groupScopes(scopes: string[]): ScopeGroup[] {
       description: 'Changelog entries and releases',
     },
     {
-      read: 'read:help-center',
-      write: 'write:help-center',
+      read: 'read:article',
+      write: 'write:article',
       label: 'Help Center',
       description: 'Categories and articles',
     },
@@ -91,6 +91,10 @@ function groupScopes(scopes: string[]): ScopeGroup[] {
       write: 'write:contacts',
       label: 'Contacts',
       description: 'Contacts and customer organizations',
+      read: 'read:chat',
+      write: 'write:chat',
+      label: 'Conversations',
+      description: 'Support inbox conversations and messages',
     },
   ]
 

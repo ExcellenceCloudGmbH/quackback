@@ -309,6 +309,11 @@ const updatePortalConfigSchema = z.object({
       body: tiptapContentSchema.optional(),
     })
     .optional(),
+  support: z
+    .object({
+      enabled: z.boolean().optional(),
+    })
+    .optional(),
 })
 
 const saveLogoKeySchema = z.object({
@@ -708,12 +713,53 @@ const updateWidgetConfigSchema = z.object({
   defaultBoard: z.string().optional(),
   position: z.enum(['bottom-right', 'bottom-left']).optional(),
   identifyVerification: z.boolean().optional(),
-  imageUploadsInWidget: z.boolean().optional(),
   tabs: z
     .object({
       feedback: z.boolean().optional(),
       changelog: z.boolean().optional(),
       help: z.boolean().optional(),
+      chat: z.boolean().optional(),
+      home: z.boolean().optional(),
+    })
+    .optional(),
+  chat: z
+    .object({
+      enabled: z.boolean().optional(),
+      welcomeMessage: z.string().max(500).optional(),
+      offlineMessage: z.string().max(500).optional(),
+      teamName: z.string().max(80).optional(),
+      preChatEmail: z.enum(['off', 'optional', 'required']).optional(),
+      officeHours: z
+        .object({
+          enabled: z.boolean(),
+          timezone: z.string().max(64),
+          days: z
+            .array(
+              z.object({
+                enabled: z.boolean(),
+                start: z.string().regex(/^\d{2}:\d{2}$/),
+                end: z.string().regex(/^\d{2}:\d{2}$/),
+              })
+            )
+            .length(7),
+        })
+        .optional(),
+      cannedReplies: z
+        .array(
+          z.object({
+            id: z.string().max(64),
+            title: z.string().max(80),
+            body: z.string().max(2000),
+          })
+        )
+        .max(100)
+        .optional(),
+      routing: z
+        .object({
+          enabled: z.boolean(),
+          strategy: z.literal('auto_assign_active'),
+        })
+        .optional(),
     })
     .optional(),
   ticketing: z
@@ -757,6 +803,30 @@ export const regenerateWidgetSecretFn = createServerFn({ method: 'POST' }).handl
 
 const moderationDefaultSchema = z.object({
   requireApproval: z.enum(['none', 'anonymous', 'authenticated', 'all']),
+})
+
+/**
+ * Read-only status of the conversation email channel (admin-only). Reports
+ * which outbound provider the environment resolves to, the from-address, and
+ * whether inbound reply threading is configured — names only, never secrets.
+ */
+export const getEmailChannelStatusFn = createServerFn({ method: 'GET' }).handler(async () => {
+  console.log(`[fn:settings] getEmailChannelStatusFn`)
+  try {
+    await requireAuth({ roles: ['admin'] })
+    const { getEmailProvider } = await import('@quackback/email')
+    const { isEmailInboundConfigured } =
+      await import('@/lib/server/domains/chat/chat.email-channel')
+    return {
+      provider: getEmailProvider(),
+      fromAddress: process.env.EMAIL_FROM ?? null,
+      inboundConfigured: isEmailInboundConfigured(),
+      inboundDomain: process.env.EMAIL_INBOUND_DOMAIN ?? null,
+    }
+  } catch (error) {
+    console.error(`[fn:settings] getEmailChannelStatusFn failed:`, error)
+    throw error
+  }
 })
 
 export const updateModerationDefaultFn = createServerFn({ method: 'POST' })

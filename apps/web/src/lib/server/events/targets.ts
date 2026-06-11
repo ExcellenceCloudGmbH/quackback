@@ -862,6 +862,24 @@ async function getChangelogSubscriberTargets(
 // ============================================================================
 
 /**
+ * Whether a webhook subscription matches an event. The board filter applies
+ * only to board-bearing events (post/comment); conversation/message events
+ * have no board and match on event-type subscription alone, so a webhook with
+ * a board filter still receives the chat events it subscribed to.
+ */
+export function webhookSubscriptionMatches(
+  webhook: { events: string[]; boardIds: string[] | null },
+  event: EventData
+): boolean {
+  if (!webhook.events.includes(event.type)) return false
+  const boardIds = extractBoardIds(event)
+  if (webhook.boardIds && webhook.boardIds.length > 0 && boardIds.length > 0) {
+    if (!boardIds.some((id) => webhook.boardIds!.includes(id))) return false
+  }
+  return true
+}
+
+/**
  * Get webhook hook targets for an event.
  * Queries active webhooks subscribed to this event type and filters by board.
  */
@@ -936,6 +954,10 @@ async function getWebhookTargets(event: EventData): Promise<HookTarget[]> {
 
       return true
     })
+    // Filter by event-type subscription and (board-bearing events only) board.
+    const matchingWebhooks = activeWebhooks.filter((webhook) =>
+      webhookSubscriptionMatches(webhook, event)
+    )
 
     console.log(
       `[Targets] Found ${matchingWebhooks.length} webhook(s) for ${event.type}${boardIds.length ? ` (boards: ${boardIds.join(', ')})` : ''}${inboxIds.length ? ` (inboxes: ${inboxIds.join(', ')})` : ''}`

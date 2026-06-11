@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
-import { createFileRoute, Outlet, useRouterState } from '@tanstack/react-router'
+import { createFileRoute, Outlet, useRouterState, useRouteContext } from '@tanstack/react-router'
 import { IntlProvider } from 'react-intl'
+import { useAdminPresence } from '@/lib/client/hooks/use-admin-presence'
 import { DEFAULT_LOCALE } from '@/lib/shared/i18n'
 import { fetchUserAvatar } from '@/lib/server/functions/portal'
 import { getLatestVersion, isNewerVersion } from '@/lib/server/functions/version'
@@ -10,6 +11,8 @@ import { TooltipProvider } from '@/components/ui/tooltip'
 import { UpdateBanner } from '@/components/admin/update-banner'
 import { authzKeys } from '@/lib/client/hooks/use-authz-queries'
 import { getMyPermissionsFn } from '@/lib/server/functions/authz'
+import { PlanNoticeBanner } from '@/components/admin/plan-notice-banner'
+import { getPlanNotice } from '@/lib/server/functions/plan-notice'
 
 export const Route = createFileRoute('/admin')({
   beforeLoad: async ({ location }) => {
@@ -36,7 +39,13 @@ export const Route = createFileRoute('/admin')({
     // Skip for public admin routes (login, signup) - they have their own layouts
     const publicPaths = ['/admin/login', '/admin/signup']
     if (publicPaths.includes(location.pathname)) {
-      return { user: null, initialUserData: null, latestVersion: null, currentUser: null }
+      return {
+        user: null,
+        initialUserData: null,
+        latestVersion: null,
+        currentUser: null,
+        planNotice: null,
+      }
     }
 
     // Auth is already validated in beforeLoad - user and principal are guaranteed here
@@ -45,7 +54,7 @@ export const Route = createFileRoute('/admin')({
       principal: NonNullable<typeof context.principal>
     }
 
-    const [avatarData, latestRelease] = await Promise.all([
+    const [avatarData, latestRelease, planNotice] = await Promise.all([
       fetchUserAvatar({
         data: { userId: user.id, fallbackImageUrl: user.image },
       }),
@@ -59,6 +68,7 @@ export const Route = createFileRoute('/admin')({
         queryFn: () => getMyPermissionsFn(),
         staleTime: 60_000,
       }),
+      getPlanNotice(),
     ])
 
     const latestVersion =
@@ -68,12 +78,14 @@ export const Route = createFileRoute('/admin')({
       name: user.name,
       email: user.email,
       avatarUrl: avatarData.avatarUrl,
+      chatAvailability: (principal.chatAvailability ?? 'online') as 'online' | 'away',
     }
 
     return {
       user,
       initialUserData,
       latestVersion,
+      planNotice,
       currentUser: {
         name: user.name,
         email: user.email,
@@ -94,8 +106,15 @@ function usePostIdFromUrl(): string | undefined {
 }
 
 function AdminLayout() {
-  const { initialUserData, latestVersion, currentUser } = Route.useLoaderData()
+  const { initialUserData, latestVersion, planNotice, currentUser } = Route.useLoaderData()
   const postId = usePostIdFromUrl()
+
+  // Mark team members online for chat routing across the whole admin (not just
+  // the inbox), but only when the support inbox feature is on.
+  const { settings } = useRouteContext({ from: '__root__' })
+  const chatEnabled =
+    (settings?.featureFlags as { supportInbox?: boolean } | undefined)?.supportInbox ?? false
+  useAdminPresence(Boolean(initialUserData) && chatEnabled)
 
   // For public routes (login, signup), render just the outlet without the admin layout
   if (!initialUserData) {
@@ -110,6 +129,7 @@ function AdminLayout() {
           <main className="flex-1 min-w-0 overflow-hidden sm:h-screen sm:py-2 sm:pr-2 sm:pl-1 p-0">
             {/* Mobile: Add padding for fixed header */}
             <div className="h-full sm:pt-0 pt-14 sm:rounded-lg sm:border sm:border-border overflow-hidden flex flex-col">
+              <PlanNoticeBanner notice={planNotice} />
               <UpdateBanner latestVersion={latestVersion} />
               <div className="flex-1 min-h-0 overflow-hidden">
                 <Outlet />

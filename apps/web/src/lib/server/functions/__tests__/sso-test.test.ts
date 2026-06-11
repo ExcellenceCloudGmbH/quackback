@@ -3,7 +3,8 @@
  *
  *  - startSsoTestFn returns a typed error union when SSO is not yet
  *    configured or the client secret is missing, and otherwise builds
- *    an OIDC authorize URL (no PKCE — mirrors prod genericOAuth) using
+ *    an OIDC authorize URL (S256 PKCE — mirrors prod genericOAuth's
+ *    pkce: true) using
  *    the SAME redirect_uri as production SSO sign-in, and persists a
  *    TestSession to Redis. The auth catch-all discriminates test from
  *    production by looking up the state in Redis — see
@@ -149,7 +150,11 @@ describe('startSsoTestFn', () => {
     expect(result.authorizeUrl).toMatch(
       /redirect_uri=https%3A%2F%2Fqb\.test%2Fapi%2Fauth%2Foauth2%2Fcallback%2Fsso/
     )
-    expect(result.authorizeUrl).not.toMatch(/code_challenge/)
+    // PKCE is mandatory for OAuth 2.1 IdPs (e.g. Supabase Auth) and
+    // ignored by IdPs that don't support it — the authorize URL must
+    // carry an S256 challenge pair, mirroring production (pkce: true).
+    expect(result.authorizeUrl).toMatch(/code_challenge=[A-Za-z0-9_-]{43}/)
+    expect(result.authorizeUrl).toMatch(/code_challenge_method=S256/)
     expect(hoisted.cacheSet).toHaveBeenCalledTimes(1)
   })
 })

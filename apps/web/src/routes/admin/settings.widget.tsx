@@ -38,53 +38,7 @@ import {
 import { settingsQueries } from '@/lib/client/queries/settings'
 import { adminQueries } from '@/lib/client/queries/admin'
 import { updateWidgetConfigFn, regenerateWidgetSecretFn } from '@/lib/server/functions/settings'
-
-function WidgetContentSettings({ config }: { config: { imageUploadsInWidget?: boolean } }) {
-  const router = useRouter()
-  const [saving, setSaving] = useState(false)
-  const [imageUploads, setImageUploads] = useState(config.imageUploadsInWidget ?? true)
-  const [, startTransition] = useTransition()
-
-  async function handleImageUploadsToggle(checked: boolean) {
-    setImageUploads(checked)
-    setSaving(true)
-    try {
-      await updateWidgetConfigFn({ data: { imageUploadsInWidget: checked } })
-      startTransition(() => router.invalidate())
-    } catch {
-      setImageUploads(!checked)
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <SettingsCard
-      title="Content"
-      description="Control what rich content types users can include in their feedback submissions."
-    >
-      <div className="flex items-center justify-between py-2">
-        <div className="pr-4">
-          <Label htmlFor="image-uploads-in-widget" className="text-sm font-medium cursor-pointer">
-            Image Uploads
-          </Label>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Allow signed-in users to attach images when submitting feedback through the widget.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <InlineSpinner visible={saving} />
-          <Switch
-            id="image-uploads-in-widget"
-            checked={imageUploads}
-            onCheckedChange={handleImageUploadsToggle}
-            disabled={saving}
-          />
-        </div>
-      </div>
-    </SettingsCard>
-  )
-}
+import type { FeatureFlags } from '@/lib/shared/types/settings'
 
 export const Route = createFileRoute('/admin/settings/widget')({
   loader: async ({ context }) => {
@@ -95,6 +49,7 @@ export const Route = createFileRoute('/admin/settings/widget')({
     await Promise.all([
       queryClient.ensureQueryData(settingsQueries.widgetConfig()),
       queryClient.ensureQueryData(settingsQueries.widgetSecret()),
+      queryClient.ensureQueryData(settingsQueries.helpCenterConfig()),
       queryClient.ensureQueryData(adminQueries.boards()),
     ])
 
@@ -106,18 +61,24 @@ export const Route = createFileRoute('/admin/settings/widget')({
 function WidgetSettingsPage() {
   const widgetConfigQuery = useSuspenseQuery(settingsQueries.widgetConfig())
   const widgetSecretQuery = useSuspenseQuery(settingsQueries.widgetSecret())
+  const helpCenterConfigQuery = useSuspenseQuery(settingsQueries.helpCenterConfig())
   const boardsQuery = useSuspenseQuery(adminQueries.boards())
-  const { baseUrl } = useRouteContext({ from: '__root__' })
+  const { baseUrl, settings } = useRouteContext({ from: '__root__' })
 
+  const flags = settings?.featureFlags as FeatureFlags | undefined
   const config = widgetConfigQuery.data
+  const helpCenterConfig = helpCenterConfigQuery.data
 
   // Lift appearance state so the preview can react to changes
   const [position, setPosition] = useState<'bottom-right' | 'bottom-left'>(
     (config.position as 'bottom-right' | 'bottom-left') ?? 'bottom-right'
   )
+  const helpCenterFlagEnabled = flags?.helpCenter ?? false
+  const helpCenterEnabled = helpCenterConfig?.enabled ?? false
   const [previewTabs, setPreviewTabs] = useState({
     feedback: config.tabs?.feedback ?? true,
     changelog: config.tabs?.changelog ?? false,
+    help: (config.tabs?.help ?? false) && helpCenterFlagEnabled && helpCenterEnabled,
   })
 
   return (
@@ -142,14 +103,14 @@ function WidgetSettingsPage() {
             position={position}
             onPositionChange={setPosition}
             onTabsChange={setPreviewTabs}
+            helpCenterEnabled={helpCenterEnabled}
+            helpCenterFlagEnabled={helpCenterFlagEnabled}
           />
         </BrandingControlsPanel>
         <BrandingPreviewPanel label="Preview">
           <WidgetPreview position={position} tabs={previewTabs} />
         </BrandingPreviewPanel>
       </BrandingLayout>
-
-      <WidgetContentSettings config={config} />
 
       <WidgetInstallation config={config} secret={widgetSecretQuery.data} baseUrl={baseUrl ?? ''} />
     </div>
@@ -207,37 +168,45 @@ function WidgetAppearanceControls({
   position,
   onPositionChange,
   onTabsChange,
+  helpCenterEnabled,
+  helpCenterFlagEnabled,
 }: {
   config: {
     defaultBoard?: string
     position?: string
-    tabs?: { feedback?: boolean; changelog?: boolean }
+    tabs?: { feedback?: boolean; changelog?: boolean; help?: boolean; home?: boolean }
   }
   boards: { id: string; name: string; slug: string }[]
   position: 'bottom-right' | 'bottom-left'
   onPositionChange: (val: 'bottom-right' | 'bottom-left') => void
-  onTabsChange: (tabs: { feedback: boolean; changelog: boolean }) => void
+  onTabsChange: (tabs: { feedback: boolean; changelog: boolean; help: boolean }) => void
+  helpCenterEnabled: boolean
+  helpCenterFlagEnabled: boolean
 }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
-  const [savingField, setSavingField] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
   const [defaultBoard, setDefaultBoard] = useState(config.defaultBoard ?? '')
   const [widgetTabs, setWidgetTabs] = useState({
     feedback: config.tabs?.feedback ?? true,
     changelog: config.tabs?.changelog ?? false,
   })
+  const [helpTab, setHelpTab] = useState(config.tabs?.help ?? false)
+  const [homeTab, setHomeTab] = useState(config.tabs?.home ?? true)
 
-  async function save(field: string, updates: Record<string, unknown>) {
-    setSavingField(field)
+  const showHelpTabToggle = helpCenterFlagEnabled && helpCenterEnabled
+
+  async function save(updates: Record<string, unknown>) {
+    setSaving(true)
     try {
       await updateWidgetConfigFn({ data: updates })
       startTransition(() => router.invalidate())
     } finally {
-      setSavingField(null)
+      setSaving(false)
     }
   }
 
-  const isBusy = savingField !== null || isPending
+  const isBusy = saving || isPending
 
   return (
     <>
@@ -257,7 +226,7 @@ function WidgetAppearanceControls({
             value={position}
             onValueChange={(val: 'bottom-right' | 'bottom-left') => {
               onPositionChange(val)
-              save('position', { position: val })
+              save({ position: val })
             }}
             disabled={isBusy}
           >
@@ -284,27 +253,57 @@ function WidgetAppearanceControls({
         <div className="space-y-3">
           <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2.5">
             <div>
+              <Label htmlFor="tab-home" className="text-xs font-medium cursor-pointer">
+                Home
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Overview tab that greets users and links to your sections. Only appears when two or
+                more sections are enabled.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <InlineSpinner visible={saving} />
+              <Switch
+                id="tab-home"
+                checked={homeTab}
+                onCheckedChange={async (checked) => {
+                  setHomeTab(checked)
+                  setSaving(true)
+                  try {
+                    await updateWidgetConfigFn({ data: { tabs: { home: checked } } })
+                    startTransition(() => router.invalidate())
+                  } catch {
+                    setHomeTab(!checked)
+                  } finally {
+                    setSaving(false)
+                  }
+                }}
+                disabled={isBusy}
+                aria-label="Home tab"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2.5">
+            <div>
               <Label htmlFor="tab-feedback" className="text-xs font-medium cursor-pointer">
                 Feedback
               </Label>
               <p className="text-xs text-muted-foreground">Search, vote, and submit ideas</p>
             </div>
-            <div className="flex items-center gap-2">
-              <InlineSpinner visible={savingField === 'tab-feedback'} />
-              <Switch
-                id="tab-feedback"
-                checked={widgetTabs.feedback}
-                onCheckedChange={(checked) => {
-                  if (!checked && !widgetTabs.changelog) return
-                  const next = { ...widgetTabs, feedback: checked }
-                  setWidgetTabs(next)
-                  onTabsChange(next)
-                  save('tab-feedback', { tabs: next })
-                }}
-                disabled={isBusy || (widgetTabs.feedback && !widgetTabs.changelog)}
-                aria-label="Feedback tab"
-              />
-            </div>
+            <Switch
+              id="tab-feedback"
+              checked={widgetTabs.feedback}
+              onCheckedChange={(checked) => {
+                if (!checked && !widgetTabs.changelog) return
+                const next = { ...widgetTabs, feedback: checked }
+                setWidgetTabs(next)
+                onTabsChange({ ...next, help: helpTab })
+                save({ tabs: next })
+              }}
+              disabled={isBusy || (widgetTabs.feedback && !widgetTabs.changelog)}
+              aria-label="Feedback tab"
+            />
           </div>
 
           <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2.5">
@@ -316,23 +315,54 @@ function WidgetAppearanceControls({
                 Show product updates and shipped features
               </p>
             </div>
-            <div className="flex items-center gap-2">
-              <InlineSpinner visible={savingField === 'tab-changelog'} />
-              <Switch
-                id="tab-changelog"
-                checked={widgetTabs.changelog}
-                onCheckedChange={(checked) => {
-                  if (!checked && !widgetTabs.feedback) return
-                  const next = { ...widgetTabs, changelog: checked }
-                  setWidgetTabs(next)
-                  onTabsChange(next)
-                  save('tab-changelog', { tabs: next })
-                }}
-                disabled={isBusy || (widgetTabs.changelog && !widgetTabs.feedback)}
-                aria-label="Changelog tab"
-              />
-            </div>
+            <Switch
+              id="tab-changelog"
+              checked={widgetTabs.changelog}
+              onCheckedChange={(checked) => {
+                if (!checked && !widgetTabs.feedback) return
+                const next = { ...widgetTabs, changelog: checked }
+                setWidgetTabs(next)
+                onTabsChange({ ...next, help: helpTab })
+                save({ tabs: next })
+              }}
+              disabled={isBusy || (widgetTabs.changelog && !widgetTabs.feedback)}
+              aria-label="Changelog tab"
+            />
           </div>
+
+          {showHelpTabToggle && (
+            <div className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2.5">
+              <div>
+                <Label htmlFor="tab-help" className="text-xs font-medium cursor-pointer">
+                  Help
+                </Label>
+                <p className="text-xs text-muted-foreground">Show help center articles</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <InlineSpinner visible={saving} />
+                <Switch
+                  id="tab-help"
+                  checked={helpTab}
+                  onCheckedChange={async (checked) => {
+                    setHelpTab(checked)
+                    onTabsChange({ ...widgetTabs, help: checked })
+                    setSaving(true)
+                    try {
+                      await updateWidgetConfigFn({ data: { tabs: { help: checked } } })
+                      startTransition(() => router.invalidate())
+                    } catch {
+                      setHelpTab(!checked)
+                      onTabsChange({ ...widgetTabs, help: !checked })
+                    } finally {
+                      setSaving(false)
+                    }
+                  }}
+                  disabled={isBusy}
+                  aria-label="Help tab"
+                />
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -340,24 +370,32 @@ function WidgetAppearanceControls({
         <div>
           <h3 className="text-sm font-medium text-foreground">Default Board</h3>
           <p className="text-xs text-muted-foreground mt-0.5">
-            Which board new posts from the widget are submitted to
+            Which board is selected by default when creating new posts from the widget
           </p>
         </div>
 
         <Select
-          value={defaultBoard || '__all__'}
+          value={defaultBoard || ''}
           onValueChange={(val) => {
-            const resolved = val === '__all__' ? '' : val
-            setDefaultBoard(resolved)
-            save('defaultBoard', { defaultBoard: resolved || undefined })
+            setDefaultBoard(val)
+            save({ defaultBoard: val })
           }}
           disabled={isBusy}
         >
-          <SelectTrigger className="w-full">
-            <SelectValue placeholder="All Boards" />
+          <SelectTrigger
+            className="w-full"
+            onClear={
+              defaultBoard
+                ? () => {
+                    setDefaultBoard('')
+                    save({ defaultBoard: '' })
+                  }
+                : undefined
+            }
+          >
+            <SelectValue placeholder="No default board" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all__">All Boards</SelectItem>
             {boards.map((board) => (
               <SelectItem key={board.id} value={board.slug}>
                 {board.name}
@@ -371,7 +409,7 @@ function WidgetAppearanceControls({
 }
 
 // ==============================================
-// Installation Guide — Interactive Code Panel
+// Installation Guide -- Interactive Code Panel
 // ==============================================
 
 const SERVER_EXAMPLES: {
@@ -561,7 +599,7 @@ class WidgetController extends Controller
   },
 ]
 
-const CLIENT_CODE = `import { useEffect } from "react";
+const CLIENT_CODE_SIMPLE = `import { useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 
 // The widget loads anonymously after Quackback("init"). Call identify
@@ -571,7 +609,24 @@ export function WidgetIdentify() {
 
   useEffect(() => {
     if (!user) return;
+    Quackback("identify", {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+    });
+  }, [user]);
 
+  return null;
+}`
+
+const CLIENT_CODE_WITH_TOKEN = `import { useEffect } from "react";
+import { useAuth } from "@/hooks/use-auth";
+
+export function WidgetIdentify() {
+  const { user } = useAuth();
+
+  useEffect(() => {
+    if (!user) return;
     fetch("/api/widget-sso", { method: "POST" })
       .then((res) => {
         if (!res.ok) throw new Error("Failed to fetch widget token");
@@ -583,14 +638,7 @@ export function WidgetIdentify() {
   }, [user]);
 
   return null;
-}
-
-// Alternatively, bundle identity directly into init (skip this component).
-// Omit the identity field for anonymous visitors — it's the default.
-//
-//   Quackback("init", {
-//     identity: { ssoToken }, // or { id, email, name }
-//   });`
+}`
 
 interface CodeTab {
   id: string
@@ -645,18 +693,20 @@ function WidgetInstallation({
     const t: CodeTab[] = [
       { id: 'snippet', label: 'snippet.html', lang: 'js', code: installSnippet },
     ]
-    const ex = SERVER_EXAMPLES.find((e) => e.id === framework)
-    if (ex) {
-      t.push({ id: 'server', label: ex.filename, lang: ex.lang, code: ex.code })
+    if (verifiedIdentityOnly) {
+      const ex = SERVER_EXAMPLES.find((e) => e.id === framework)
+      if (ex) {
+        t.push({ id: 'server', label: ex.filename, lang: ex.lang, code: ex.code })
+      }
     }
     t.push({
       id: 'client',
       label: 'identify.tsx',
       lang: 'js',
-      code: CLIENT_CODE,
+      code: verifiedIdentityOnly ? CLIENT_CODE_WITH_TOKEN : CLIENT_CODE_SIMPLE,
     })
     return t
-  }, [installSnippet, framework])
+  }, [installSnippet, verifiedIdentityOnly, framework])
 
   // Reset active tab if it's no longer available
   useEffect(() => {
@@ -711,7 +761,7 @@ function WidgetInstallation({
   return (
     <div className="rounded-xl border border-border bg-card overflow-hidden flex flex-col min-h-[480px]">
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] flex-1">
-        {/* ─── Left: Configuration ─── */}
+        {/* Left: Configuration */}
         <div className="flex flex-col border-b lg:border-b-0 lg:border-r border-border divide-y divide-border">
           {/* Header */}
           <div className="p-5">
@@ -742,13 +792,12 @@ function WidgetInstallation({
               </span>
               <div>
                 <span className="text-xs font-medium text-foreground">Identify users</span>
-                <p className="text-xs text-muted-foreground">
-                  Generate a signed <code className="text-xs">ssoToken</code> on your backend
-                </p>
+                <p className="text-xs text-muted-foreground">Required to display the widget</p>
               </div>
             </div>
 
             <div className="ml-7 space-y-3">
+              {/* Verified identity toggle */}
               <div className="flex items-center justify-between gap-2">
                 <div>
                   <span className="text-xs font-medium text-foreground">
@@ -776,88 +825,90 @@ function WidgetInstallation({
                 </p>
               )}
 
-              <div className="space-y-2.5">
-                {/* Framework */}
-                <div className="space-y-1">
-                  <Label className="text-xs text-muted-foreground">Backend framework</Label>
-                  <Select value={framework} onValueChange={setFramework}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {SERVER_EXAMPLES.map((ex) => (
-                        <SelectItem key={ex.id} value={ex.id}>
-                          {ex.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
+              {verifiedIdentityOnly && (
+                <div className="space-y-2.5">
+                  {/* Framework */}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Backend framework</Label>
+                    <Select value={framework} onValueChange={setFramework}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {SERVER_EXAMPLES.map((ex) => (
+                          <SelectItem key={ex.id} value={ex.id}>
+                            {ex.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-                {/* Secret */}
-                <div className="space-y-1.5">
-                  <Label className="text-xs text-muted-foreground">Widget secret</Label>
-                  {currentSecret ? (
-                    <div className="flex items-center gap-1">
-                      <code className="flex-1 text-xs font-mono text-foreground bg-muted/30 border border-border/50 rounded px-2 py-1 truncate">
-                        {secretVisible ? currentSecret : maskedSecret}
-                      </code>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 shrink-0"
-                        onClick={() => setSecretVisible(!secretVisible)}
-                      >
-                        {secretVisible ? (
-                          <EyeSlashIcon className="h-3 w-3" />
-                        ) : (
-                          <EyeIcon className="h-3 w-3" />
-                        )}
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 shrink-0"
-                        onClick={handleCopySecret}
-                      >
-                        {copiedSecret ? (
-                          <CheckIcon className="h-3 w-3 text-green-500" />
-                        ) : (
-                          <ClipboardDocumentIcon className="h-3 w-3" />
-                        )}
-                      </Button>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-muted-foreground italic">
-                      Click regenerate to create a secret
-                    </p>
-                  )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs"
-                    onClick={handleRegenerate}
-                    disabled={regenerating}
-                  >
-                    {regenerating ? (
-                      <>
-                        <ArrowPathIcon className="h-3 w-3 animate-spin mr-1" />
-                        Regenerating...
-                      </>
+                  {/* Secret */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Widget secret</Label>
+                    {currentSecret ? (
+                      <div className="flex items-center gap-1">
+                        <code className="flex-1 text-xs font-mono text-foreground bg-muted/30 border border-border/50 rounded px-2 py-1 truncate">
+                          {secretVisible ? currentSecret : maskedSecret}
+                        </code>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={() => setSecretVisible(!secretVisible)}
+                        >
+                          {secretVisible ? (
+                            <EyeSlashIcon className="h-3 w-3" />
+                          ) : (
+                            <EyeIcon className="h-3 w-3" />
+                          )}
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 shrink-0"
+                          onClick={handleCopySecret}
+                        >
+                          {copiedSecret ? (
+                            <CheckIcon className="h-3 w-3 text-green-500" />
+                          ) : (
+                            <ClipboardDocumentIcon className="h-3 w-3" />
+                          )}
+                        </Button>
+                      </div>
                     ) : (
-                      'Regenerate'
+                      <p className="text-xs text-muted-foreground italic">
+                        Click regenerate to create a secret
+                      </p>
                     )}
-                  </Button>
-                </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-7 text-xs"
+                      onClick={handleRegenerate}
+                      disabled={regenerating}
+                    >
+                      {regenerating ? (
+                        <>
+                          <ArrowPathIcon className="h-3 w-3 animate-spin mr-1" />
+                          Regenerating...
+                        </>
+                      ) : (
+                        'Regenerate'
+                      )}
+                    </Button>
+                  </div>
 
-                {/* Security note */}
-                <WarningBox variant="warning" title="Keep this secret server-side only" />
-              </div>
+                  {/* Security note */}
+                  <WarningBox variant="warning" title="Keep this secret server-side only" />
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        {/* ─── Right: Dynamic Code Panel ─── */}
+        {/* Right: Dynamic Code Panel */}
         <div className="flex flex-col">
           {/* File tabs */}
           <div

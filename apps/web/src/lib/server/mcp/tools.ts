@@ -1,7 +1,7 @@
 /**
  * MCP Tools for Quackback
  *
- * 27 tools calling domain services directly (no HTTP self-loop):
+ * 33 tools calling domain services directly (no HTTP self-loop):
  * - search: Unified search across posts, changelogs, and articles
  * - get_details: Get full details for any entity by TypeID
  * - triage_post: Update post status, tags, and owner
@@ -29,6 +29,12 @@
  * - update_article: Update or publish/unpublish an article
  * - delete_article: Soft-delete an article
  * - manage_category: Create, update, or delete a help center category
+ * - list_conversations: List support-inbox conversations
+ * - get_conversation: Get a conversation and its messages
+ * - reply_to_conversation: Send an agent reply in a conversation
+ * - suggest_post: Nudge the team (agent-only) to track a resolved conversation as a post
+ * - share_post: Embed an existing post as a card in the chat
+ * - set_conversation_status: Change a conversation's status
  */
 
 import { z } from 'zod'
@@ -70,6 +76,7 @@ import {
 } from '@/lib/server/domains/roadmaps/roadmap.service'
 import { getTypeIdPrefix, isTypeId, isValidTypeId } from '@quackback/ids'
 import { isTeamMember } from '@/lib/shared/roles'
+import { CONVERSATION_STATUSES } from '@/lib/shared/db-types'
 import { truncate } from '@/lib/shared/utils/string'
 import {
   listArticles,
@@ -173,6 +180,7 @@ import {
   TICKET_PARTICIPANT_ROLES,
   TICKET_SHARE_LEVELS,
 } from '@/lib/server/db'
+import { realEmail } from '@/lib/shared/anonymous-email'
 import type { McpAuthContext, McpScope } from './types'
 import type {
   PostId,
@@ -197,6 +205,8 @@ import type {
   UserId,
   OrganizationId,
   InboxId,
+  ConversationId,
+  SegmentId,
 } from '@quackback/ids'
 
 // ============================================================================
@@ -308,9 +318,12 @@ async function requireHelpCenter(): Promise<CallToolResult | null> {
 
 /** Combined gate: feature flag + scope + team role for help center write tools. */
 async function requireHelpCenterWrite(auth: McpAuthContext): Promise<CallToolResult | null> {
-  return (
-    (await requireHelpCenter()) ?? requireScope(auth, 'write:help-center') ?? requireTeamRole(auth)
-  )
+  return (await requireHelpCenter()) ?? requireScope(auth, 'write:article') ?? requireTeamRole(auth)
+}
+
+/** Build the agent-author object used by the chat write tools (reply, suggest, share). */
+function agentFromMcpAuth(auth: McpAuthContext) {
+  return { principalId: auth.principalId, displayName: auth.name, email: auth.email }
 }
 
 /** Format a help center article as a tool result. */
@@ -904,7 +917,7 @@ Examples:
       if (args.entity === 'articles') {
         const flagDenied = await requireHelpCenter()
         if (flagDenied) return flagDenied
-        const denied = requireScope(auth, 'read:help-center')
+        const denied = requireScope(auth, 'read:article')
         if (denied) return denied
         // Help-center MCP read surfaces unpublished drafts and articles
         // under categories an admin marked private. The public help
@@ -987,7 +1000,7 @@ Examples:
           case 'article': {
             const flagDenied = await requireHelpCenter()
             if (flagDenied) return flagDenied
-            const denied = requireScope(auth, 'read:help-center')
+            const denied = requireScope(auth, 'read:article')
             if (denied) return denied
             // getArticleById doesn't enforce publishedAt or
             // category.isPublic — so a portal user with the help-center
@@ -1001,7 +1014,7 @@ Examples:
           case 'category': {
             const flagDenied = await requireHelpCenter()
             if (flagDenied) return flagDenied
-            const denied = requireScope(auth, 'read:help-center')
+            const denied = requireScope(auth, 'read:article')
             if (denied) return denied
             // getCategoryById returns private categories too — keep
             // symmetric with the article path.
@@ -2225,6 +2238,59 @@ Examples:
         return compactJsonResult({
           tickets: result.rows.map(ticketResult),
           total: result.total,
+  // list_conversations
+  server.tool(
+    'list_conversations',
+    `List support-inbox conversations, newest activity first. Filter by status, priority, or assigned agent; paginate with cursor.
+
+Examples:
+- Open conversations: list_conversations({ status: "open" })
+- A specific agent's queue: list_conversations({ assignedAgentPrincipalId: "principal_01abc..." })`,
+    {
+      status: z.enum(CONVERSATION_STATUSES).optional().describe('Filter by status'),
+      priority: z
+        .enum(['none', 'low', 'medium', 'high', 'urgent'])
+        .optional()
+        .describe('Filter by priority'),
+      assignedAgentPrincipalId: z
+        .string()
+        .optional()
+        .describe('Filter to a specific assigned agent (principal TypeID)'),
+      cursor: z.string().optional().describe('Pagination cursor from a previous response'),
+      limit: z.number().int().min(1).max(100).optional().describe('Max results (default 20)'),
+    },
+    READ_ONLY,
+    async (args: {
+      status?: 'open' | 'pending' | 'closed'
+      priority?: 'none' | 'low' | 'medium' | 'high' | 'urgent'
+      assignedAgentPrincipalId?: string
+      cursor?: string
+      limit?: number
+    }): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:chat') ?? requireTeamRole(auth)
+      if (denied) return denied
+      try {
+        const { listConversationsForAgent } = await import('@/lib/server/domains/chat/chat.query')
+        const result = await listConversationsForAgent({
+          status: args.status,
+          priority: args.priority,
+          assignedAgentPrincipalId: args.assignedAgentPrincipalId as PrincipalId | undefined,
+          before: args.cursor,
+          limit: args.limit ?? 20,
+        })
+        return compactJsonResult({
+          conversations: result.conversations.map((c) => ({
+            id: c.id,
+            status: c.status,
+            priority: c.priority,
+            channel: c.channel,
+            subject: c.subject,
+            lastMessageAt: c.lastMessageAt,
+            visitorPrincipalId: c.visitor.principalId,
+            assignedAgentPrincipalId: c.assignedAgent?.principalId ?? null,
+          })),
+          nextCursor: result.nextCursor,
+          hasMore: result.hasMore,
         })
       } catch (err) {
         return errorResult(err)
@@ -3316,6 +3382,78 @@ Examples:
           unlinked: true,
           contactId: args.contactId,
           userId: args.userId,
+  // get_conversation
+  server.tool(
+    'get_conversation',
+    `Get a conversation and its most recent messages. Set includeInternal to also return agent-only internal notes.
+
+Example: get_conversation({ conversationId: "conversation_01abc...", includeInternal: true })`,
+    {
+      conversationId: z.string().describe('Conversation TypeID'),
+      includeInternal: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe('Include agent-only internal notes'),
+      cursor: z
+        .string()
+        .optional()
+        .describe('Cursor from a previous get_conversation response to fetch older messages'),
+    },
+    READ_ONLY,
+    async (args: {
+      conversationId: string
+      includeInternal?: boolean
+      cursor?: string
+    }): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'read:chat') ?? requireTeamRole(auth)
+      if (denied) return denied
+      try {
+        const { assertConversationViewable } =
+          await import('@/lib/server/domains/chat/chat.service')
+        const { listMessages, conversationToDTO } =
+          await import('@/lib/server/domains/chat/chat.query')
+        // team-role API key: canViewConversation short-circuits on role; segments unused
+        const actor = {
+          principalId: auth.principalId,
+          role: auth.role,
+          principalType: auth.userId ? ('user' as const) : ('service' as const),
+          segmentIds: new Set<SegmentId>(),
+        }
+        const conversationId = args.conversationId as ConversationId
+        const conversation = await assertConversationViewable(conversationId, actor)
+        const [dto, page] = await Promise.all([
+          conversationToDTO(conversation, 'agent'),
+          listMessages(conversationId, {
+            before: args.cursor,
+            includeInternal: args.includeInternal ?? false,
+            limit: 30,
+          }),
+        ])
+        return jsonResult({
+          conversation: {
+            id: dto.id,
+            status: dto.status,
+            priority: dto.priority,
+            channel: dto.channel,
+            subject: dto.subject,
+            visitorPrincipalId: dto.visitor.principalId,
+            visitorEmail: realEmail(dto.visitorEmail),
+            assignedAgentPrincipalId: dto.assignedAgent?.principalId ?? null,
+            lastMessageAt: dto.lastMessageAt,
+            resolvedAt: dto.resolvedAt,
+            createdAt: dto.createdAt,
+          },
+          messages: page.messages.map((m) => ({
+            id: m.id,
+            senderType: m.senderType,
+            isInternal: m.isInternal,
+            authorName: m.author?.displayName ?? null,
+            content: m.content,
+            createdAt: m.createdAt,
+          })),
+          hasMore: page.hasMore,
+          nextCursor: page.nextCursor,
         })
       } catch (err) {
         return errorResult(err)
@@ -3481,6 +3619,165 @@ Examples:
             }
           }
         }
+
+  // reply_to_conversation
+  server.tool(
+    'reply_to_conversation',
+    `Send an agent reply in a conversation (visible to the visitor). Auto-assigns the conversation to the calling agent if unassigned.
+
+Example: reply_to_conversation({ conversationId: "conversation_01abc...", content: "Thanks for reaching out — we're on it." })`,
+    {
+      conversationId: z.string().describe('Conversation TypeID'),
+      content: z.string().min(1).max(4000).describe('Reply text sent to the visitor'),
+    },
+    WRITE,
+    async (args: { conversationId: string; content: string }): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'write:chat') ?? requireTeamRole(auth)
+      if (denied) return denied
+      try {
+        const { sendAgentMessage } = await import('@/lib/server/domains/chat/chat.service')
+        // team-role API key: canActAsAgent short-circuits on role; segments unused
+        const actor = {
+          principalId: auth.principalId,
+          role: auth.role,
+          principalType: auth.userId ? ('user' as const) : ('service' as const),
+          segmentIds: new Set<SegmentId>(),
+        }
+        const agent = agentFromMcpAuth(auth)
+        const result = await sendAgentMessage(
+          args.conversationId as ConversationId,
+          args.content,
+          agent,
+          actor
+        )
+        return jsonResult({
+          id: result.message.id,
+          conversationId: result.message.conversationId,
+          status: result.conversation.status,
+          createdAt: result.message.createdAt,
+        })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // suggest_post — agent-only; nudges the team to track a RESOLVED conversation
+  // as a post. Never reaches the visitor. The agent confirms with one click.
+  server.tool(
+    'suggest_post',
+    `Suggest to the SUPPORT TEAM (not the visitor) that a RESOLVED conversation be tracked as a feedback post. Appears only in the agent inbox as an internal note; a team member confirms with one click. Rejected unless the conversation is resolved.
+
+Example: suggest_post({ conversationId: "conversation_01...", boardId: "board_01...", title: "Add dark mode", content: "Customer asked for a night theme." })`,
+    {
+      conversationId: z.string().describe('Conversation TypeID (must be resolved)'),
+      boardId: z.string().describe('Suggested board TypeID'),
+      title: z.string().min(3).max(200),
+      content: z.string().max(10000).default(''),
+    },
+    WRITE,
+    async (args: {
+      conversationId: string
+      boardId: string
+      title: string
+      content: string
+    }): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'write:chat') ?? requireTeamRole(auth)
+      if (denied) return denied
+      try {
+        const { suggestPost } = await import('@/lib/server/domains/chat/chat.cards')
+        // team-role API key: canActAsAgent short-circuits on role; segments unused
+        const actor = {
+          principalId: auth.principalId,
+          role: auth.role,
+          principalType: auth.userId ? ('user' as const) : ('service' as const),
+          segmentIds: new Set<SegmentId>(),
+        }
+        const agent = agentFromMcpAuth(auth)
+        const r = await suggestPost(
+          {
+            conversationId: args.conversationId as ConversationId,
+            boardId: args.boardId as BoardId,
+            title: args.title,
+            content: args.content,
+          },
+          { agentActor: actor, agentPrincipalId: auth.principalId, agent }
+        )
+        return jsonResult({ messageId: r.messageId, conversationId: args.conversationId })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // share_post
+  server.tool(
+    'share_post',
+    `Embed an EXISTING feedback post as a card in the chat so the visitor can view and upvote it. Find
+candidates first with the search tool. Use to surface related ideas / avoid duplicates.
+
+Example: share_post({ conversationId: "conversation_01...", postId: "post_01..." })`,
+    {
+      conversationId: z.string().describe('Conversation TypeID'),
+      postId: z.string().describe('Post TypeID'),
+    },
+    WRITE,
+    async (args: { conversationId: string; postId: string }): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'write:chat') ?? requireTeamRole(auth)
+      if (denied) return denied
+      try {
+        const { sharePost } = await import('@/lib/server/domains/chat/chat.cards')
+        // team-role API key: canActAsAgent short-circuits on role; segments unused
+        const actor = {
+          principalId: auth.principalId,
+          role: auth.role,
+          principalType: auth.userId ? ('user' as const) : ('service' as const),
+          segmentIds: new Set<SegmentId>(),
+        }
+        const agent = agentFromMcpAuth(auth)
+        const r = await sharePost(
+          { conversationId: args.conversationId as ConversationId, postId: args.postId as PostId },
+          { agentActor: actor, agentPrincipalId: auth.principalId, agent }
+        )
+        return jsonResult({ messageId: r.message.id })
+      } catch (err) {
+        return errorResult(err)
+      }
+    }
+  )
+
+  // set_conversation_status
+  server.tool(
+    'set_conversation_status',
+    `Change a conversation's status (open, pending, or closed). Closing stamps the resolution time; a later reply reopens it.
+
+Example: set_conversation_status({ conversationId: "conversation_01abc...", status: "closed" })`,
+    {
+      conversationId: z.string().describe('Conversation TypeID'),
+      status: z.enum(CONVERSATION_STATUSES).describe('New status'),
+    },
+    { ...WRITE, idempotentHint: true },
+    async (args: {
+      conversationId: string
+      status: 'open' | 'pending' | 'closed'
+    }): Promise<CallToolResult> => {
+      const denied = requireScope(auth, 'write:chat') ?? requireTeamRole(auth)
+      if (denied) return denied
+      try {
+        const { setConversationStatus } = await import('@/lib/server/domains/chat/chat.service')
+        // team-role API key: canActAsAgent short-circuits on role; segments unused
+        const actor = {
+          principalId: auth.principalId,
+          role: auth.role,
+          principalType: auth.userId ? ('user' as const) : ('service' as const),
+          segmentIds: new Set<SegmentId>(),
+        }
+        const updated = await setConversationStatus(
+          args.conversationId as ConversationId,
+          args.status,
+          actor
+        )
+        return jsonResult({ id: updated.id, status: updated.status })
       } catch (err) {
         return errorResult(err)
       }

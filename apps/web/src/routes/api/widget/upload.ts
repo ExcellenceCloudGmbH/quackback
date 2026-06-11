@@ -1,7 +1,6 @@
 import { createFileRoute } from '@tanstack/react-router'
-import { db, session, principal, eq, and, gt } from '@/lib/server/db'
+import { auth } from '@/lib/server/auth'
 import { isS3Configured, uploadImageFromFormData } from '@/lib/server/storage/s3'
-import { getWidgetConfig } from '@/lib/server/domains/settings/settings.widget'
 import { handleDomainError } from '@/lib/server/domains/api/responses'
 import { DomainException } from '@/lib/shared/errors'
 
@@ -16,8 +15,12 @@ export async function handleWidgetUpload({ request }: { request: Request }): Pro
     if (e instanceof DomainException) return handleDomainError(e)
     throw e
   }
-  const authHeader = request.headers.get('authorization')
-  if (!authHeader?.startsWith('Bearer ')) {
+  // Any valid widget session may attach images — identified or anonymous. We
+  // resolve the Bearer the same way server functions do: the better-auth bearer
+  // plugin strips the token signature and looks up the session (a raw
+  // `session.token` equality check fails because the bearer value is signed).
+  const sessionData = await auth.api.getSession({ headers: request.headers })
+  if (!sessionData?.user) {
     return Response.json({ error: 'Unauthorized' }, { status: 401 })
   }
   // Strip HMAC suffix: portal session cookies are `{token}.{hmac}`, DB stores bare token.

@@ -179,6 +179,21 @@ export {
   changelogEntriesRelations,
   changelogEntryPosts,
   changelogEntryPostsRelations,
+  // Schema tables - live chat
+  conversations,
+  conversationsRelations,
+  chatMessages,
+  chatMessagesRelations,
+  chatTags,
+  chatTagsRelations,
+  conversationTags,
+  conversationTagsRelations,
+  chatMessageMentions,
+  chatMessageMentionsRelations,
+  chatMessageReactions,
+  chatMessageReactionsRelations,
+  chatMessageFlags,
+  chatMessageFlagsRelations,
   // Schema tables - notifications
   inAppNotifications,
   inAppNotificationsRelations,
@@ -331,6 +346,8 @@ export {
   // Schema tables - integration sync log (observability)
   integrationSyncLog,
   integrationSyncLogRelations,
+  // Schema tables - push devices
+  pushDevices,
   // Types/constants
   REACTION_EMOJIS,
   USE_CASE_TYPES,

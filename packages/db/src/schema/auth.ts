@@ -51,6 +51,11 @@ export const user = pgTable(
     // X-Country-Code) on session creation. NULL when no header is
     // present — local dev or deployments without a geo-aware proxy.
     country: text('country'),
+    // Stable external identity for widget-identified visitors: the verified JWT
+    // `sub` (the host app's durable user id). Set ONLY on the verified ssoToken
+    // identify path so a visitor is recognized on a new device even after an
+    // email change. Null for team accounts and unverified identifies.
+    externalId: text('external_id'),
     // Anonymous user flag (Better Auth anonymous plugin)
     isAnonymous: boolean('is_anonymous').default(false).notNull(),
     // Better-Auth twoFactor plugin — flips true once the user verifies
@@ -69,6 +74,11 @@ export const user = pgTable(
     index('user_email_lower_idx')
       .on(sql`LOWER(${table.email})`)
       .where(sql`email IS NOT NULL`),
+    // One account per external subject — backs the verified-identify lookup and
+    // stops two users claiming the same host-app `sub`. Partial: nulls allowed.
+    uniqueIndex('user_external_id_idx')
+      .on(table.externalId)
+      .where(sql`external_id IS NOT NULL`),
     // Partial b-tree on country / locale — both are referenced by the
     // dynamic-segment evaluator (IN / ILIKE predicates) and the column
     // is sparse, so partial indexes keep the on-disk footprint small.
@@ -127,6 +137,9 @@ export const session = pgTable(
     // but still reads every row's created_at. With this, the planner
     // can do an index-only scan and stop at the first row per group.
     index('session_userId_createdAt_idx').on(table.userId, table.createdAt.desc()),
+    // Range-scan support for the active-users analytics query, which counts
+    // distinct users whose session.updated_at falls within the period.
+    index('session_updatedAt_idx').on(table.updatedAt),
   ]
 )
 
@@ -401,12 +414,26 @@ export const principal = pgTable(
      * /oauth2/callback/:providerId hooks.after middleware.
      */
     lastSsoSignInAt: timestamp('last_sso_sign_in_at', { withTimezone: true }),
+    // Contact email for an anonymous visitor (captured in live chat) so an
+    // offline reply can reach them across conversations. Agent-only — the
+    // principal stays anonymous; never exposed to the visitor.
+    contactEmail: text('contact_email'),
+    // Manual agent availability override: 'online' (default — route chats to me)
+    // vs 'away' (connected but opted out of routing). The presence TTL handles
+    // auto-offline; this is the explicit opt-out, persisted across sessions.
+    chatAvailability: text('chat_availability', { enum: ['online', 'away'] })
+      .notNull()
+      .default('online'),
   },
   (table) => [
     // Ensure one principal record per human user (partial index excludes service principals)
     uniqueIndex('principal_user_idx')
       .on(table.userId)
       .where(sql`user_id IS NOT NULL`),
+    // Lookups by contact email (only the rows that have one).
+    index('principal_contact_email_idx')
+      .on(table.contactEmail)
+      .where(sql`contact_email IS NOT NULL`),
     // Index for user listings filtered by role
     index('principal_role_idx').on(table.role),
     // Index for filtering by principal type
@@ -511,23 +538,35 @@ export const oauthClient = pgTable('oauth_client', {
 /**
  * OAuth Refresh Token table - Long-lived tokens for token refresh
  */
-export const oauthRefreshToken = pgTable('oauth_refresh_token', {
-  id: text('id').primaryKey(),
-  token: text('token').notNull(),
-  clientId: text('client_id')
-    .notNull()
-    .references(() => oauthClient.clientId, { onDelete: 'cascade' }),
-  sessionId: text('session_id').references(() => session.id, { onDelete: 'set null' }),
-  userId: typeIdColumn('user')('user_id')
-    .notNull()
-    .references(() => user.id, { onDelete: 'cascade' }),
-  referenceId: text('reference_id'),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }),
-  revoked: timestamp('revoked', { withTimezone: true }),
-  authTime: timestamp('auth_time', { withTimezone: true }),
-  scopes: text('scopes').array().notNull(),
-})
+export const oauthRefreshToken = pgTable(
+  'oauth_refresh_token',
+  {
+    id: text('id').primaryKey(),
+    token: text('token').notNull().unique(),
+    clientId: text('client_id')
+      .notNull()
+      .references(() => oauthClient.clientId, { onDelete: 'cascade' }),
+    sessionId: text('session_id').references(() => session.id, { onDelete: 'set null' }),
+    userId: typeIdColumn('user')('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    referenceId: text('reference_id'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }),
+    revoked: timestamp('revoked', { withTimezone: true }),
+    authTime: timestamp('auth_time', { withTimezone: true }),
+    scopes: text('scopes').array().notNull(),
+  },
+  (table) => [
+    // Serves the grace-heal successor lookup (auth/refresh-grace.ts) and
+    // better-auth's family revocation listing.
+    index('oauth_refresh_token_client_user_created_idx').on(
+      table.clientId,
+      table.userId,
+      table.createdAt
+    ),
+  ]
+)
 
 /**
  * OAuth Access Token table - Short-lived tokens for API access

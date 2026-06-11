@@ -6,8 +6,17 @@ import { CheckCircleIcon } from '@heroicons/react/24/solid'
 import { ArrowLeftIcon } from '@heroicons/react/24/outline'
 import { WidgetVoteButton } from '@/components/widget/widget-vote-button'
 import type { PostId } from '@quackback/ids'
-import { WidgetShell, type WidgetTab } from '@/components/widget/widget-shell'
+import { WidgetShell } from '@/components/widget/widget-shell'
+import {
+  type WidgetTab,
+  type WidgetView,
+  resolveInitialTab,
+  resolveInitialView,
+  supportRootView,
+  homeEnabled,
+} from '@/components/widget/widget-nav'
 import { WidgetHome } from '@/components/widget/widget-home'
+import { WidgetOverview } from '@/components/widget/widget-overview'
 import { WidgetPostDetail } from '@/components/widget/widget-post-detail'
 import { WidgetChangelog } from '@/components/widget/widget-changelog'
 import { WidgetChangelogDetail } from '@/components/widget/widget-changelog-detail'
@@ -18,14 +27,21 @@ import { WidgetSupportCard } from '@/components/widget/widget-support-card'
 import { WidgetSupportList } from '@/components/widget/widget-support-list'
 import { WidgetSupportNew } from '@/components/widget/widget-support-new'
 import { WidgetSupportDetail } from '@/components/widget/widget-support-detail'
+import { WidgetLiveChat } from '@/components/widget/widget-live-chat'
+import type { ConversationId } from '@quackback/ids'
+import { WidgetMessagesSection } from '@/components/widget/widget-messages-section'
 import { useWidgetAuth } from '@/components/widget/widget-auth-provider'
 import { portalQueries } from '@/lib/client/queries/portal'
 import { fetchBoardCapabilitiesFn } from '@/lib/server/functions/portal'
 import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 import { widgetQueryKeys, INITIAL_SESSION_VERSION } from '@/lib/client/hooks/use-widget-vote'
+import { CHAT_PRESENCE_QUERY_KEY } from '@/components/widget/use-chat-presence'
 
 const searchSchema = z.object({
   board: z.string().optional(),
+  // `?c=<conversationId>` opens the widget straight to live chat — used by the
+  // deep link in agent-reply emails. Navigation only; carries no capability.
+  c: z.string().optional(),
 })
 
 export const Route = createFileRoute('/widget/')({
@@ -48,6 +64,32 @@ export const Route = createFileRoute('/widget/')({
     )
 
     const { getBaseUrl } = await import('@/lib/server/config')
+
+    // Same triple-gate as the `chat` tab below: Support Inbox flag + live chat
+    // enabled + tab on. Hoisted so we only compute presence when chat shows.
+    const chatTabEnabled =
+      ((settings?.featureFlags as { supportInbox?: boolean } | undefined)?.supportInbox ?? false) &&
+      (settings?.publicWidgetConfig?.chat?.enabled ?? false) &&
+      (settings?.publicWidgetConfig?.tabs?.chat ?? false)
+
+    // Presence is tenant-global (not visitor-specific), so the anonymous SSR
+    // baseline value is exactly correct for every visitor — seed the shared
+    // presence query so the chat online/offline strip paints right immediately
+    // instead of flashing "away" until the first client poll. The seed is
+    // dehydrated to the client just like the votedPosts seed below. Skipped when
+    // chat isn't shown.
+    if (chatTabEnabled) {
+      try {
+        // Call the server fn (not an unwrapped helper): its handler — and the
+        // ioredis-reaching presence import inside it — is stripped from the
+        // client bundle. Server-side it runs inline and returns the verdict.
+        const { getChatPresenceFn } = await import('@/lib/server/functions/chat')
+        queryClient.setQueryData(CHAT_PRESENCE_QUERY_KEY, await getChatPresenceFn())
+      } catch {
+        // A presence read failure must never break the whole widget load — leave
+        // the seed empty and let the client query fetch presence on mount.
+      }
+    }
 
     return {
       posts: portalData.posts.items.map((p) => ({
@@ -88,8 +130,13 @@ export const Route = createFileRoute('/widget/')({
           ((settings?.featureFlags as { helpCenter?: boolean } | undefined)?.helpCenter ?? false) &&
           (settings?.helpCenterConfig?.enabled ?? false) &&
           (settings?.publicWidgetConfig?.tabs?.help ?? false),
+        // Support Inbox flag + live chat enabled + tab on (computed above).
+        chat: chatTabEnabled,
+        // Admin opt-out for the aggregated Home tab (defaults to shown).
+        home: settings?.publicWidgetConfig?.tabs?.home ?? true,
       },
-      imageUploadsInWidget: settings?.publicWidgetConfig?.imageUploadsInWidget ?? true,
+      linkPreviews:
+        (settings?.featureFlags as { linkPreviews?: boolean } | undefined)?.linkPreviews ?? false,
       defaultBoard: settings?.publicWidgetConfig?.defaultBoard,
       ticketingEnabled: settings?.publicWidgetConfig?.ticketing?.enabled ?? false,
       portalAccess: {
@@ -117,7 +164,6 @@ type WidgetView =
   | 'support-list'
   | 'support-new'
   | 'support-detail'
-
 interface SuccessPost {
   id: string
   title: string
@@ -135,7 +181,7 @@ function WidgetPage() {
     orgSlug,
     boardPermissions,
     tabs,
-    imageUploadsInWidget,
+    linkPreviews,
     defaultBoard,
     ticketingEnabled,
     portalAccess,
@@ -163,11 +209,22 @@ function WidgetPage() {
     staleTime: 30 * 1000,
   })
 
-  const initialTab: WidgetTab = tabs.feedback ? 'feedback' : tabs.changelog ? 'changelog' : 'help'
+  const { c: resumeConversationId } = Route.useSearch()
+  const initialTab = resolveInitialTab(tabs)
+  // A `?c=` deep link opens straight to chat (when chat is enabled); the widget
+  // then loads the visitor's active conversation from their session.
   const [view, setView] = useState<WidgetView>(
-    initialTab === 'changelog' ? 'changelog' : initialTab === 'help' ? 'help' : 'home'
+    resumeConversationId && tabs.chat ? 'chat' : resolveInitialView(tabs)
   )
-  const [activeTab, setActiveTab] = useState<WidgetTab>(initialTab)
+  const [activeTab, setActiveTab] = useState<WidgetTab>(
+    resumeConversationId && tabs.chat ? 'help' : initialTab
+  )
+  // Which thread the chat view opens: an id, 'new', or null (active/default).
+  // Seeded from the ?c= deep link so it opens that exact thread.
+  const [chatTarget, setChatTarget] = useState<ConversationId | 'new' | null>(
+    resumeConversationId ? (resumeConversationId as ConversationId) : null
+  )
+
   const [successPost, setSuccessPost] = useState<SuccessPost | null>(null)
   const [selectedPostId, setSelectedPostId] = useState<string | null>(null)
   const [selectedChangelogId, setSelectedChangelogId] = useState<string | null>(null)
@@ -185,6 +242,12 @@ function WidgetPage() {
     return [...createdPosts, ...posts.filter((p) => !createdIds.has(p.id))]
   }, [posts, createdPosts])
 
+  const openChat = useCallback((target?: ConversationId | 'new') => {
+    setChatTarget(target ?? null)
+    setActiveTab('help')
+    setView('chat')
+  }, [])
+
   // Listen for quackback:open messages from the SDK
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -196,7 +259,7 @@ function WidgetPage() {
       if (opts.view === 'changelog' && tabs.changelog) {
         setActiveTab('changelog')
         setView('changelog')
-      } else if (opts.view === 'help' && tabs.help) {
+      } else if (opts.view === 'help' && (tabs.help || tabs.chat)) {
         setActiveTab('help')
         setView('help')
       } else if (opts.view === 'support') {
@@ -208,11 +271,18 @@ function WidgetPage() {
         } else {
           setView('support-list')
         }
+        setView(supportRootView(tabs))
+      } else if ((opts.view === 'chat' || opts.view === 'live-chat') && tabs.chat) {
+        openChat()
+      } else if ((opts.view === 'home' || opts.view === 'overview') && homeEnabled(tabs)) {
+        setActiveTab('home')
+        setView('overview')
       }
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
   }, [tabs.changelog, tabs.help, ticketingEnabled])
+  }, [tabs, openChat])
 
   const handlePostCreated = useCallback((post: SuccessPost) => {
     setCreatedPosts((prev) => [
@@ -281,8 +351,36 @@ function WidgetPage() {
       setSelectedHelpSlug(null)
       setSelectedCategory(null)
       setView('help')
+    if (view === 'chat') {
+      // Chat is opened from the support surface; back returns to its root
+      // (help articles, or the messages list for a chat-only widget).
+      setView(supportRootView(tabs))
+      return
     }
-  }, [])
+    setSelectedPostId(null)
+    setView('feedback')
+  }, [view, selectedCategory, tabs])
+
+  const handleTabChange = useCallback(
+    (tab: WidgetTab) => {
+      setActiveTab(tab)
+      if (tab === 'home') {
+        setView('overview')
+      } else if (tab === 'feedback') {
+        setSelectedPostId(null)
+        setView('feedback')
+      } else if (tab === 'changelog') {
+        setSelectedChangelogId(null)
+        setView('changelog')
+      } else {
+        // 'help' — the combined support surface (articles + messages)
+        setSelectedHelpSlug(null)
+        setSelectedCategory(null)
+        setView(supportRootView(tabs))
+      }
+    },
+    [tabs]
+  )
 
   const handleChangelogEntrySelect = useCallback((entryId: string) => {
     setSelectedChangelogId(entryId)
@@ -327,9 +425,15 @@ function WidgetPage() {
     setSelectedTicketId(ticket.id)
     setView('support-detail')
   }, [])
-
+  // Root views have no back arrow. 'messages' is the chat-only support root.
   const shellOnBack =
-    view !== 'home' && view !== 'changelog' && view !== 'help' ? handleBack : undefined
+    view !== 'overview' &&
+    view !== 'feedback' &&
+    view !== 'changelog' &&
+    view !== 'help' &&
+    view !== 'messages'
+      ? handleBack
+      : undefined
 
   return (
     <WidgetShell
@@ -341,7 +445,37 @@ function WidgetPage() {
       portalAccess={portalAccess}
       portalOrigin={portalOrigin}
     >
+      {view === 'overview' && (
+        <WidgetOverview
+          tabs={tabs}
+          onLeaveFeedback={() => handleTabChange('feedback')}
+          onGetHelp={() => handleTabChange('help')}
+          onResumeChat={() => openChat()}
+          onSeeChangelog={() => handleTabChange('changelog')}
+          onOpenChangelogEntry={(id) => {
+            setActiveTab('changelog')
+            handleChangelogEntrySelect(id)
+          }}
+        />
+      )}
+
       {view === 'changelog' && <WidgetChangelog onEntrySelect={handleChangelogEntrySelect} />}
+
+      {view === 'chat' && (
+        <WidgetLiveChat
+          key={chatTarget ?? 'active'}
+          helpEnabled={tabs.help}
+          onArticleSelect={handleHelpArticleSelect}
+          conversationTarget={chatTarget === null ? undefined : chatTarget}
+          linkPreviews={linkPreviews}
+        />
+      )}
+
+      {view === 'messages' && (
+        <div className="flex h-full flex-col overflow-y-auto px-3 pb-3">
+          <WidgetMessagesSection onOpenChat={openChat} />
+        </div>
+      )}
 
       {view === 'changelog-detail' && selectedChangelogId && (
         <WidgetChangelogDetail entryId={selectedChangelogId} />
@@ -351,6 +485,7 @@ function WidgetPage() {
         <WidgetHelp
           onArticleSelect={handleHelpArticleSelect}
           onCategorySelect={handleHelpCategorySelect}
+          onOpenChat={tabs.chat ? () => openChat() : undefined}
         />
       )}
 
@@ -370,8 +505,8 @@ function WidgetPage() {
       {/* Keep home mounted (hidden) when viewing post detail so form state is preserved */}
       <div
         className={
-          view === 'home' || view === 'post-detail'
-            ? view === 'home'
+          view === 'feedback' || view === 'post-detail'
+            ? view === 'feedback'
               ? 'flex flex-col h-full'
               : 'hidden'
             : 'hidden'

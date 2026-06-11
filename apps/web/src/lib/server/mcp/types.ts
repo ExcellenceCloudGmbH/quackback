@@ -12,6 +12,10 @@ export type McpScope =
   | 'manage:tickets'
   | 'read:contacts'
   | 'write:contacts'
+  | 'read:article'
+  | 'write:article'
+  | 'read:chat'
+  | 'write:chat'
 
 /**
  * Auth context resolved once in the route handler.

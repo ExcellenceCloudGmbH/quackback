@@ -24,6 +24,8 @@ export type NotificationType =
   | 'ticket_participant_removed'
   | 'ticket_shared'
   | 'ticket_unshared'
+  | 'chat_message'
+  | 'chat_mention'
 
 /**
  * Input for creating a single notification

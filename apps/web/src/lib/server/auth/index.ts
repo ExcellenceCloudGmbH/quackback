@@ -108,6 +108,7 @@ async function createAuth() {
     clientSecret: string
     disableSignUp?: boolean
     discoveryUrl?: string
+    pkce?: boolean
     authorizationUrl?: string
     tokenUrl?: string
     scopes?: string[]
@@ -185,6 +186,14 @@ async function createAuth() {
         clientSecret,
         discoveryUrl: cfg.discoveryUrl,
         scopes: ['openid', 'email', 'profile'],
+        // PKCE on the authorization-code grant. OAuth 2.1 IdPs (e.g.
+        // Supabase Auth's OAuth server) REQUIRE code_challenge on every
+        // authorize request and reject without it; RFC 7636 §5 makes the
+        // params backwards-compatible — IdPs that don't support PKCE
+        // simply ignore them (Okta, Auth0, Entra, Keycloak all accept
+        // it). Better-Auth threads code_verifier through the token
+        // exchange when this flag is set.
+        pkce: true,
         // Force the IdP to show the account-picker. Without this, an
         // admin typing demo@example.com at the login form gets
         // silently signed in as whoever the IdP already has a
@@ -257,6 +266,11 @@ async function createAuth() {
         ...(creds.authorizationUrl && { authorizationUrl: creds.authorizationUrl }),
         ...(creds.tokenUrl && { tokenUrl: creds.tokenUrl }),
         scopes: scopeStr.split(/\s+/).filter(Boolean),
+        // PKCE on every generic-oauth provider too (portal Custom OIDC).
+        // Same rationale as the 'sso' provider above: OAuth 2.1 IdPs
+        // require code_challenge; RFC 7636 params are ignored by IdPs
+        // without PKCE support, so it is safe to send unconditionally.
+        pkce: true,
         mapProfileToUser: mapProfileLocale,
       })
       trustedProviders.push(provider.id)
@@ -541,6 +555,10 @@ async function createAuth() {
           'manage:tickets',
           'read:contacts',
           'write:contacts',
+          'read:article',
+          'write:article',
+          'read:chat',
+          'write:chat',
         ],
 
         // Default scopes for dynamically registered clients
@@ -559,6 +577,10 @@ async function createAuth() {
           'manage:tickets',
           'read:contacts',
           'write:contacts',
+          'read:article',
+          'write:article',
+          'read:chat',
+          'write:chat',
         ],
 
         // MCP endpoint is a valid token audience
@@ -590,7 +612,7 @@ async function createAuth() {
 
       // Anonymous authentication plugin — enables voting without sign-up
       anonymous({
-        emailDomainName: 'anon.quackback.io',
+        emailDomainName: ANON_EMAIL_DOMAIN,
         disableDeleteAnonymousUser: true, // we handle cleanup ourselves to avoid cascade-deleting sessions
         async onLinkAccount({ anonymousUser, newUser }) {
           const anonUserId = anonymousUser.user.id as ReturnType<typeof generateId<'user'>>
@@ -783,6 +805,7 @@ export type Auth = AuthInstance
 export { type Role, isTeamMember, isAdmin } from '@/lib/shared/roles'
 
 import type { Role } from '@/lib/shared/roles'
+import { ANON_EMAIL_DOMAIN } from '@/lib/shared/anonymous-email'
 
 const levels: Record<Role, number> = {
   admin: 3,
