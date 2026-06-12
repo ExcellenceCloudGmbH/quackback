@@ -1,5 +1,5 @@
 /**
- * Widget ticket resolve — POST /api/widget/tickets/:ticketId/resolve
+ * Widget ticket resolve - POST /api/widget/tickets/:ticketId/resolve
  *
  * Lets the requester themselves mark a ticket as solved from the widget. The
  * agent UI keeps its richer status workflow; this is a single-button shortcut
@@ -9,7 +9,7 @@
  * Ownership: enforced by `getTicketForPortalUser` (404 on miss, never 403).
  *
  * If the ticket is already in the `solved` or `closed` category we return
- * `{ ok: true, alreadyResolved: true }` instead of attempting an update — a
+ * `{ ok: true, alreadyResolved: true }` instead of attempting an update - a
  * pointless `transitionStatus` call would write activity rows for a no-op.
  */
 import { createFileRoute } from '@tanstack/react-router'

@@ -5,6 +5,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { makeRequest, makeWidgetSession } from './widget-ticket-fixtures'
 
+vi.mock('zod', async () => {
+  const actual = await vi.importActual<typeof import('zod')>('zod')
+  return { ...actual, z: actual.z ?? actual.default }
+})
+
 vi.mock('@/lib/server/functions/widget-auth', () => ({
   getWidgetSession: vi.fn(),
 }))
@@ -26,20 +31,21 @@ vi.mock('@/lib/server/domains/tickets/ticket.portal-query', () => ({
 
 const findFirstStatusMock = vi.fn()
 const findManyStatusesMock = vi.fn()
-vi.mock('@/lib/server/db', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/server/db')>('@/lib/server/db')
-  return {
-    ...actual,
-    db: {
-      query: {
-        ticketStatuses: {
-          findFirst: (...args: unknown[]) => findFirstStatusMock(...args),
-          findMany: (...args: unknown[]) => findManyStatusesMock(...args),
-        },
+vi.mock('@/lib/server/db', () => ({
+  db: {
+    query: {
+      ticketStatuses: {
+        findFirst: (...args: unknown[]) => findFirstStatusMock(...args),
+        findMany: (...args: unknown[]) => findManyStatusesMock(...args),
       },
     },
-  }
-})
+  },
+  eq: vi.fn((...args: unknown[]) => ({ op: 'eq', args })),
+  inArray: vi.fn((...args: unknown[]) => ({ op: 'inArray', args })),
+  ticketStatuses: {
+    id: 'ticketStatuses.id',
+  },
+}))
 
 import { getWidgetSession } from '@/lib/server/functions/widget-auth'
 import { handleCreateWidgetTicket, handleListWidgetTickets } from '../tickets'

@@ -8,8 +8,24 @@ import type { EventData } from '../../events/types'
 import { isRetryableError } from '../../events/hook-utils'
 import { buildGitHubIssueBody } from './message'
 import { buildTicketIssueBody, buildTicketUpdateBody } from './ticket-message'
-import { DEFAULT_GITHUB_STATUS_MAPPINGS, type GitHubStatusMapping } from './types'
+import {
+  buildOutboundGitHubCommentBody,
+  createGitHubIssueComment,
+  deleteGitHubIssueComment,
+  findThreadLinkByThread,
+  getThreadAuthorName,
+  loadThreadForSync,
+  markThreadLinkDeleted,
+  updateGitHubIssueComment,
+  upsertThreadExternalLink,
+} from './ticket-comments'
+import {
+  DEFAULT_GITHUB_STATUS_MAPPINGS,
+  type GitHubStatusMapping,
+  type GitHubSyncDirection,
+} from './types'
 import type { TicketStatusCategory } from '@/lib/server/db'
+import type { IntegrationId, TicketId } from '@quackback/ids'
 
 const GITHUB_API = 'https://api.github.com'
 
@@ -32,8 +48,8 @@ async function logSyncAttempt(entry: SyncLogEntry): Promise<void> {
   try {
     const { db, integrationSyncLog } = await import('@/lib/server/db')
     await db.insert(integrationSyncLog).values({
-      integrationId: entry.integrationId,
-      ticketId: entry.ticketId ?? null,
+      integrationId: entry.integrationId as IntegrationId,
+      ticketId: entry.ticketId ? (entry.ticketId as TicketId) : null,
       externalId: entry.externalId ?? null,
       eventType: entry.eventType,
       direction: entry.direction,
@@ -106,6 +122,7 @@ export interface GitHubConfig {
   accessToken: string
   rootUrl: string
   integrationId?: string
+  syncDirection?: GitHubSyncDirection
   statusMappings?: Partial<Record<TicketStatusCategory, GitHubStatusMapping>>
   assigneeSync?: boolean
 }
@@ -236,11 +253,13 @@ async function withSyncLog(
       externalId: result.externalId,
       eventType: event.type,
       direction: 'outbound',
-      status: 'success',
+      status: result.skipped ? 'skipped' : 'success',
       durationMs,
     })
-    if (ticketId) await touchExternalLinkSyncedAt(ticketId, integrationId)
-    await clearIntegrationError(integrationId)
+    if (!result.skipped) {
+      if (ticketId) await touchExternalLinkSyncedAt(ticketId, integrationId)
+      await clearIntegrationError(integrationId)
+    }
   } else {
     await logSyncAttempt({
       integrationId,
@@ -262,11 +281,19 @@ export const githubHook: HookHandler = {
     const { channelId: ownerRepo } = target as GitHubTarget
     const ghConfig = config as GitHubConfig
     const { accessToken: _accessToken } = ghConfig
+    const syncDirection = ghConfig.syncDirection ?? 'outbound'
+    const outboundTicketSync = syncDirection === 'outbound' || syncDirection === 'bidirectional'
+
+    if (event.type.startsWith('ticket.') && !outboundTicketSync) {
+      return { success: true }
+    }
 
     // Route to appropriate handler based on event type
     switch (event.type) {
       case 'post.created':
-        return handlePostCreated(event, ownerRepo, ghConfig)
+        return withSyncLog(event, ownerRepo, ghConfig, () =>
+          handlePostCreated(event, ownerRepo, ghConfig)
+        )
       case 'ticket.created':
         return withSyncLog(event, ownerRepo, ghConfig, () =>
           handleTicketCreated(event, ownerRepo, ghConfig)
@@ -282,6 +309,18 @@ export const githubHook: HookHandler = {
       case 'ticket.updated':
         return withSyncLog(event, ownerRepo, ghConfig, () =>
           handleTicketUpdated(event, ownerRepo, ghConfig)
+        )
+      case 'ticket.thread_added':
+        return withSyncLog(event, ownerRepo, ghConfig, () =>
+          handleTicketThreadAdded(event, ownerRepo, ghConfig)
+        )
+      case 'ticket.thread_updated':
+        return withSyncLog(event, ownerRepo, ghConfig, () =>
+          handleTicketThreadUpdated(event, ownerRepo, ghConfig)
+        )
+      case 'ticket.thread_deleted':
+        return withSyncLog(event, ownerRepo, ghConfig, () =>
+          handleTicketThreadDeleted(event, ownerRepo, ghConfig)
         )
       default:
         return { success: true }
@@ -552,9 +591,162 @@ async function handleTicketUpdated(
   }
 }
 
+async function handleTicketThreadAdded(
+  event: EventData,
+  ownerRepo: string,
+  config: GitHubConfig
+): Promise<HookResult> {
+  if (event.type !== 'ticket.thread_added') return { success: true }
+  if (!config.integrationId) return skipped()
+  if (event.data.audience !== 'public') return skipped()
+
+  const { ticket, threadId, thread } = event.data
+  const issueNumber = await findTicketIssueNumber(ticket.id, config.integrationId)
+  if (!issueNumber) return skipped()
+
+  const existingLink = await findThreadLinkByThread({
+    integrationId: config.integrationId,
+    threadId,
+  })
+  if (existingLink?.status === 'active') {
+    return { success: true, externalId: existingLink.externalCommentId, skipped: true }
+  }
+
+  const fullThread = await loadThreadForSync(threadId)
+  if (!fullThread || fullThread.deletedAt || fullThread.audience !== 'public') return skipped()
+
+  try {
+    const authorName = await getThreadAuthorName(fullThread.principalId)
+    const body = buildOutboundGitHubCommentBody({
+      ticketId: ticket.id,
+      threadId,
+      integrationId: config.integrationId,
+      bodyText: fullThread.bodyText,
+      authorName,
+      isFromRequester: thread?.isFromRequester,
+    })
+    const comment = await createGitHubIssueComment({
+      ownerRepo,
+      issueNumber,
+      accessToken: config.accessToken,
+      body,
+    })
+
+    await upsertThreadExternalLink({
+      ticketId: ticket.id,
+      threadId,
+      integrationId: config.integrationId,
+      externalIssueId: issueNumber,
+      externalCommentId: comment.id,
+      externalUrl: comment.htmlUrl,
+      syncDirection: 'outbound',
+    })
+
+    return { success: true, externalId: comment.id, externalUrl: comment.htmlUrl ?? undefined }
+  } catch (error) {
+    return githubCommentError(error)
+  }
+}
+
+async function handleTicketThreadUpdated(
+  event: EventData,
+  ownerRepo: string,
+  config: GitHubConfig
+): Promise<HookResult> {
+  if (event.type !== 'ticket.thread_updated') return { success: true }
+  if (!config.integrationId) return skipped()
+  if (event.data.audience !== 'public') return skipped()
+
+  const { ticket, threadId, thread } = event.data
+  const link = await findThreadLinkByThread({ integrationId: config.integrationId, threadId })
+  if (!link || link.status !== 'active') return skipped()
+
+  const fullThread = await loadThreadForSync(threadId)
+  if (!fullThread || fullThread.deletedAt || fullThread.audience !== 'public') return skipped()
+
+  try {
+    const authorName = await getThreadAuthorName(fullThread.principalId)
+    const body = buildOutboundGitHubCommentBody({
+      ticketId: ticket.id,
+      threadId,
+      integrationId: config.integrationId,
+      bodyText: fullThread.bodyText,
+      authorName,
+      isFromRequester: thread.isFromRequester,
+    })
+    const comment = await updateGitHubIssueComment({
+      ownerRepo,
+      commentId: link.externalCommentId,
+      accessToken: config.accessToken,
+      body,
+    })
+
+    await upsertThreadExternalLink({
+      ticketId: ticket.id,
+      threadId,
+      integrationId: config.integrationId,
+      externalIssueId: link.externalIssueId,
+      externalCommentId: link.externalCommentId,
+      externalUrl: comment.htmlUrl,
+      syncDirection: 'outbound',
+    })
+
+    return {
+      success: true,
+      externalId: link.externalCommentId,
+      externalUrl: comment.htmlUrl ?? undefined,
+    }
+  } catch (error) {
+    return githubCommentError(error)
+  }
+}
+
+async function handleTicketThreadDeleted(
+  event: EventData,
+  ownerRepo: string,
+  config: GitHubConfig
+): Promise<HookResult> {
+  if (event.type !== 'ticket.thread_deleted') return { success: true }
+  if (!config.integrationId) return skipped()
+  if (event.data.audience !== 'public') return skipped()
+
+  const link = await findThreadLinkByThread({
+    integrationId: config.integrationId,
+    threadId: event.data.threadId,
+  })
+  if (!link || link.status !== 'active') return skipped()
+
+  try {
+    await deleteGitHubIssueComment({
+      ownerRepo,
+      commentId: link.externalCommentId,
+      accessToken: config.accessToken,
+    })
+    await markThreadLinkDeleted({
+      integrationId: config.integrationId,
+      externalCommentId: link.externalCommentId,
+    })
+    return { success: true, externalId: link.externalCommentId }
+  } catch (error) {
+    return githubCommentError(error)
+  }
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
+
+function skipped(): HookResult {
+  return { success: true, skipped: true }
+}
+
+function githubCommentError(error: unknown): HookResult {
+  return {
+    success: false,
+    error: error instanceof Error ? error.message : 'Unknown error',
+    shouldRetry: isRetryableError(error),
+  }
+}
 
 /**
  * Add a label to a GitHub issue. Creates the label if it doesn't exist.

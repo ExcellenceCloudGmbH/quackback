@@ -18,7 +18,6 @@ import {
   ArrowsRightLeftIcon,
   ClockIcon,
   ShieldExclamationIcon,
-  ClipboardDocumentListIcon,
   MegaphoneIcon,
 } from '@heroicons/react/24/solid'
 import { FilterSection } from '@/components/shared/filter-section'
@@ -53,7 +52,7 @@ export function buildNavSections(flags?: {
         },
         {
           label: 'Audit log',
-          to: '/admin/settings/security/audit-log',
+          to: '/admin/settings/audit',
           icon: DocumentTextIcon,
         },
         { label: 'Developers', to: '/admin/settings/developers', icon: CommandLineIcon },
@@ -85,10 +84,7 @@ export function buildNavSections(flags?: {
     },
     {
       label: 'Security',
-      items: [
-        { label: 'Roles & permissions', to: '/admin/settings/roles', icon: ShieldCheckIcon },
-        { label: 'Audit log', to: '/admin/settings/audit', icon: ClipboardDocumentListIcon },
-      ],
+      items: [{ label: 'Roles & permissions', to: '/admin/settings/roles', icon: ShieldCheckIcon }],
     },
     {
       label: 'Customization',

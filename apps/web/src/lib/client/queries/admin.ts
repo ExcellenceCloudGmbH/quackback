@@ -169,7 +169,14 @@ export const adminQueries = {
   teamMembers: () =>
     queryOptions({
       queryKey: ['admin', 'team', 'members'],
-      queryFn: async () => ensureData(await fetchTeamMembers(), 'teamMembers'),
+      queryFn: async () => {
+        const data = ensureData(await fetchTeamMembers(), 'teamMembers')
+        return data.map((member) => ({
+          ...member,
+          createdAt: new Date(member.createdAt),
+          lastSignInAt: member.lastSignInAt ? new Date(member.lastSignInAt) : null,
+        }))
+      },
       staleTime: 5 * 60 * 1000, // 5min - reference data for filters/assignments
     }),
 

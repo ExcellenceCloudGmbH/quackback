@@ -32,7 +32,7 @@ export interface GitHubIntegrationConfig {
   /** Repository in "owner/repo" format */
   channelId: string
   /** GitHub username of the user who connected */
-  username: string
+  username?: string
   /** Direction of sync: outbound (ticket→issue), inbound (issue→ticket), or both */
   syncDirection: GitHubSyncDirection
   /** Whether to sync assignees bidirectionally */
@@ -46,5 +46,5 @@ export interface GitHubIntegrationConfig {
   /** Whether to auto-create tickets from new GitHub issues */
   createTicketsFromIssues?: boolean
   /** Default inbox for tickets created from inbound GitHub issues */
-  defaultInboxId?: string
+  defaultInboxId?: string | null
 }

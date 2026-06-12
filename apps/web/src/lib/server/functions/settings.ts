@@ -158,7 +158,7 @@ export const fetchTeamMembersAndInvitations = createServerFn({ method: 'GET' }).
         .from(principal)
         .innerJoin(user, eq(principal.userId, user.id))
         .leftJoin(lastSession, eq(lastSession.userId, user.id))
-        .where(ne(principal.role, 'user'))
+        .where(and(eq(principal.type, 'user'), ne(principal.role, 'user')))
 
       // Serialise to ISO string on the boundary so the client type
       // stays narrow (`string | null`). `toIsoStringOrNull` handles

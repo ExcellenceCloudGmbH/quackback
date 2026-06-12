@@ -54,6 +54,7 @@ export * from './webhook-deliveries'
 
 // Ticketing — external links + user mappings (Phase 6: GitHub sync)
 export * from './ticket-external-links'
+export * from './ticket-thread-external-links'
 export * from './integration-user-mappings'
 
 // Ticketing — integration sync log (Phase 6: observability)

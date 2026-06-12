@@ -23,6 +23,8 @@ export interface HookResult {
   error?: string
   /** Whether this error is retryable (network issues, rate limits) */
   shouldRetry?: boolean
+  /** Successful no-op that should be logged as skipped when the integration supports it. */
+  skipped?: boolean
 }
 
 /**

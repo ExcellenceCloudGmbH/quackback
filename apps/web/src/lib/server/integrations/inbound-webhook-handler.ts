@@ -114,11 +114,15 @@ async function handleGitHubInboundWebhook(
     })
   }
 
-  // Try ticket path first (issues.opened, issues.closed, etc.)
-  if (payload.issue) {
+  const githubEvent = request.headers.get('X-GitHub-Event') ?? ''
+
+  // Try ticket path first for issue metadata events.
+  // A GitHub issue can also be linked to a feedback post, so don't let ticket
+  // sync short-circuit the legacy post status mapping below for `issues`.
+  if (githubEvent === 'issues' && payload.issue) {
     try {
       const { handleGitHubTicketEvent } = await import('./github/ticket-inbound')
-      const handled = await handleGitHubTicketEvent(
+      await handleGitHubTicketEvent(
         payload as import('./github/ticket-inbound').GitHubIssuePayload,
         {
           id: matched.id,
@@ -126,12 +130,28 @@ async function handleGitHubInboundWebhook(
           config: config as unknown as import('./github/types').GitHubIntegrationConfig,
         }
       )
-      if (handled) return new Response('OK', { status: 200 })
     } catch (error) {
       console.error('[Inbound] GitHub ticket handler error:', error)
-      // Still return 200 to prevent retries
-      return new Response('OK', { status: 200 })
+      // Continue to post status sync. The webhook still returns 200 below so
+      // GitHub does not retry a ticket-only failure indefinitely.
     }
+  }
+
+  if (githubEvent === 'issue_comment' && payload.issue) {
+    try {
+      const { handleGitHubIssueCommentEvent } = await import('./github/ticket-inbound')
+      await handleGitHubIssueCommentEvent(
+        payload as import('./github/ticket-inbound').GitHubIssueCommentPayload,
+        {
+          id: matched.id,
+          principalId: matched.principalId,
+          config: config as unknown as import('./github/types').GitHubIntegrationConfig,
+        }
+      )
+    } catch (error) {
+      console.error('[Inbound] GitHub issue_comment handler error:', error)
+    }
+    return new Response('OK', { status: 200 })
   }
 
   // Fall through to existing post status sync path

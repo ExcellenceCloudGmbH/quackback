@@ -1,0 +1,385 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type { EventData, PostCreatedEvent } from '../../../events/types'
+
+const onConflictDoUpdateMock = vi.fn()
+const insertValuesMock = vi.fn(() => ({
+  onConflictDoUpdate: onConflictDoUpdateMock,
+  onConflictDoNothing: vi.fn(),
+}))
+const insertMock = vi.fn((_table: unknown) => ({ values: insertValuesMock }))
+const updateWhereMock = vi.fn()
+const updateSetMock = vi.fn(() => ({ where: updateWhereMock }))
+const updateMock = vi.fn((_table: unknown) => ({ set: updateSetMock }))
+const findFirstTicketLinkMock = vi.fn()
+const findFirstThreadLinkMock = vi.fn()
+const findFirstThreadMock = vi.fn()
+const findFirstPrincipalMock = vi.fn()
+
+vi.mock('@/lib/server/db', () => ({
+  db: {
+    insert: (table: unknown) => insertMock(table),
+    update: (table: unknown) => updateMock(table),
+    query: {
+      ticketExternalLinks: { findFirst: (...args: unknown[]) => findFirstTicketLinkMock(...args) },
+      ticketThreadExternalLinks: {
+        findFirst: (...args: unknown[]) => findFirstThreadLinkMock(...args),
+      },
+      ticketThreads: { findFirst: (...args: unknown[]) => findFirstThreadMock(...args) },
+      principal: { findFirst: (...args: unknown[]) => findFirstPrincipalMock(...args) },
+    },
+  },
+  integrationSyncLog: {},
+  integrations: { id: 'id', errorCount: 'errorCount' },
+  ticketExternalLinks: {
+    ticketId: 'ticketId',
+    integrationId: 'integrationId',
+    status: 'status',
+  },
+  ticketThreadExternalLinks: {
+    ticketId: 'ticketId',
+    threadId: 'threadId',
+    integrationId: 'integrationId',
+    externalIssueId: 'externalIssueId',
+    externalCommentId: 'externalCommentId',
+    externalUrl: 'externalUrl',
+    syncDirection: 'syncDirection',
+    status: 'status',
+    lastSyncedAt: 'lastSyncedAt',
+    updatedAt: 'updatedAt',
+  },
+  ticketThreads: { id: 'id' },
+  principal: { id: 'id' },
+  integrationUserMappings: {
+    integrationId: 'integrationId',
+    principalId: 'principalId',
+  },
+  eq: vi.fn(),
+  and: vi.fn(),
+  sql: vi.fn(),
+}))
+
+import { githubHook } from '../hook'
+
+function mockFetch(status: number, body: unknown = {}) {
+  return vi.fn().mockResolvedValue({
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    text: async () => (typeof body === 'string' ? body : JSON.stringify(body)),
+  })
+}
+
+function makePostCreatedEvent(): PostCreatedEvent {
+  return {
+    id: 'evt-1',
+    type: 'post.created',
+    timestamp: '2026-06-12T00:00:00Z',
+    actor: { type: 'user', principalId: 'principal_1' },
+    data: {
+      post: {
+        id: 'post_1',
+        title: 'Search is slow',
+        content: '<p>Search takes several seconds.</p>',
+        boardId: 'board_1',
+        boardSlug: 'feedback',
+        voteCount: 3,
+      },
+    },
+  }
+}
+
+const target = { channelId: 'org/repo' }
+const config = {
+  accessToken: 'gh_test_token',
+  rootUrl: 'https://app.example.com',
+  integrationId: 'integration_gh1',
+  syncDirection: 'outbound',
+}
+
+function makeThreadEvent(
+  type: 'ticket.thread_added' | 'ticket.thread_updated' | 'ticket.thread_deleted',
+  audience: 'public' | 'internal' | 'shared_team' = 'public'
+): EventData {
+  const base = {
+    id: `evt-${type}`,
+    type,
+    timestamp: '2026-06-12T00:00:00Z',
+    actor: { type: 'service', principalId: 'principal_agent1' },
+    data: {
+      ticket: {
+        id: 'ticket_1',
+        subject: 'Login issue',
+        descriptionText: null,
+        statusId: null,
+        statusCategory: null,
+        priority: 'normal',
+        channel: 'portal',
+        visibility: 'team',
+        inboxId: 'inbox_support',
+        primaryTeamId: null,
+        assigneePrincipalId: null,
+        assigneeTeamId: null,
+        requesterPrincipalId: 'principal_customer1',
+        requesterContactId: null,
+      },
+      threadId: 'ticket_thread_1',
+      audience,
+      sharedWithTeamId: null,
+    },
+  }
+
+  if (type === 'ticket.thread_deleted') {
+    return {
+      ...base,
+      data: { ...base.data, deletedByPrincipalId: 'principal_agent1' },
+    } as EventData
+  }
+
+  return {
+    ...base,
+    data: {
+      ...base.data,
+      thread: {
+        id: 'ticket_thread_1',
+        audience,
+        bodyTextPreview: 'Full body preview',
+        bodyTextTruncated: false,
+        authorPrincipalId: 'principal_agent1',
+        isFromRequester: false,
+        sharedWithTeamId: null,
+        createdAt: '2026-06-12T00:00:00Z',
+        ...(type === 'ticket.thread_updated' ? { editedAt: '2026-06-12T00:01:00Z' } : {}),
+      },
+    },
+  } as EventData
+}
+
+describe('githubHook sync logging', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.unstubAllGlobals()
+    findFirstTicketLinkMock.mockResolvedValue({ externalId: '42' })
+    findFirstThreadLinkMock.mockResolvedValue(null)
+    findFirstThreadMock.mockResolvedValue({
+      id: 'ticket_thread_1',
+      ticketId: 'ticket_1',
+      principalId: 'principal_agent1',
+      audience: 'public',
+      bodyText: 'Full synced thread body',
+      createdAt: new Date('2026-06-12T00:00:00Z'),
+      editedAt: null,
+      deletedAt: null,
+    })
+    findFirstPrincipalMock.mockResolvedValue({
+      displayName: 'Ada Agent',
+      user: { name: 'Ada Agent', email: 'ada@example.com' },
+    })
+  })
+
+  it('logs successful post issue syncs', async () => {
+    vi.stubGlobal(
+      'fetch',
+      mockFetch(201, {
+        number: 42,
+        html_url: 'https://github.com/org/repo/issues/42',
+      })
+    )
+
+    const result = await githubHook.run(makePostCreatedEvent(), target, config)
+
+    expect(result).toEqual({
+      success: true,
+      externalId: '42',
+      externalUrl: 'https://github.com/org/repo/issues/42',
+    })
+    expect(insertValuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        integrationId: 'integration_gh1',
+        ticketId: null,
+        externalId: '42',
+        eventType: 'post.created',
+        direction: 'outbound',
+        status: 'success',
+        errorMessage: null,
+        durationMs: expect.any(Number),
+      })
+    )
+  })
+
+  it('logs failed post issue syncs', async () => {
+    vi.stubGlobal('fetch', mockFetch(401, { message: 'Bad credentials' }))
+
+    const result = await githubHook.run(makePostCreatedEvent(), target, config)
+
+    expect(result).toEqual({
+      success: false,
+      error: 'Authentication failed. Please reconnect GitHub.',
+      shouldRetry: false,
+    })
+    expect(insertValuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        integrationId: 'integration_gh1',
+        ticketId: null,
+        externalId: null,
+        eventType: 'post.created',
+        direction: 'outbound',
+        status: 'failed',
+        errorMessage: 'Authentication failed. Please reconnect GitHub.',
+        durationMs: expect.any(Number),
+      })
+    )
+  })
+
+  it('does not log non-GitHub events', async () => {
+    const result = await githubHook.run(
+      { type: 'post.status_changed' } as unknown as EventData,
+      target,
+      config
+    )
+
+    expect(result).toEqual({ success: true })
+    expect(insertValuesMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('githubHook ticket comment sync', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.unstubAllGlobals()
+    findFirstTicketLinkMock.mockResolvedValue({ externalId: '42' })
+    findFirstThreadLinkMock.mockResolvedValue(null)
+    findFirstThreadMock.mockResolvedValue({
+      id: 'ticket_thread_1',
+      ticketId: 'ticket_1',
+      principalId: 'principal_agent1',
+      audience: 'public',
+      bodyText: 'Full synced thread body',
+      createdAt: new Date('2026-06-12T00:00:00Z'),
+      editedAt: null,
+      deletedAt: null,
+    })
+    findFirstPrincipalMock.mockResolvedValue({
+      displayName: 'Ada Agent',
+      user: { name: 'Ada Agent', email: 'ada@example.com' },
+    })
+  })
+
+  it('creates one GitHub comment and link row for a public thread', async () => {
+    const fetchMock = mockFetch(201, {
+      id: 1001,
+      html_url: 'https://github.com/org/repo/issues/42#issuecomment-1001',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await githubHook.run(makeThreadEvent('ticket.thread_added'), target, config)
+
+    expect(result).toEqual({
+      success: true,
+      externalId: '1001',
+      externalUrl: 'https://github.com/org/repo/issues/42#issuecomment-1001',
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/org/repo/issues/42/comments',
+      expect.objectContaining({
+        method: 'POST',
+        body: expect.stringContaining('Full synced thread body'),
+      })
+    )
+    expect(fetchMock.mock.calls[0][1].body).toContain(
+      '<!-- quackback:ticket-thread ticketId=ticket_1 threadId=ticket_thread_1 integrationId=integration_gh1 -->'
+    )
+    expect(insertValuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ticketId: 'ticket_1',
+        threadId: 'ticket_thread_1',
+        integrationType: 'github',
+        externalIssueId: '42',
+        externalCommentId: '1001',
+        syncDirection: 'outbound',
+      })
+    )
+  })
+
+  it('skips internal and shared-team threads', async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const internalResult = await githubHook.run(
+      makeThreadEvent('ticket.thread_added', 'internal'),
+      target,
+      config
+    )
+    const sharedResult = await githubHook.run(
+      makeThreadEvent('ticket.thread_added', 'shared_team'),
+      target,
+      config
+    )
+
+    expect(internalResult).toEqual({ success: true, skipped: true })
+    expect(sharedResult).toEqual({ success: true, skipped: true })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it('patches the linked GitHub comment when a public thread is edited', async () => {
+    findFirstThreadLinkMock.mockResolvedValueOnce({
+      ticketId: 'ticket_1',
+      threadId: 'ticket_thread_1',
+      externalIssueId: '42',
+      externalCommentId: '1001',
+      status: 'active',
+    })
+    const fetchMock = mockFetch(200, {
+      html_url: 'https://github.com/org/repo/issues/42#issuecomment-1001',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await githubHook.run(makeThreadEvent('ticket.thread_updated'), target, config)
+
+    expect(result).toEqual({
+      success: true,
+      externalId: '1001',
+      externalUrl: 'https://github.com/org/repo/issues/42#issuecomment-1001',
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/org/repo/issues/comments/1001',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: expect.stringContaining('Full synced thread body'),
+      })
+    )
+  })
+
+  it('deletes the linked GitHub comment when a public thread is deleted', async () => {
+    findFirstThreadLinkMock.mockResolvedValueOnce({
+      ticketId: 'ticket_1',
+      threadId: 'ticket_thread_1',
+      externalIssueId: '42',
+      externalCommentId: '1001',
+      status: 'active',
+    })
+    const fetchMock = mockFetch(204, {})
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await githubHook.run(makeThreadEvent('ticket.thread_deleted'), target, config)
+
+    expect(result).toEqual({ success: true, externalId: '1001' })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/org/repo/issues/comments/1001',
+      expect.objectContaining({ method: 'DELETE' })
+    )
+    expect(updateSetMock).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'deleted', lastSyncedAt: expect.any(Date) })
+    )
+  })
+
+  it('skips public threads when the ticket has no linked GitHub issue', async () => {
+    findFirstTicketLinkMock.mockResolvedValueOnce(null)
+    const fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await githubHook.run(makeThreadEvent('ticket.thread_added'), target, config)
+
+    expect(result).toEqual({ success: true, skipped: true })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+})

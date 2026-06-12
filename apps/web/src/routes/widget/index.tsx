@@ -10,9 +10,11 @@ import { WidgetShell } from '@/components/widget/widget-shell'
 import {
   type WidgetTab,
   type WidgetView,
+  type EnabledTabs,
   resolveInitialTab,
   resolveInitialView,
   supportRootView,
+  supportEnabled,
   homeEnabled,
 } from '@/components/widget/widget-nav'
 import { WidgetHome } from '@/components/widget/widget-home'
@@ -161,6 +163,20 @@ interface SuccessPost {
   board: { id: string; name: string; slug: string }
 }
 
+type SupportReturnView = Extract<WidgetView, 'overview' | 'help' | 'messages' | 'feedback'>
+
+function resolveSupportReturnView(tabs: EnabledTabs): SupportReturnView {
+  if (homeEnabled(tabs)) return 'overview'
+  if (supportEnabled(tabs)) return supportRootView(tabs)
+  return 'feedback'
+}
+
+function activeTabForSupportReturnView(view: SupportReturnView): WidgetTab {
+  if (view === 'overview') return 'home'
+  if (view === 'help' || view === 'messages') return 'help'
+  return 'feedback'
+}
+
 function WidgetPage() {
   const {
     posts,
@@ -226,6 +242,9 @@ function WidgetPage() {
   } | null>(null)
   const [createdPosts, setCreatedPosts] = useState<typeof posts>([])
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null)
+  const [supportReturnView, setSupportReturnView] = useState<SupportReturnView>(() =>
+    resolveSupportReturnView(tabs)
+  )
 
   const allPosts = useMemo(() => {
     const createdIds = new Set(createdPosts.map((p) => p.id))
@@ -238,6 +257,18 @@ function WidgetPage() {
     setView('chat')
   }, [])
 
+  const openSupport = useCallback(
+    (returnView?: SupportReturnView, ticketId?: string) => {
+      if (!ticketingEnabled) return
+      const nextReturnView = returnView ?? resolveSupportReturnView(tabs)
+      setSupportReturnView(nextReturnView)
+      setActiveTab(activeTabForSupportReturnView(nextReturnView))
+      setSelectedTicketId(ticketId ?? null)
+      setView(ticketId ? 'support-detail' : 'support-list')
+    },
+    [tabs, ticketingEnabled]
+  )
+
   // Listen for quackback:open messages from the SDK
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
@@ -247,13 +278,7 @@ function WidgetPage() {
 
       const opts = msg.data as { view?: string; ticketId?: string }
       if (opts.view === 'support' && ticketingEnabled) {
-        setActiveTab('feedback')
-        if (opts.ticketId) {
-          setSelectedTicketId(opts.ticketId)
-          setView('support-detail' as WidgetView)
-        } else {
-          setView('support-list' as WidgetView)
-        }
+        openSupport(undefined, opts.ticketId)
       } else if (opts.view === 'changelog' && tabs.changelog) {
         setActiveTab('changelog')
         setView('changelog')
@@ -269,7 +294,7 @@ function WidgetPage() {
     }
     window.addEventListener('message', handleMessage)
     return () => window.removeEventListener('message', handleMessage)
-  }, [tabs, openChat, ticketingEnabled])
+  }, [tabs, openChat, openSupport, ticketingEnabled])
 
   const handlePostCreated = useCallback((post: SuccessPost) => {
     setCreatedPosts((prev) => [
@@ -312,14 +337,20 @@ function WidgetPage() {
       setView('help')
       return
     }
-    if ((view as string) === 'support-detail') {
+    if (view === 'support-detail') {
       setSelectedTicketId(null)
-      setView('support-list' as WidgetView)
+      setView('support-list')
       return
     }
-    if ((view as string) === 'support-new' || (view as string) === 'support-list') {
+    if (view === 'support-new') {
       setSelectedTicketId(null)
-      setView('feedback')
+      setView('support-list')
+      return
+    }
+    if (view === 'support-list') {
+      setSelectedTicketId(null)
+      setActiveTab(activeTabForSupportReturnView(supportReturnView))
+      setView(supportReturnView)
       return
     }
     if (view === 'chat') {
@@ -330,7 +361,7 @@ function WidgetPage() {
     }
     setSelectedPostId(null)
     setView('feedback')
-  }, [view, selectedCategory, tabs])
+  }, [view, selectedCategory, tabs, supportReturnView])
 
   const handleTabChange = useCallback(
     (tab: WidgetTab) => {
@@ -376,29 +407,24 @@ function WidgetPage() {
     setView('help-detail')
   }, [])
 
-  const handleSupportOpen = useCallback(() => {
-    if (!ticketingEnabled) return
-    setActiveTab('feedback')
-    setSelectedTicketId(null)
-    setView('support-list' as WidgetView)
-  }, [ticketingEnabled])
-
   const handleSupportNewTicket = useCallback(() => {
-    setView('support-new' as WidgetView)
+    setView('support-new')
   }, [])
 
   const handleSupportTicketSelect = useCallback((ticketId: string) => {
     setSelectedTicketId(ticketId)
-    setView('support-detail' as WidgetView)
+    setView('support-detail')
   }, [])
 
   const handleSupportTicketCreated = useCallback((ticket: { id: string }) => {
     setSelectedTicketId(ticket.id)
-    setView('support-detail' as WidgetView)
+    setView('support-detail')
   }, [])
 
+  const showFeedbackSupportCard = ticketingEnabled && !homeEnabled(tabs) && !supportEnabled(tabs)
+
   // Root views have no back arrow. 'messages' is the chat-only support root.
-  // Root views have no back arrow. Support-list IS a non-root view (back goes to feedback).
+  // Ticketing views keep a back arrow and return through their recorded origin.
   const shellOnBack =
     view !== 'overview' &&
     view !== 'feedback' &&
@@ -423,6 +449,7 @@ function WidgetPage() {
           tabs={tabs}
           onLeaveFeedback={() => handleTabChange('feedback')}
           onGetHelp={() => handleTabChange('help')}
+          onOpenSupport={ticketingEnabled ? () => openSupport('overview') : undefined}
           onResumeChat={() => openChat()}
           onSeeChangelog={() => handleTabChange('changelog')}
           onOpenChangelogEntry={(id) => {
@@ -446,6 +473,11 @@ function WidgetPage() {
 
       {view === 'messages' && (
         <div className="flex h-full flex-col overflow-y-auto px-3 pb-3">
+          {ticketingEnabled && (
+            <div className="w-full pt-2">
+              <WidgetSupportCard onOpen={() => openSupport('messages')} />
+            </div>
+          )}
           <WidgetMessagesSection onOpenChat={openChat} />
         </div>
       )}
@@ -459,6 +491,7 @@ function WidgetPage() {
           onArticleSelect={handleHelpArticleSelect}
           onCategorySelect={handleHelpCategorySelect}
           onOpenChat={tabs.chat ? () => openChat() : undefined}
+          onOpenSupport={ticketingEnabled ? () => openSupport(supportRootView(tabs)) : undefined}
         />
       )}
 
@@ -496,21 +529,23 @@ function WidgetPage() {
           onPostCreated={handlePostCreated}
           imageUploadsInWidget={imageUploadsInWidget}
           supportSlot={
-            ticketingEnabled ? <WidgetSupportCard onOpen={handleSupportOpen} /> : undefined
+            showFeedbackSupportCard ? (
+              <WidgetSupportCard onOpen={() => openSupport('feedback')} />
+            ) : undefined
           }
         />
       </div>
 
-      {(view as string) === 'support-list' && (
+      {view === 'support-list' && (
         <WidgetSupportList
           onNewTicket={handleSupportNewTicket}
           onTicketSelect={handleSupportTicketSelect}
         />
       )}
 
-      {(view as string) === 'support-new' && <WidgetSupportNew onCreated={handleSupportTicketCreated} />}
+      {view === 'support-new' && <WidgetSupportNew onCreated={handleSupportTicketCreated} />}
 
-      {(view as string) === 'support-detail' && selectedTicketId && (
+      {view === 'support-detail' && selectedTicketId && (
         <WidgetSupportDetail ticketId={selectedTicketId} />
       )}
 

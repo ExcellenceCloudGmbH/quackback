@@ -1,5 +1,16 @@
-import { pgTable, text, timestamp, varchar, integer, jsonb, index, uuid } from 'drizzle-orm/pg-core'
+import {
+  pgTable,
+  text,
+  timestamp,
+  varchar,
+  integer,
+  jsonb,
+  index,
+  uuid,
+  foreignKey,
+} from 'drizzle-orm/pg-core'
 import { relations, sql } from 'drizzle-orm'
+import { typeIdColumn, typeIdColumnNullable } from '@quackback/ids/drizzle'
 import { integrations } from './integrations'
 import { tickets } from './tickets'
 
@@ -16,8 +27,8 @@ export const integrationSyncLog = pgTable(
   'integration_sync_log',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    integrationId: uuid('integration_id').notNull(),
-    ticketId: uuid('ticket_id'),
+    integrationId: typeIdColumn('integration')('integration_id').notNull(),
+    ticketId: typeIdColumnNullable('ticket')('ticket_id'),
     externalId: text('external_id'),
     eventType: text('event_type').notNull(),
     direction: varchar('direction', { length: 20 }).notNull(),
@@ -28,6 +39,16 @@ export const integrationSyncLog = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
   },
   (table) => [
+    foreignKey({
+      name: 'integration_sync_log_integration_id_fk',
+      columns: [table.integrationId],
+      foreignColumns: [integrations.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'integration_sync_log_ticket_id_fk',
+      columns: [table.ticketId],
+      foreignColumns: [tickets.id],
+    }).onDelete('set null'),
     index('integration_sync_log_integration_created_idx').on(table.integrationId, table.createdAt),
     index('integration_sync_log_ticket_created_idx').on(table.ticketId, table.createdAt),
     index('integration_sync_log_status_idx')

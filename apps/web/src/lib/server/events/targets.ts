@@ -150,6 +150,26 @@ const SUBSCRIBER_EVENT_TYPES = [
 const MENTION_EVENT_TYPES = ['post.mentioned'] as const
 const AI_EVENT_TYPES = ['post.created'] as const
 const SUMMARY_EVENT_TYPES = ['post.created', 'comment.created'] as const
+const EXTERNAL_TICKET_THREAD_EVENTS = [
+  'ticket.thread_added',
+  'ticket.thread_updated',
+  'ticket.thread_deleted',
+] as const
+
+function isExternalTicketThreadEvent(event: EventData): boolean {
+  return EXTERNAL_TICKET_THREAD_EVENTS.includes(
+    event.type as (typeof EXTERNAL_TICKET_THREAD_EVENTS)[number]
+  )
+}
+
+function isNonPublicTicketThreadEvent(event: EventData): boolean {
+  return (
+    isExternalTicketThreadEvent(event) &&
+    ((event.data as { audience?: string }).audience === 'internal' ||
+      (event.data as { audience?: string }).audience === 'shared_team')
+  )
+}
+
 /**
  * Get all hook targets for an event.
  * Gracefully handles errors - returns empty array on failure.
@@ -274,11 +294,7 @@ async function getIntegrationTargets(
   // Never forward internal or shared-team ticket threads to external integrations.
   // Internal threads are private agent-only context; shared-team threads are
   // inter-team collaboration not meant for external consumers.
-  if (
-    event.type === 'ticket.thread_added' &&
-    ((event.data as { audience?: string }).audience === 'internal' ||
-      (event.data as { audience?: string }).audience === 'shared_team')
-  ) {
+  if (isNonPublicTicketThreadEvent(event)) {
     return []
   }
 
@@ -313,13 +329,12 @@ async function getIntegrationTargets(
       continue
     }
 
-    // Apply inbox filter — match if event inbox overlaps with filter
-    if (
-      filters?.inboxIds?.length &&
-      inboxIds.length > 0 &&
-      !inboxIds.some((id) => filters.inboxIds!.includes(id))
-    ) {
-      continue
+    // Apply inbox filter to ticket events. A scoped integration is opt-in:
+    // ticket events without an inbox must not fan out to inbox-scoped targets.
+    if (filters?.inboxIds?.length && event.type.startsWith('ticket.')) {
+      if (inboxIds.length === 0 || !inboxIds.some((id) => filters.inboxIds!.includes(id))) {
+        continue
+      }
     }
 
     const integrationConfig = (m.integrationConfig as Record<string, unknown>) || {}
@@ -350,7 +365,12 @@ async function getIntegrationTargets(
     targets.push({
       type: m.integrationType,
       target: { channelId },
-      config: { accessToken, rootUrl: context.portalBaseUrl, integrationId: m.integrationId },
+      config: {
+        ...integrationConfig,
+        accessToken,
+        rootUrl: context.portalBaseUrl,
+        integrationId: m.integrationId,
+      },
     })
   }
 
@@ -908,11 +928,7 @@ async function getWebhookTargets(event: EventData): Promise<HookTarget[]> {
   // Never deliver internal or shared-team ticket notes to external webhooks —
   // internal threads are private agent-only context; shared-team threads are
   // inter-team collaboration not meant for external consumers.
-  if (
-    event.type === 'ticket.thread_added' &&
-    ((event.data as { audience?: string }).audience === 'internal' ||
-      (event.data as { audience?: string }).audience === 'shared_team')
-  ) {
+  if (isNonPublicTicketThreadEvent(event)) {
     return []
   }
 

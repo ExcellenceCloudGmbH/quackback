@@ -668,7 +668,7 @@ export function WidgetHomeAnimated({
                         bubbleMenu: true,
                         slashMenu: true,
                       }}
-                      onImageUpload={uploadImage}
+                      onImageUpload={imageUploadsInWidget ? uploadImage : undefined}
                       className="text-sm"
                     />
                   </motion.div>

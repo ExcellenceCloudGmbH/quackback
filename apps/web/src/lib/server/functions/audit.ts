@@ -9,6 +9,10 @@ import { createServerFn } from '@tanstack/react-start'
 import { requirePermission } from './auth-helpers'
 import { PERMISSIONS } from '@/lib/server/domains/authz'
 import { listEvents, listAuditEvents, listDistinctActions } from '@/lib/server/domains/audit'
+import {
+  listUnifiedAuditActions,
+  listUnifiedAuditEvents,
+} from '@/lib/server/domains/audit/audit.unified'
 import type { PrincipalId } from '@quackback/ids'
 
 export const listAuditEventsFn = createServerFn({ method: 'GET' })
@@ -77,4 +81,46 @@ export const listAuditEventsPagedFn = createServerFn({ method: 'GET' })
 export const getAuditActionsFn = createServerFn({ method: 'GET' }).handler(async () => {
   await requirePermission(PERMISSIONS.AUDIT_VIEW)
   return listDistinctActions()
+})
+
+export const listUnifiedAuditEventsFn = createServerFn({ method: 'GET' })
+  .inputValidator(
+    z.object({
+      origin: z.enum(['workspace', 'security']).optional(),
+      principalId: z.string().optional(),
+      actorEmail: z.string().max(254).optional(),
+      action: z.string().optional(),
+      actionPrefix: z.string().optional(),
+      targetType: z.string().optional(),
+      targetId: z.string().optional(),
+      source: z.enum(['web', 'api', 'integration', 'system', 'mcp']).optional(),
+      from: z.string().datetime().optional(),
+      to: z.string().datetime().optional(),
+      cursor: z.string().optional(),
+      limit: z.number().int().min(1).max(200).optional(),
+      excludeSecurityActions: z.array(z.string()).optional(),
+    })
+  )
+  .handler(async ({ data }) => {
+    await requirePermission(PERMISSIONS.AUDIT_VIEW)
+    return listUnifiedAuditEvents({
+      origin: data.origin,
+      principalId: data.principalId as PrincipalId | undefined,
+      actorEmail: data.actorEmail,
+      action: data.action,
+      actionPrefix: data.actionPrefix,
+      targetType: data.targetType,
+      targetId: data.targetId,
+      source: data.source,
+      from: data.from ? new Date(data.from) : undefined,
+      to: data.to ? new Date(data.to) : undefined,
+      cursor: data.cursor,
+      limit: data.limit,
+      excludeSecurityActions: data.excludeSecurityActions,
+    })
+  })
+
+export const getUnifiedAuditActionsFn = createServerFn({ method: 'GET' }).handler(async () => {
+  await requirePermission(PERMISSIONS.AUDIT_VIEW)
+  return listUnifiedAuditActions()
 })

@@ -1,12 +1,21 @@
 /**
- * Filter bar for the audit log. All controls drive a single `AuditFilters`
- * object; changes propagate up immediately (the underlying infinite query
- * resets its cursor when filters change).
+ * Filter bar for the unified audit log. All controls drive a single
+ * `AuditFilters` object; changes propagate up immediately and the underlying
+ * infinite query resets its cursor when filters change.
  */
 import { useState, useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import type { PrincipalId } from '@quackback/ids'
-import { auditQueries, type AuditFilters, type AuditSourceFilter } from '@/lib/client/queries/audit'
+import {
+  auditQueries,
+  defaultAuditFilters,
+  rangeToFromIso,
+  type AuditFilters,
+  type AuditOriginFilter,
+  type AuditSourceFilter,
+  type AuditTimeRange,
+} from '@/lib/client/queries/audit'
+import { useDebouncedValue } from '@/lib/client/hooks/use-debounced-value'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -27,6 +36,19 @@ interface Props {
 
 const SOURCES: AuditSourceFilter[] = ['web', 'api', 'integration', 'system', 'mcp']
 const ALL = '__all__'
+const ORIGINS: Array<{ label: string; value: AuditOriginFilter | typeof ALL }> = [
+  { label: 'All', value: ALL },
+  { label: 'Workspace', value: 'workspace' },
+  { label: 'Security', value: 'security' },
+]
+
+const TIME_RANGES: Array<{ label: string; value: AuditTimeRange }> = [
+  { label: 'Last 7 days', value: '7d' },
+  { label: 'Last 30 days', value: '30d' },
+  { label: 'Last 90 days', value: '90d' },
+  { label: 'All time', value: 'all' },
+  { label: 'Custom', value: 'custom' },
+]
 
 function isoToLocal(iso: string | undefined): string {
   if (!iso) return ''
@@ -53,11 +75,39 @@ export function AuditFilterBar({ value, onChange }: Props) {
   const currentAction = value.action ?? value.actionPrefix ?? ''
   const [prefixMode, setPrefixMode] = useState(Boolean(value.actionPrefix))
 
-  // Local target-type buffer so typing doesn't refetch on every keystroke.
+  const [timeRange, setTimeRange] = useState<AuditTimeRange>('30d')
+  const [actorEmail, setActorEmail] = useState(value.actorEmail ?? '')
+  const debouncedActorEmail = useDebouncedValue(actorEmail, 300)
+
+  // Local text buffers so typing doesn't refetch every server query.
   const [targetType, setTargetType] = useState(value.targetType ?? '')
+  const [targetId, setTargetId] = useState(value.targetId ?? '')
+
   useEffect(() => {
     setTargetType(value.targetType ?? '')
   }, [value.targetType])
+
+  useEffect(() => {
+    setTargetId(value.targetId ?? '')
+  }, [value.targetId])
+
+  useEffect(() => {
+    setActorEmail(value.actorEmail ?? '')
+  }, [value.actorEmail])
+
+  useEffect(() => {
+    const trimmed = debouncedActorEmail.trim()
+    const next = trimmed || undefined
+    if ((value.actorEmail ?? undefined) !== next) {
+      onChange({ ...value, actorEmail: next })
+    }
+  }, [debouncedActorEmail, onChange, value])
+
+  const setOrigin = (next: string) =>
+    onChange({
+      ...value,
+      origin: next === ALL ? undefined : (next as AuditOriginFilter),
+    })
 
   const setActor = (next: PrincipalId | null) => onChange({ ...value, principalId: next })
 
@@ -84,22 +134,46 @@ export function AuditFilterBar({ value, onChange }: Props) {
       source: next === ALL ? undefined : (next as AuditSourceFilter),
     })
 
-  const setFrom = (local: string) => onChange({ ...value, fromIso: localToIso(local) })
-  const setTo = (local: string) => onChange({ ...value, toIso: localToIso(local) })
+  const setRange = (next: AuditTimeRange) => {
+    setTimeRange(next)
+    if (next === 'custom') return
+    onChange({
+      ...value,
+      fromIso: rangeToFromIso(next),
+      toIso: undefined,
+    })
+  }
+
+  const setFrom = (local: string) => {
+    setTimeRange('custom')
+    onChange({ ...value, fromIso: localToIso(local) })
+  }
+
+  const setTo = (local: string) => {
+    setTimeRange('custom')
+    onChange({ ...value, toIso: localToIso(local) })
+  }
 
   const commitTargetType = () => onChange({ ...value, targetType: targetType.trim() || undefined })
+  const commitTargetId = () => onChange({ ...value, targetId: targetId.trim() || undefined })
 
   const clearAll = () => {
     setPrefixMode(false)
     setTargetType('')
-    onChange({})
+    setTargetId('')
+    setActorEmail('')
+    setTimeRange('30d')
+    onChange(defaultAuditFilters())
   }
 
   const hasFilters =
+    Boolean(value.origin) ||
     Boolean(value.principalId) ||
+    Boolean(value.actorEmail) ||
     Boolean(value.action) ||
     Boolean(value.actionPrefix) ||
     Boolean(value.targetType) ||
+    Boolean(value.targetId) ||
     Boolean(value.source) ||
     Boolean(value.fromIso) ||
     Boolean(value.toIso)
@@ -108,7 +182,23 @@ export function AuditFilterBar({ value, onChange }: Props) {
     <div className="rounded-md border border-border/50 p-3 space-y-3">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         <div className="space-y-1">
-          <Label className="text-xs">Actor</Label>
+          <Label className="text-xs">Origin</Label>
+          <Select value={value.origin ?? ALL} onValueChange={setOrigin}>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ORIGINS.map((origin) => (
+                <SelectItem key={origin.value} value={origin.value}>
+                  {origin.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Actor principal</Label>
           <PrincipalPicker
             value={value.principalId ?? null}
             onValueChange={setActor}
@@ -142,6 +232,17 @@ export function AuditFilterBar({ value, onChange }: Props) {
         </div>
 
         <div className="space-y-1">
+          <Label className="text-xs">Actor email</Label>
+          <Input
+            type="search"
+            value={actorEmail}
+            onChange={(e) => setActorEmail(e.target.value)}
+            placeholder="name@example.com"
+            className="h-9"
+          />
+        </div>
+
+        <div className="space-y-1">
           <Label className="text-xs">Target type</Label>
           <Input
             value={targetType}
@@ -159,6 +260,23 @@ export function AuditFilterBar({ value, onChange }: Props) {
         </div>
 
         <div className="space-y-1">
+          <Label className="text-xs">Target ID</Label>
+          <Input
+            value={targetId}
+            onChange={(e) => setTargetId(e.target.value)}
+            onBlur={commitTargetId}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commitTargetId()
+              }
+            }}
+            placeholder="ticket_..."
+            className="h-9"
+          />
+        </div>
+
+        <div className="space-y-1">
           <Label className="text-xs">Source</Label>
           <Select value={value.source ?? ALL} onValueChange={setSource}>
             <SelectTrigger className="h-9">
@@ -169,6 +287,22 @@ export function AuditFilterBar({ value, onChange }: Props) {
               {SOURCES.map((s) => (
                 <SelectItem key={s} value={s}>
                   {s}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs">Range</Label>
+          <Select value={timeRange} onValueChange={(next) => setRange(next as AuditTimeRange)}>
+            <SelectTrigger className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TIME_RANGES.map((range) => (
+                <SelectItem key={range.value} value={range.value}>
+                  {range.label}
                 </SelectItem>
               ))}
             </SelectContent>

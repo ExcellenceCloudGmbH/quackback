@@ -195,7 +195,7 @@ async function updateWebhookFailureCount(data: HookJobData, errorMessage: string
 async function persistExternalLink(data: HookJobData, result: HookResult): Promise<void> {
   // Ticket external links — use integrationId from config (set by targets.ts)
   const ticketId = (data.event.data as { ticket?: { id?: string } }).ticket?.id
-  if (ticketId) {
+  if (ticketId && data.event.type === 'ticket.created') {
     const integrationId = data.config.integrationId as string | undefined
     if (!integrationId) return
 
@@ -215,24 +215,20 @@ async function persistExternalLink(data: HookJobData, result: HookResult): Promi
     return
   }
 
-  // Post external links — legacy lookup by integration type
+  // Post external links — use the resolved integration target when available.
   const postId = (data.event.data as { post?: { id?: string } }).post?.id
-  if (!postId) return
+  if (!postId || data.event.type !== 'post.created') return
 
-  const { db, integrations, postExternalLinks, eq } = await import('@/lib/server/db')
+  const integrationId = data.config.integrationId as string | undefined
+  if (!integrationId) return
 
-  // Look up the integration by type
-  const integration = await db.query.integrations.findFirst({
-    where: eq(integrations.integrationType, data.hookType),
-    columns: { id: true },
-  })
-  if (!integration) return
+  const { db, postExternalLinks } = await import('@/lib/server/db')
 
   await db
     .insert(postExternalLinks)
     .values({
       postId: postId as import('@quackback/ids').PostId,
-      integrationId: integration.id as import('@quackback/ids').IntegrationId,
+      integrationId: integrationId as import('@quackback/ids').IntegrationId,
       integrationType: data.hookType,
       externalId: result.externalId!,
       externalDisplayId: result.externalDisplayId ?? null,

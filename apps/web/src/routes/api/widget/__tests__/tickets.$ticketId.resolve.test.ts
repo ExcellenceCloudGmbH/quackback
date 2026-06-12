@@ -26,18 +26,28 @@ vi.mock('@/lib/server/domains/tickets/ticket.service', () => ({
 
 const findFirstStatusMock = vi.fn()
 const findFirstPrincipalMock = vi.fn()
-vi.mock('@/lib/server/db', async () => {
-  const actual = await vi.importActual<typeof import('@/lib/server/db')>('@/lib/server/db')
-  return {
-    ...actual,
-    db: {
-      query: {
-        ticketStatuses: { findFirst: (...args: unknown[]) => findFirstStatusMock(...args) },
-        principal: { findFirst: (...args: unknown[]) => findFirstPrincipalMock(...args) },
-      },
+vi.mock('@/lib/server/db', () => ({
+  and: vi.fn((...args: unknown[]) => ({ op: 'and', args })),
+  asc: vi.fn((arg: unknown) => ({ op: 'asc', arg })),
+  db: {
+    query: {
+      ticketStatuses: { findFirst: (...args: unknown[]) => findFirstStatusMock(...args) },
+      principal: { findFirst: (...args: unknown[]) => findFirstPrincipalMock(...args) },
     },
-  }
-})
+  },
+  eq: vi.fn((...args: unknown[]) => ({ op: 'eq', args })),
+  isNull: vi.fn((arg: unknown) => ({ op: 'isNull', arg })),
+  principal: {
+    userId: 'principal.userId',
+  },
+  ticketStatuses: {
+    category: 'ticketStatuses.category',
+    deletedAt: 'ticketStatuses.deletedAt',
+    id: 'ticketStatuses.id',
+    name: 'ticketStatuses.name',
+    position: 'ticketStatuses.position',
+  },
+}))
 
 import { getWidgetSession } from '@/lib/server/functions/widget-auth'
 import { handleResolveWidgetTicket } from '../tickets.$ticketId.resolve'

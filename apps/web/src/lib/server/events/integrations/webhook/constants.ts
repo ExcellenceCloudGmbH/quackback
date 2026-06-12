@@ -159,7 +159,21 @@ export const WEBHOOK_EVENT_CONFIG = [
     id: 'ticket.thread_added',
     label: 'Ticket Reply Added',
     description:
-      'When a public or shared-team reply is added to a ticket. Internal agent notes are never delivered.',
+      'When a public reply is added to a ticket. Internal and shared-team notes are never delivered.',
+    category: 'tickets',
+  },
+  {
+    id: 'ticket.thread_updated',
+    label: 'Ticket Reply Updated',
+    description:
+      'When a public ticket reply is edited. Internal and shared-team notes are never delivered.',
+    category: 'tickets',
+  },
+  {
+    id: 'ticket.thread_deleted',
+    label: 'Ticket Reply Deleted',
+    description:
+      'When a public ticket reply is deleted. Internal and shared-team notes are never delivered.',
     category: 'tickets',
   },
   {

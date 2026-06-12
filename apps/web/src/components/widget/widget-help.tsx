@@ -8,6 +8,7 @@ import { publicHelpCenterQueries } from '@/lib/client/queries/help-center'
 import { getTopLevelCategories } from '@/components/help-center/help-center-utils'
 import { CategoryIcon } from '@/components/help-center/category-icon'
 import { WidgetMessagesSection } from './widget-messages-section'
+import { WidgetSupportCard } from './widget-support-card'
 
 interface WidgetHelpArticle {
   id: string
@@ -26,9 +27,16 @@ interface WidgetHelpProps {
    * disabled — the support surface is then help articles only.
    */
   onOpenChat?: (target?: import('@quackback/ids').ConversationId | 'new') => void
+  /** Open the support-ticket surface. */
+  onOpenSupport?: () => void
 }
 
-export function WidgetHelp({ onArticleSelect, onCategorySelect, onOpenChat }: WidgetHelpProps) {
+export function WidgetHelp({
+  onArticleSelect,
+  onCategorySelect,
+  onOpenChat,
+  onOpenSupport,
+}: WidgetHelpProps) {
   const intl = useIntl()
   const [search, setSearch] = useState('')
   const [results, setResults] = useState<WidgetHelpArticle[]>([])
@@ -107,6 +115,12 @@ export function WidgetHelp({ onArticleSelect, onCategorySelect, onOpenChat }: Wi
           {/* Category grid (default view) */}
           {showCategories && (
             <>
+              {onOpenSupport && (
+                <div className="mb-3">
+                  <WidgetSupportCard onOpen={onOpenSupport} />
+                </div>
+              )}
+
               {categoriesQuery.isLoading && (
                 <div className="flex items-center justify-center py-8">
                   <span className="text-xs text-muted-foreground/50">

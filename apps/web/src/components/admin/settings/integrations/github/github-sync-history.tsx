@@ -18,6 +18,7 @@ function useSyncLog(integrationId: string, statusFilter: 'all' | 'failed') {
     queryOptions({
       queryKey: ['integration-sync-log', integrationId, statusFilter] as const,
       queryFn: () => fetchSyncLogFn({ data: { integrationId, limit: 25, statusFilter } }),
+      enabled: Boolean(integrationId),
       staleTime: 15_000,
       refetchInterval: 30_000,
     })
@@ -39,7 +40,8 @@ function formatRelativeTime(date: Date | string): string {
 
 export function GitHubSyncHistory({ integrationId }: GitHubSyncHistoryProps) {
   const [statusFilter, setStatusFilter] = useState<'all' | 'failed'>('all')
-  const { data, isLoading } = useSyncLog(integrationId, statusFilter)
+  const { data, error, isError, isLoading } = useSyncLog(integrationId, statusFilter)
+  const items = data?.items ?? []
 
   return (
     <div className="space-y-3">
@@ -72,13 +74,19 @@ export function GitHubSyncHistory({ integrationId }: GitHubSyncHistoryProps) {
         <div className="text-sm text-muted-foreground py-4 text-center">Loading...</div>
       )}
 
-      {!isLoading && !data?.items.length && (
+      {isError && (
+        <div className="text-sm text-destructive py-4 text-center" title={error.message}>
+          Failed to load sync history
+        </div>
+      )}
+
+      {!isLoading && !isError && items.length === 0 && (
         <div className="text-sm text-muted-foreground py-4 text-center">No sync activity yet</div>
       )}
 
-      {data?.items.length ? (
+      {items.length > 0 ? (
         <div className="divide-y divide-border/50 rounded-lg border text-sm">
-          {data.items.map((entry) => (
+          {items.map((entry) => (
             <div key={entry.id} className="flex items-center gap-3 px-3 py-2">
               <Badge
                 variant="outline"

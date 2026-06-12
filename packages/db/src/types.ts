@@ -51,7 +51,7 @@ import type { webhookDeliveries } from './schema/webhook-deliveries'
 export const STATUS_CATEGORIES = ['active', 'complete', 'closed'] as const
 export type StatusCategory = (typeof STATUS_CATEGORIES)[number]
 
-// Moderation states for posts — single source of truth, kept in sync with
+// Moderation states for posts - single source of truth, kept in sync with
 // the posts.moderation_state column enum (schema.test.ts pins the match).
 export const MODERATION_STATES = [
   'published',
@@ -75,13 +75,13 @@ export interface BoardSettings {
 // ----------------------------------------------------------------------
 // Per-action access tiers (View+Vote / Comment / Submit) and per-board
 // approval overrides. The legacy `BoardAudience` discriminated union was
-// removed in migration 0080 — every reader now consults `BoardAccess`.
+// removed in migration 0080 - every reader now consults `BoardAccess`.
 // ----------------------------------------------------------------------
 
 export const ACCESS_TIERS = ['anonymous', 'authenticated', 'segments', 'team'] as const
 export type AccessTier = (typeof ACCESS_TIERS)[number]
 
-/** Restriction rank — higher number is stricter. Used for tier-invariant
+/** Restriction rank - higher number is stricter. Used for tier-invariant
  *  checks: a derived action (comment / submit) cannot be more permissive
  *  than view. */
 export const ACCESS_TIER_RANK: Record<AccessTier, number> = {
@@ -105,7 +105,7 @@ export interface BoardAccess {
   vote: AccessTier
   comment: AccessTier
   submit: AccessTier
-  /** Per-action segment allowlists — used wherever the matching tier is
+  /** Per-action segment allowlists - used wherever the matching tier is
    *  'segments'. A board can say "Active Users can view & comment, but
    *  only Beta testers can submit." Invalid (and rejected on save) when
    *  an action's tier is 'segments' but that action's list is empty. */
@@ -245,9 +245,11 @@ export interface SetupState {
     boards: boolean // At least one board created or explicitly skipped
   }
   completedAt?: string // ISO timestamp when onboarding was fully completed
+  source: 'cloud' | 'self-hosted' // How this instance was provisioned
   useCase?: UseCaseType // Product type for personalized board recommendations
 }
 
+// Default setup state for new instances (self-hosted starts with workspace incomplete)
 export const DEFAULT_SETUP_STATE: SetupState = {
   version: 1,
   steps: {
@@ -255,13 +257,15 @@ export const DEFAULT_SETUP_STATE: SetupState = {
     workspace: false,
     boards: false,
   },
+  source: 'self-hosted',
 }
 
 // Helper to parse setup state from settings
 export function getSetupState(setupStateJson: string | null): SetupState | null {
   if (!setupStateJson) return null
   try {
-    return JSON.parse(setupStateJson) as SetupState
+    const parsed = JSON.parse(setupStateJson) as SetupState
+    return { ...parsed, source: parsed.source ?? 'self-hosted' }
   } catch {
     return null
   }
@@ -317,7 +321,7 @@ export type NewPostNote = InferInsertModel<typeof postNotes>
 export type CommentReaction = InferSelectModel<typeof commentReactions>
 export type NewCommentReaction = InferInsertModel<typeof commentReactions>
 
-// Support-inbox conversation statuses — kept in sync with the conversations.status
+// Support-inbox conversation statuses - kept in sync with the conversations.status
 // column enum (schema.test.ts pins the match).
 export const CONVERSATION_STATUSES = ['open', 'pending', 'closed'] as const
 export type ConversationStatus = (typeof CONVERSATION_STATUSES)[number]
@@ -342,19 +346,19 @@ export type ConversationEndReason = (typeof CONVERSATION_END_REASONS)[number]
 export const AGENT_AVAILABILITY_VALUES = ['online', 'away'] as const
 export type AgentAvailability = (typeof AGENT_AVAILABILITY_VALUES)[number]
 
-// The inbound channel a conversation arrived on — kept in sync with the
+// The inbound channel a conversation arrived on - kept in sync with the
 // conversations.channel column enum. Existing live-chat threads default to
 // 'live_chat'; 'email' and 'web_form' are wired up in later phases. This turns
 // "live chat vs ticket" into one polymorphic conversation with a channel field.
 export const CHANNELS = ['live_chat', 'email', 'web_form'] as const
 export type Channel = (typeof CHANNELS)[number]
 
-// Agent-set conversation priority for inbox triage — kept in sync with the
+// Agent-set conversation priority for inbox triage - kept in sync with the
 // conversations.priority column enum. 'none' = unset (the default).
 export const CONVERSATION_PRIORITIES = ['none', 'low', 'medium', 'high', 'urgent'] as const
 export type ConversationPriority = (typeof CONVERSATION_PRIORITIES)[number]
 
-// Which side of a conversation a message came from — kept in sync with the
+// Which side of a conversation a message came from - kept in sync with the
 // chat_messages.sender_type column enum. 'system' rows are status events (e.g.
 // assignment) shown to both sides; attributed to the relevant agent's principal
 // and never counted as unread.
@@ -382,7 +386,7 @@ export interface ChatSystemEvent {
 }
 
 // An agent-only suggestion (carried on an internal note) to track a resolved
-// conversation as a feedback post. Surfaced exclusively via the agent DTO — it
+// conversation as a feedback post. Surfaced exclusively via the agent DTO - it
 // never reaches the visitor.
 export interface PostSuggestion {
   boardId: string

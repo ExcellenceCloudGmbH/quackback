@@ -10,6 +10,16 @@
  */
 
 import type { GitHubIntegrationConfig } from './types'
+import {
+  buildInboundTicketThreadBody,
+  findThreadLinkByExternalComment,
+  loadThreadForSync,
+  parseQuackbackThreadMarker,
+  stripQuackbackThreadMarker,
+  upsertThreadExternalLink,
+  markThreadLinkDeleted,
+  type GitHubIssueComment,
+} from './ticket-comments'
 import type { TicketId, TicketStatusId, PrincipalId, InboxId, IntegrationId } from '@quackback/ids'
 import type { TicketStatusCategory } from '@/lib/server/db'
 
@@ -29,10 +39,10 @@ async function logInboundSync(entry: {
   try {
     const { db, integrationSyncLog } = await import('@/lib/server/db')
     await db.insert(integrationSyncLog).values({
-      integrationId: entry.integrationId,
-      ticketId: entry.ticketId ?? null,
+      integrationId: entry.integrationId as IntegrationId,
+      ticketId: entry.ticketId ? (entry.ticketId as TicketId) : null,
       externalId: entry.externalId ?? null,
-      eventType: `issue.${entry.eventType}`,
+      eventType: entry.eventType.includes('.') ? entry.eventType : `issue.${entry.eventType}`,
       direction: 'inbound',
       status: entry.status,
       errorMessage: entry.errorMessage ?? null,
@@ -104,6 +114,25 @@ export interface GitHubIssuePayload {
     assignee?: { login: string } | null
     assignees?: Array<{ login: string }>
     labels?: Array<{ name: string }>
+  }
+  repository: {
+    full_name: string
+  }
+  sender: {
+    login: string
+  }
+}
+
+export interface GitHubIssueCommentPayload {
+  action: 'created' | 'edited' | 'deleted' | string
+  issue: {
+    number: number
+    html_url: string
+  }
+  comment: GitHubIssueComment & {
+    id: number | string
+    body: string | null
+    html_url: string
   }
   repository: {
     full_name: string
@@ -212,6 +241,107 @@ export async function handleGitHubTicketEvent(
   }
 }
 
+/**
+ * Route GitHub issue_comment webhook events to linked ticket thread mutations.
+ * Returns true if the event was consumed, false if ignored.
+ */
+export async function handleGitHubIssueCommentEvent(
+  payload: GitHubIssueCommentPayload,
+  integration: { id: string; principalId: string | null; config: GitHubIntegrationConfig }
+): Promise<boolean> {
+  const config = integration.config
+  const syncDirection = config.syncDirection ?? 'outbound'
+  if (syncDirection !== 'inbound' && syncDirection !== 'bidirectional') {
+    return false
+  }
+
+  if (!['created', 'edited', 'deleted'].includes(payload.action)) {
+    return false
+  }
+
+  const issueNumber = String(payload.issue.number)
+  const externalCommentId = String(payload.comment.id)
+  const start = Date.now()
+  const eventType = `issue_comment.${payload.action}`
+
+  const logResult = async (
+    status: 'success' | 'failed' | 'skipped',
+    ticketId?: string,
+    error?: unknown
+  ) => {
+    const errorMessage =
+      status === 'failed' ? (error instanceof Error ? error.message : 'Unknown error') : undefined
+    await logInboundSync({
+      integrationId: integration.id,
+      ticketId,
+      externalId: externalCommentId,
+      eventType,
+      status,
+      errorMessage,
+      durationMs: Date.now() - start,
+    })
+    if (status === 'success') {
+      await clearIntegrationError(integration.id)
+    } else if (status === 'failed' && errorMessage) {
+      await updateIntegrationError(integration.id, errorMessage)
+    }
+  }
+
+  try {
+    const marker = parseQuackbackThreadMarker(payload.comment.body)
+    if (marker) {
+      if (marker.integrationId === integration.id) {
+        const markedThread = await loadThreadForSync(marker.threadId)
+        if (markedThread) {
+          await upsertThreadExternalLink({
+            ticketId: marker.ticketId,
+            threadId: marker.threadId,
+            integrationId: integration.id,
+            externalIssueId: issueNumber,
+            externalCommentId,
+            externalUrl: payload.comment.html_url,
+            syncDirection: 'outbound',
+          })
+        }
+      }
+      await logResult(
+        'skipped',
+        marker.integrationId === integration.id ? marker.ticketId : undefined
+      )
+      return true
+    }
+
+    const ticketId = await findLinkedTicket(issueNumber, integration.id)
+    if (!ticketId) {
+      await logResult('skipped')
+      return true
+    }
+
+    switch (payload.action) {
+      case 'created':
+        await handleIssueCommentCreated(payload, integration, ticketId, issueNumber)
+        await logResult('success', ticketId)
+        await touchLinkSyncedAt(issueNumber, integration.id)
+        return true
+      case 'edited':
+        await handleIssueCommentEdited(payload, integration, ticketId, issueNumber)
+        await logResult('success', ticketId)
+        await touchLinkSyncedAt(issueNumber, integration.id)
+        return true
+      case 'deleted':
+        await handleIssueCommentDeleted(payload, integration, ticketId)
+        await logResult('success', ticketId)
+        await touchLinkSyncedAt(issueNumber, integration.id)
+        return true
+      default:
+        return false
+    }
+  } catch (error) {
+    await logResult('failed', undefined, error)
+    throw error
+  }
+}
+
 // ============================================================================
 // Individual handlers
 // ============================================================================
@@ -220,6 +350,110 @@ type IntegrationRecord = {
   id: string
   principalId: string | null
   config: GitHubIntegrationConfig
+}
+
+async function handleIssueCommentCreated(
+  payload: GitHubIssueCommentPayload,
+  integration: IntegrationRecord,
+  ticketId: TicketId,
+  issueNumber: string
+): Promise<void> {
+  const externalCommentId = String(payload.comment.id)
+  const existingLink = await findThreadLinkByExternalComment({
+    integrationId: integration.id,
+    externalCommentId,
+  })
+  if (existingLink?.status === 'active') return
+
+  const bodyText = buildInboundTicketThreadBody(payload.comment)
+  if (!stripQuackbackThreadMarker(payload.comment.body)) return
+
+  const { addThread } = await import('@/lib/server/domains/tickets/ticket.threads')
+  const thread = await addThread({
+    ticketId,
+    principalId: (integration.principalId as PrincipalId | null) ?? null,
+    audience: 'public',
+    bodyText,
+    syncSourceIntegrationId: integration.id,
+  })
+
+  await upsertThreadExternalLink({
+    ticketId,
+    threadId: thread.id,
+    integrationId: integration.id,
+    externalIssueId: issueNumber,
+    externalCommentId,
+    externalUrl: payload.comment.html_url,
+    syncDirection: 'inbound',
+  })
+}
+
+async function handleIssueCommentEdited(
+  payload: GitHubIssueCommentPayload,
+  integration: IntegrationRecord,
+  ticketId: TicketId,
+  issueNumber: string
+): Promise<void> {
+  const externalCommentId = String(payload.comment.id)
+  const link = await findThreadLinkByExternalComment({
+    integrationId: integration.id,
+    externalCommentId,
+  })
+
+  if (!link || link.status !== 'active') {
+    await handleIssueCommentCreated(payload, integration, ticketId, issueNumber)
+    return
+  }
+
+  const bodyText = buildInboundTicketThreadBody(payload.comment)
+  if (!stripQuackbackThreadMarker(payload.comment.body)) return
+
+  const thread = await loadThreadForSync(link.threadId)
+  if (!thread || thread.deletedAt) {
+    await handleIssueCommentCreated(payload, integration, ticketId, issueNumber)
+    return
+  }
+
+  const { editThread } = await import('@/lib/server/domains/tickets/ticket.threads')
+  await editThread({
+    threadId: link.threadId,
+    actorPrincipalId:
+      (thread.principalId as PrincipalId | null) ?? (integration.principalId as PrincipalId | null),
+    bodyText,
+    syncSourceIntegrationId: integration.id,
+  })
+
+  await upsertThreadExternalLink({
+    ticketId,
+    threadId: link.threadId,
+    integrationId: integration.id,
+    externalIssueId: issueNumber,
+    externalCommentId,
+    externalUrl: payload.comment.html_url,
+    syncDirection: 'inbound',
+  })
+}
+
+async function handleIssueCommentDeleted(
+  payload: GitHubIssueCommentPayload,
+  integration: IntegrationRecord,
+  ticketId: TicketId
+): Promise<void> {
+  const externalCommentId = String(payload.comment.id)
+  const link = await findThreadLinkByExternalComment({
+    integrationId: integration.id,
+    externalCommentId,
+  })
+  if (!link || link.status !== 'active') return
+
+  const { softDeleteThread } = await import('@/lib/server/domains/tickets/ticket.threads')
+  await softDeleteThread(
+    link.threadId,
+    (integration.principalId as PrincipalId | null) ?? null,
+    integration.id
+  )
+  await markThreadLinkDeleted({ integrationId: integration.id, externalCommentId })
+  void ticketId
 }
 
 async function handleIssueOpened(
@@ -238,7 +472,9 @@ async function handleIssueOpened(
     subject: truncateSubject(issue.title),
     descriptionText: issue.body ?? undefined,
     channel: 'api',
-    inboxId: (integration.config.defaultInboxId as InboxId) ?? null,
+    inboxId: integration.config.defaultInboxId
+      ? (integration.config.defaultInboxId as InboxId)
+      : null,
     createdByPrincipalId: (integration.principalId as PrincipalId) ?? null,
     syncSourceIntegrationId: integration.id,
   })
@@ -413,7 +649,7 @@ async function handleIssueUnassigned(
 /**
  * Look up the ticket linked to a GitHub issue number for a specific integration.
  */
-async function findLinkedTicket(
+export async function findLinkedTicket(
   issueNumber: string,
   integrationId: string
 ): Promise<TicketId | null> {

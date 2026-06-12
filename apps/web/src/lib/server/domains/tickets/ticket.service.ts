@@ -265,7 +265,9 @@ export async function createTicket(input: CreateTicketInput): Promise<Ticket> {
     const actor = input.createdByPrincipalId
       ? buildEventActor({ principalId: input.createdByPrincipalId, displayName: 'ticket-system' })
       : { type: 'service' as const, displayName: 'ticket-system' }
-    await dispatchTicketCreated(actor, created as unknown as Record<string, unknown>)
+    await dispatchTicketCreated(actor, created as unknown as Record<string, unknown>, {
+      syncSourceIntegrationId: input.syncSourceIntegrationId,
+    })
   } catch (err) {
     console.warn('[tickets] dispatchTicketCreated failed', err)
   }
@@ -372,6 +374,21 @@ export async function updateTicket(ticketId: TicketId, input: UpdateTicketInput)
     targetId: ticketId,
     diff: diffToAuditDiff(diff),
   })
+  try {
+    const { dispatchTicketUpdated, buildEventActor } = await import('@/lib/server/events/dispatch')
+    const actor = input.actorPrincipalId
+      ? buildEventActor({ principalId: input.actorPrincipalId, displayName: 'ticket-system' })
+      : { type: 'service' as const, displayName: 'ticket-system' }
+    await dispatchTicketUpdated(
+      actor,
+      updated as unknown as Record<string, unknown>,
+      Object.keys(diff),
+      diff,
+      { syncSourceIntegrationId: input.syncSourceIntegrationId }
+    )
+  } catch (err) {
+    console.warn('[tickets] dispatchTicketUpdated failed', err)
+  }
   return updated
 }
 
@@ -467,10 +484,18 @@ export async function assignTicket(ticketId: TicketId, input: AssignTicketInput)
     const prev = (existing.assigneePrincipalId as PrincipalId | null) ?? null
     const next = (updated.assigneePrincipalId as PrincipalId | null) ?? null
     if (next) {
-      await dispatchTicketAssigned(actor, updated as unknown as Record<string, unknown>, prev, next)
+      await dispatchTicketAssigned(
+        actor,
+        updated as unknown as Record<string, unknown>,
+        prev,
+        next,
+        { syncSourceIntegrationId: input.syncSourceIntegrationId }
+      )
     }
     if (prev && prev !== next) {
-      await dispatchTicketUnassigned(actor, updated as unknown as Record<string, unknown>, prev)
+      await dispatchTicketUnassigned(actor, updated as unknown as Record<string, unknown>, prev, {
+        syncSourceIntegrationId: input.syncSourceIntegrationId,
+      })
     }
   } catch (err) {
     console.warn('[tickets] dispatchTicketAssigned/Unassigned failed', err)
@@ -589,7 +614,8 @@ export async function transitionStatus(
       actor,
       updated as unknown as Record<string, unknown>,
       prevStatus?.category ?? null,
-      next.category
+      next.category,
+      { syncSourceIntegrationId: input.syncSourceIntegrationId }
     )
   } catch (err) {
     console.warn('[tickets] dispatchTicketStatusChanged failed', err)

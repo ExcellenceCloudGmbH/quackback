@@ -785,6 +785,13 @@
       "when": 1782259200000,
       "tag": "0111_ticketing_and_authz",
       "breakpoints": true
+    },
+    {
+      "idx": 112,
+      "version": "7",
+      "when": 1782345600000,
+      "tag": "0112_ticket_thread_external_links",
+      "breakpoints": true
     }
   ]
 }

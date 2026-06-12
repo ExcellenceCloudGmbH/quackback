@@ -341,6 +341,8 @@ export {
   // Schema tables - ticket external links & user mappings (GitHub sync)
   ticketExternalLinks,
   ticketExternalLinksRelations,
+  ticketThreadExternalLinks,
+  ticketThreadExternalLinksRelations,
   integrationUserMappings,
   integrationUserMappingsRelations,
   // Schema tables - integration sync log (observability)

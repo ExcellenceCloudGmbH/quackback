@@ -16,10 +16,12 @@ import {
   isSecureRequest,
   getStateCookieName,
   buildCallbackUri,
+  getPublicOriginFromRequest,
   parseCookies,
   redirectResponse,
-  clearCookie,
+  clearStateCookies,
   createCookie,
+  getStateCookieNameVariants,
   isValidTenantDomain,
 } from './oauth'
 
@@ -49,6 +51,19 @@ function buildSettingsUrl(
 ): string {
   const params = new URLSearchParams({ [integration]: status, ...(reason && { reason }) })
   return `${baseUrl}${settingsPath}?${params}`
+}
+
+function buildTenantUrl(returnDomain: string, request: Request): string {
+  try {
+    const requestOrigin = getPublicOriginFromRequest(request)
+    if (new URL(requestOrigin).host === returnDomain) {
+      return requestOrigin
+    }
+  } catch {
+    // Fall back to the historical HTTPS return-domain behavior below.
+  }
+
+  return `https://${returnDomain}`
 }
 
 /**
@@ -142,7 +157,7 @@ export async function handleOAuthCallback(
   }
 
   const { returnDomain, principalId } = stateData
-  const tenantUrl = `https://${returnDomain}`
+  const tenantUrl = buildTenantUrl(returnDomain, request)
 
   if (!isValidTenantDomain(returnDomain)) {
     return redirectResponse(errorUrl(FALLBACK_URL, 'invalid_tenant'))
@@ -156,9 +171,11 @@ export async function handleOAuthCallback(
     return redirectResponse(errorUrl(tenantUrl, 'invalid_request'))
   }
 
-  const cookieName = getStateCookieName(integrationType, request)
   const cookies = parseCookies(request.headers.get('cookie') || '')
-  if (cookies[cookieName] !== state) {
+  const matchedCookieName = getStateCookieNameVariants(integrationType).find(
+    (name) => cookies[name] === state
+  )
+  if (!matchedCookieName) {
     return redirectResponse(errorUrl(tenantUrl, 'state_mismatch'))
   }
 
@@ -192,7 +209,7 @@ export async function handleOAuthCallback(
 
   let accessToken: string | undefined
   try {
-    const callbackUri = buildCallbackUri(integrationType, request)
+    const callbackUri = `${tenantUrl}/oauth/${integrationType}/callback`
     const exchangeResult = await definition.oauth.exchangeCode(
       code,
       callbackUri,
@@ -217,7 +234,7 @@ export async function handleOAuthCallback(
     await saveIntegration(integrationType, saveParams)
 
     const successUrl = buildSettingsUrl(tenantUrl, settingsPath, integrationType, 'connected')
-    return redirectResponse(successUrl, [clearCookie(cookieName, isSecureRequest(request))])
+    return redirectResponse(successUrl, clearStateCookies(integrationType))
   } catch (err) {
     console.error(`[${integrationType}] Exchange/save error:`, err)
 

@@ -40,7 +40,7 @@ export const getGitHubConnectUrl = createServerFn({ method: 'GET' })
     const { randomBytes } = await import('crypto')
     const { requireAuth } = await import('../../functions/auth-helpers')
     const { signOAuthState } = await import('@/lib/server/auth/oauth-state')
-    const { config } = await import('@/lib/server/config')
+    const { getOAuthReturnDomain } = await import('@/lib/server/integrations/oauth')
 
     const auth = await requireAuth({ roles: ['admin'] })
     const { hasPlatformCredentials } =
@@ -50,7 +50,7 @@ export const getGitHubConnectUrl = createServerFn({ method: 'GET' })
         'GitHub platform credentials not configured. Configure them in integration settings first.'
       )
     }
-    const returnDomain = new URL(config.baseUrl).host
+    const returnDomain = getOAuthReturnDomain()
 
     const state = signOAuthState({
       type: 'github_oauth',

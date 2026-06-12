@@ -13,6 +13,9 @@ const getTicketMock = vi.fn()
 const transitionStatusMock = vi.fn()
 const updateTicketMock = vi.fn()
 const assignTicketMock = vi.fn()
+const addThreadMock = vi.fn()
+const editThreadMock = vi.fn()
+const softDeleteThreadMock = vi.fn()
 
 vi.mock('@/lib/server/domains/tickets/ticket.service', () => ({
   createTicket: (...a: unknown[]) => createTicketMock(...a),
@@ -22,11 +25,23 @@ vi.mock('@/lib/server/domains/tickets/ticket.service', () => ({
   assignTicket: (...a: unknown[]) => assignTicketMock(...a),
 }))
 
+vi.mock('@/lib/server/domains/tickets/ticket.threads', () => ({
+  addThread: (...a: unknown[]) => addThreadMock(...a),
+  editThread: (...a: unknown[]) => editThreadMock(...a),
+  softDeleteThread: (...a: unknown[]) => softDeleteThreadMock(...a),
+}))
+
+const insertValuesMock = vi.fn().mockReturnValue({
+  onConflictDoNothing: vi.fn(),
+  onConflictDoUpdate: vi.fn(),
+})
 const insertMock = vi
   .fn()
-  .mockReturnValue({ values: vi.fn().mockReturnValue({ onConflictDoNothing: vi.fn() }) })
+  .mockReturnValue({ values: (...args: unknown[]) => insertValuesMock(...args) })
 const updateMock = vi.fn().mockReturnValue({ set: vi.fn().mockReturnValue({ where: vi.fn() }) })
 const findFirstLinkMock = vi.fn()
+const findFirstThreadLinkMock = vi.fn()
+const findFirstThreadMock = vi.fn()
 const findFirstStatusMock = vi.fn()
 const findFirstMappingMock = vi.fn()
 
@@ -36,6 +51,10 @@ vi.mock('@/lib/server/db', () => ({
     update: (...a: unknown[]) => updateMock(...a),
     query: {
       ticketExternalLinks: { findFirst: (...a: unknown[]) => findFirstLinkMock(...a) },
+      ticketThreadExternalLinks: {
+        findFirst: (...a: unknown[]) => findFirstThreadLinkMock(...a),
+      },
+      ticketThreads: { findFirst: (...a: unknown[]) => findFirstThreadMock(...a) },
       ticketStatuses: { findFirst: (...a: unknown[]) => findFirstStatusMock(...a) },
       integrationUserMappings: { findFirst: (...a: unknown[]) => findFirstMappingMock(...a) },
     },
@@ -45,6 +64,19 @@ vi.mock('@/lib/server/db', () => ({
     externalId: 'externalId',
     status: 'status',
   },
+  ticketThreadExternalLinks: {
+    ticketId: 'ticketId',
+    threadId: 'threadId',
+    integrationId: 'integrationId',
+    externalIssueId: 'externalIssueId',
+    externalCommentId: 'externalCommentId',
+    externalUrl: 'externalUrl',
+    syncDirection: 'syncDirection',
+    status: 'status',
+    lastSyncedAt: 'lastSyncedAt',
+    updatedAt: 'updatedAt',
+  },
+  ticketThreads: { id: 'id' },
   ticketStatuses: { category: 'category', deletedAt: 'deletedAt' },
   integrationUserMappings: { integrationId: 'integrationId', externalUsername: 'externalUsername' },
   integrationSyncLog: {},
@@ -55,7 +87,12 @@ vi.mock('@/lib/server/db', () => ({
   sql: vi.fn(),
 }))
 
-import { handleGitHubTicketEvent, type GitHubIssuePayload } from '../ticket-inbound'
+import {
+  handleGitHubIssueCommentEvent,
+  handleGitHubTicketEvent,
+  type GitHubIssueCommentPayload,
+  type GitHubIssuePayload,
+} from '../ticket-inbound'
 
 // ---- Fixtures ----
 
@@ -99,14 +136,40 @@ function makePayload(
   }
 }
 
+function makeCommentPayload(
+  action: string,
+  body = 'This is a GitHub comment'
+): GitHubIssueCommentPayload {
+  return {
+    action,
+    issue: {
+      number: 42,
+      html_url: 'https://github.com/org/repo/issues/42',
+    },
+    comment: {
+      id: 1001,
+      body,
+      html_url: 'https://github.com/org/repo/issues/42#issuecomment-1001',
+      user: { login: 'octocat' },
+    },
+    repository: { full_name: 'org/repo' },
+    sender: { login: 'octocat' },
+  }
+}
+
 // ---- Setup ----
 
 beforeEach(() => {
   vi.clearAllMocks()
   // Default: no linked ticket found (for create path)
   findFirstLinkMock.mockResolvedValue(null)
+  findFirstThreadLinkMock.mockResolvedValue(null)
+  findFirstThreadMock.mockResolvedValue(null)
   findFirstStatusMock.mockResolvedValue(null)
   findFirstMappingMock.mockResolvedValue(null)
+  addThreadMock.mockResolvedValue({ id: 'ticket_thread_1' })
+  editThreadMock.mockResolvedValue({ id: 'ticket_thread_1' })
+  softDeleteThreadMock.mockResolvedValue({ id: 'ticket_thread_1' })
 })
 
 // ---- Tests ----
@@ -345,5 +408,126 @@ describe('syncSourceIntegrationId — loop prevention', () => {
     updateTicketMock.mockResolvedValueOnce({})
     await handleGitHubTicketEvent(makePayload('edited'), makeIntegration())
     expect(updateTicketMock.mock.calls[0][1].syncSourceIntegrationId).toBe('integration_gh1')
+  })
+})
+
+describe('handleGitHubIssueCommentEvent', () => {
+  it('creates a public ticket thread and link row on issue_comment.created', async () => {
+    findFirstLinkMock.mockResolvedValueOnce({ ticketId: 'ticket_linked1' })
+    findFirstThreadLinkMock.mockResolvedValueOnce(null)
+    addThreadMock.mockResolvedValueOnce({ id: 'ticket_thread_1' })
+
+    const result = await handleGitHubIssueCommentEvent(
+      makeCommentPayload('created'),
+      makeIntegration()
+    )
+
+    expect(result).toBe(true)
+    expect(addThreadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ticketId: 'ticket_linked1',
+        audience: 'public',
+        bodyText: 'GitHub reply from octocat:\n\nThis is a GitHub comment',
+        syncSourceIntegrationId: 'integration_gh1',
+      })
+    )
+    expect(insertValuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ticketId: 'ticket_linked1',
+        threadId: 'ticket_thread_1',
+        integrationType: 'github',
+        externalIssueId: '42',
+        externalCommentId: '1001',
+        syncDirection: 'inbound',
+      })
+    )
+  })
+
+  it('is idempotent when issue_comment.created is retried', async () => {
+    findFirstLinkMock.mockResolvedValueOnce({ ticketId: 'ticket_linked1' })
+    findFirstThreadLinkMock.mockResolvedValueOnce({
+      ticketId: 'ticket_linked1',
+      threadId: 'ticket_thread_1',
+      externalIssueId: '42',
+      externalCommentId: '1001',
+      status: 'active',
+    })
+
+    const result = await handleGitHubIssueCommentEvent(
+      makeCommentPayload('created'),
+      makeIntegration()
+    )
+
+    expect(result).toBe(true)
+    expect(addThreadMock).not.toHaveBeenCalled()
+  })
+
+  it('updates the linked ticket thread on issue_comment.edited', async () => {
+    findFirstLinkMock.mockResolvedValueOnce({ ticketId: 'ticket_linked1' })
+    findFirstThreadLinkMock.mockResolvedValueOnce({
+      ticketId: 'ticket_linked1',
+      threadId: 'ticket_thread_1',
+      externalIssueId: '42',
+      externalCommentId: '1001',
+      status: 'active',
+    })
+    findFirstThreadMock.mockResolvedValueOnce({
+      id: 'ticket_thread_1',
+      principalId: 'principal_bot1',
+      deletedAt: null,
+    })
+
+    const result = await handleGitHubIssueCommentEvent(
+      makeCommentPayload('edited', 'Edited GitHub body'),
+      makeIntegration()
+    )
+
+    expect(result).toBe(true)
+    expect(editThreadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        threadId: 'ticket_thread_1',
+        actorPrincipalId: 'principal_bot1',
+        bodyText: 'GitHub reply from octocat:\n\nEdited GitHub body',
+        syncSourceIntegrationId: 'integration_gh1',
+      })
+    )
+  })
+
+  it('soft-deletes the linked ticket thread on issue_comment.deleted', async () => {
+    findFirstLinkMock.mockResolvedValueOnce({ ticketId: 'ticket_linked1' })
+    findFirstThreadLinkMock.mockResolvedValueOnce({
+      ticketId: 'ticket_linked1',
+      threadId: 'ticket_thread_1',
+      externalIssueId: '42',
+      externalCommentId: '1001',
+      status: 'active',
+    })
+
+    const result = await handleGitHubIssueCommentEvent(
+      makeCommentPayload('deleted'),
+      makeIntegration()
+    )
+
+    expect(result).toBe(true)
+    expect(softDeleteThreadMock).toHaveBeenCalledWith(
+      'ticket_thread_1',
+      'principal_bot1',
+      'integration_gh1'
+    )
+  })
+
+  it('skips Quackback-marker comments to prevent echo', async () => {
+    const marker =
+      '<!-- quackback:ticket-thread ticketId=ticket_linked1 threadId=ticket_thread_1 integrationId=integration_gh1 -->'
+
+    const result = await handleGitHubIssueCommentEvent(
+      makeCommentPayload('created', `Outbound reply\n\n${marker}`),
+      makeIntegration()
+    )
+
+    expect(result).toBe(true)
+    expect(addThreadMock).not.toHaveBeenCalled()
+    expect(editThreadMock).not.toHaveBeenCalled()
+    expect(softDeleteThreadMock).not.toHaveBeenCalled()
   })
 })

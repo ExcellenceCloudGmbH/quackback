@@ -29,6 +29,8 @@ export const EVENT_TYPES = [
   'ticket.status_changed',
   'ticket.first_response',
   'ticket.thread_added',
+  'ticket.thread_updated',
+  'ticket.thread_deleted',
   'ticket.participant_added',
   'ticket.participant_removed',
   'ticket.shared',
@@ -382,6 +384,8 @@ export type EventData =
   | TicketStatusChangedEvent
   | TicketFirstResponseEvent
   | TicketThreadAddedEvent
+  | TicketThreadUpdatedEvent
+  | TicketThreadDeletedEvent
   | TicketParticipantAddedEvent
   | TicketParticipantRemovedEvent
   | TicketSharedEvent
@@ -552,6 +556,32 @@ export interface TicketThreadAddedPayload {
   }
 }
 
+export interface TicketThreadUpdatedPayload {
+  ticket: EventTicketRef
+  threadId: string
+  audience: 'public' | 'internal' | 'shared_team'
+  sharedWithTeamId: string | null
+  thread: {
+    id: string
+    audience: 'public' | 'internal' | 'shared_team'
+    bodyTextPreview: string
+    bodyTextTruncated: boolean
+    authorPrincipalId: string | null
+    isFromRequester: boolean
+    sharedWithTeamId: string | null
+    createdAt: string
+    editedAt: string | null
+  }
+}
+
+export interface TicketThreadDeletedPayload {
+  ticket: EventTicketRef
+  threadId: string
+  audience: 'public' | 'internal' | 'shared_team'
+  sharedWithTeamId: string | null
+  deletedByPrincipalId: string | null
+}
+
 export interface TicketParticipantAddedPayload {
   ticket: EventTicketRef
   addedPrincipalId: string | null
@@ -635,6 +665,12 @@ export interface TicketFirstResponseEvent extends EventBase<'ticket.first_respon
 }
 export interface TicketThreadAddedEvent extends EventBase<'ticket.thread_added'> {
   data: TicketThreadAddedPayload
+}
+export interface TicketThreadUpdatedEvent extends EventBase<'ticket.thread_updated'> {
+  data: TicketThreadUpdatedPayload
+}
+export interface TicketThreadDeletedEvent extends EventBase<'ticket.thread_deleted'> {
+  data: TicketThreadDeletedPayload
 }
 export interface TicketParticipantAddedEvent extends EventBase<'ticket.participant_added'> {
   data: TicketParticipantAddedPayload

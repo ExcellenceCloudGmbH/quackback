@@ -273,6 +273,36 @@ const SAMPLES: Partial<{ [K in EventType]: EventData }> & Record<string, EventDa
       },
     },
   },
+  'ticket.thread_updated': {
+    ...envelope('ticket.thread_updated', 'evt_sample_ticket_thread_updated'),
+    data: {
+      ticket: SAMPLE_TICKET_REF,
+      threadId: 'thread_sample',
+      audience: 'public',
+      sharedWithTeamId: null,
+      thread: {
+        id: 'thread_sample',
+        audience: 'public',
+        bodyTextPreview: 'Updated sample reply body.',
+        bodyTextTruncated: false,
+        authorPrincipalId: 'principal_sample_agent',
+        isFromRequester: false,
+        sharedWithTeamId: null,
+        createdAt: SAMPLE_TIMESTAMP,
+        editedAt: SAMPLE_TIMESTAMP,
+      },
+    },
+  },
+  'ticket.thread_deleted': {
+    ...envelope('ticket.thread_deleted', 'evt_sample_ticket_thread_deleted'),
+    data: {
+      ticket: SAMPLE_TICKET_REF,
+      threadId: 'thread_sample',
+      audience: 'public',
+      sharedWithTeamId: null,
+      deletedByPrincipalId: 'principal_sample_agent',
+    },
+  },
   'ticket.participant_added': {
     ...envelope('ticket.participant_added', 'evt_sample_ticket_participant_added'),
     data: {

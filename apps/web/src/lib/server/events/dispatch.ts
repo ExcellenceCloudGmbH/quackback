@@ -261,6 +261,16 @@ export async function dispatchChangelogPublished(
 // Ticket dispatchers (Phase 7.5)
 // ============================================================================
 
+interface TicketDispatchOptions {
+  syncSourceIntegrationId?: string | null
+}
+
+function sourceFields(options?: TicketDispatchOptions) {
+  return options?.syncSourceIntegrationId
+    ? { syncSourceIntegrationId: options.syncSourceIntegrationId }
+    : {}
+}
+
 /**
  * Build an `EventTicketRef` from a Drizzle ticket row.
  *
@@ -289,10 +299,12 @@ function ticketRef(t: Record<string, unknown>): EventTicketRef {
 
 export async function dispatchTicketCreated(
   actor: EventActor,
-  ticket: Record<string, unknown>
+  ticket: Record<string, unknown>,
+  options?: TicketDispatchOptions
 ): Promise<void> {
   await dispatchEvent({
     ...eventEnvelope(actor),
+    ...sourceFields(options),
     type: 'ticket.created',
     data: { ticket: ticketRef(ticket) },
   })
@@ -302,10 +314,12 @@ export async function dispatchTicketAssigned(
   actor: EventActor,
   ticket: Record<string, unknown>,
   previousAssigneePrincipalId: string | null,
-  newAssigneePrincipalId: string | null
+  newAssigneePrincipalId: string | null,
+  options?: TicketDispatchOptions
 ): Promise<void> {
   await dispatchEvent({
     ...eventEnvelope(actor),
+    ...sourceFields(options),
     type: 'ticket.assigned',
     data: {
       ticket: ticketRef(ticket),
@@ -318,10 +332,12 @@ export async function dispatchTicketAssigned(
 export async function dispatchTicketUnassigned(
   actor: EventActor,
   ticket: Record<string, unknown>,
-  previousAssigneePrincipalId: string | null
+  previousAssigneePrincipalId: string | null,
+  options?: TicketDispatchOptions
 ): Promise<void> {
   await dispatchEvent({
     ...eventEnvelope(actor),
+    ...sourceFields(options),
     type: 'ticket.unassigned',
     data: { ticket: ticketRef(ticket), previousAssigneePrincipalId },
   })
@@ -331,10 +347,12 @@ export async function dispatchTicketStatusChanged(
   actor: EventActor,
   ticket: Record<string, unknown>,
   previousStatusCategory: string | null,
-  newStatusCategory: string
+  newStatusCategory: string,
+  options?: TicketDispatchOptions
 ): Promise<void> {
   await dispatchEvent({
     ...eventEnvelope(actor),
+    ...sourceFields(options),
     type: 'ticket.status_changed',
     data: { ticket: ticketRef(ticket), previousStatusCategory, newStatusCategory },
   })
@@ -352,7 +370,8 @@ export async function dispatchTicketThreadAdded(
     authorPrincipalId: string | null
     isFromRequester: boolean
     createdAt: Date | string
-  }
+  },
+  options?: TicketDispatchOptions
 ): Promise<void> {
   const threadSnapshot = thread
     ? {
@@ -369,6 +388,7 @@ export async function dispatchTicketThreadAdded(
     : undefined
   await dispatchEvent({
     ...eventEnvelope(actor),
+    ...sourceFields(options),
     type: 'ticket.thread_added',
     data: {
       ticket: ticketRef(ticket),
@@ -376,6 +396,75 @@ export async function dispatchTicketThreadAdded(
       audience,
       sharedWithTeamId,
       thread: threadSnapshot,
+    },
+  })
+}
+
+export async function dispatchTicketThreadUpdated(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  threadId: string,
+  audience: 'public' | 'internal' | 'shared_team',
+  sharedWithTeamId: string | null,
+  thread: {
+    bodyTextPreview: string
+    bodyTextTruncated: boolean
+    authorPrincipalId: string | null
+    isFromRequester: boolean
+    createdAt: Date | string
+    editedAt: Date | string | null
+  },
+  options?: TicketDispatchOptions
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    ...sourceFields(options),
+    type: 'ticket.thread_updated',
+    data: {
+      ticket: ticketRef(ticket),
+      threadId,
+      audience,
+      sharedWithTeamId,
+      thread: {
+        id: threadId,
+        audience,
+        bodyTextPreview: thread.bodyTextPreview,
+        bodyTextTruncated: thread.bodyTextTruncated,
+        authorPrincipalId: thread.authorPrincipalId,
+        isFromRequester: thread.isFromRequester,
+        sharedWithTeamId,
+        createdAt:
+          typeof thread.createdAt === 'string' ? thread.createdAt : thread.createdAt.toISOString(),
+        editedAt:
+          thread.editedAt == null
+            ? null
+            : typeof thread.editedAt === 'string'
+              ? thread.editedAt
+              : thread.editedAt.toISOString(),
+      },
+    },
+  })
+}
+
+export async function dispatchTicketThreadDeleted(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  threadId: string,
+  audience: 'public' | 'internal' | 'shared_team',
+  sharedWithTeamId: string | null,
+  deletedByPrincipalId: string | null,
+  options?: TicketDispatchOptions
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    ...sourceFields(options),
+    type: 'ticket.thread_deleted',
+    data: {
+      ticket: ticketRef(ticket),
+      threadId,
+      audience,
+      sharedWithTeamId,
+      deletedByPrincipalId,
     },
   })
 }
@@ -471,10 +560,12 @@ export async function dispatchTicketUpdated(
   actor: EventActor,
   ticket: Record<string, unknown>,
   changedFields: string[],
-  diff: Record<string, { from: unknown; to: unknown }>
+  diff: Record<string, { from: unknown; to: unknown }>,
+  options?: TicketDispatchOptions
 ): Promise<void> {
   await dispatchEvent({
     ...eventEnvelope(actor),
+    ...sourceFields(options),
     type: 'ticket.updated',
     data: { ticket: ticketRef(ticket), changedFields, diff },
   })
@@ -484,10 +575,12 @@ export async function dispatchTicketFirstResponse(
   actor: EventActor,
   ticket: Record<string, unknown>,
   threadId: string,
-  firstResponseAt: string
+  firstResponseAt: string,
+  options?: TicketDispatchOptions
 ): Promise<void> {
   await dispatchEvent({
     ...eventEnvelope(actor),
+    ...sourceFields(options),
     type: 'ticket.first_response',
     data: { ticket: ticketRef(ticket), threadId, firstResponseAt },
   })

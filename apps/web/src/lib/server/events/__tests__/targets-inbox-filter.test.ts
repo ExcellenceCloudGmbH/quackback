@@ -134,6 +134,27 @@ function setActiveWebhooks(rows: unknown[]) {
     .mockResolvedValueOnce(rows) // ACTIVE_WEBHOOKS
 }
 
+function setActiveIntegrationMappings(rows: unknown[]) {
+  mockCacheGet
+    .mockResolvedValueOnce(rows) // INTEGRATION_MAPPINGS
+    .mockResolvedValueOnce([]) // ACTIVE_WEBHOOKS
+}
+
+function makeGitHubTicketMapping(filters: { inboxIds?: string[] } | null) {
+  return {
+    integrationId: 'integration_1',
+    eventType: 'ticket.created',
+    integrationType: 'github',
+    secrets: JSON.stringify({ accessToken: 'ghs_test' }),
+    integrationConfig: {
+      channelId: 'quackback/repo',
+      syncDirection: 'outbound',
+    },
+    actionConfig: {},
+    filters,
+  }
+}
+
 describe('getHookTargets — inbox filter (Phase 4)', () => {
   it('matches a ticket event when inboxIds includes the event inbox', async () => {
     setActiveWebhooks([
@@ -214,5 +235,44 @@ describe('getHookTargets — inbox filter (Phase 4)', () => {
     ])
     const targets = await getHookTargets(makeTicketCreatedEvent(null))
     expect(targets.filter((t) => t.type === 'webhook')).toHaveLength(0)
+  })
+
+  it('matches a ticket integration mapping when inboxIds includes the event inbox', async () => {
+    setActiveIntegrationMappings([makeGitHubTicketMapping({ inboxIds: ['inbox_1'] })])
+
+    const targets = await getHookTargets(makeTicketCreatedEvent('inbox_1'))
+
+    const githubTargets = targets.filter((t) => t.type === 'github')
+    expect(githubTargets).toHaveLength(1)
+    expect(githubTargets[0].target).toEqual({ channelId: 'quackback/repo' })
+    expect(githubTargets[0].config).toMatchObject({
+      accessToken: 'ghs_test',
+      integrationId: 'integration_1',
+      syncDirection: 'outbound',
+    })
+  })
+
+  it('excludes a ticket integration mapping when inboxIds does not include the event inbox', async () => {
+    setActiveIntegrationMappings([makeGitHubTicketMapping({ inboxIds: ['inbox_2'] })])
+
+    const targets = await getHookTargets(makeTicketCreatedEvent('inbox_1'))
+
+    expect(targets.filter((t) => t.type === 'github')).toHaveLength(0)
+  })
+
+  it('excludes ticket events with null inboxId from inbox-filtered integrations', async () => {
+    setActiveIntegrationMappings([makeGitHubTicketMapping({ inboxIds: ['inbox_1'] })])
+
+    const targets = await getHookTargets(makeTicketCreatedEvent(null))
+
+    expect(targets.filter((t) => t.type === 'github')).toHaveLength(0)
+  })
+
+  it('matches any ticket integration mapping when inboxIds is null', async () => {
+    setActiveIntegrationMappings([makeGitHubTicketMapping(null)])
+
+    const targets = await getHookTargets(makeTicketCreatedEvent('inbox_anything'))
+
+    expect(targets.filter((t) => t.type === 'github')).toHaveLength(1)
   })
 })

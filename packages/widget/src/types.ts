@@ -19,8 +19,8 @@ export interface InitOptions {
  *
  * For anonymous sessions, call `identify()` with no argument — don't pass
  * `{ anonymous: true }`. (The runtime still accepts `{ anonymous: true }` for
- * backwards-compat with older integrations, but it's not in the type so
- * TypeScript users get nudged to the cleaner form.)
+ * backwards-compat with muscle memory from Intercom/Featurebase, but it's not
+ * in the type so TypeScript users get nudged to the cleaner form.)
  */
 export type Identity =
   | { ssoToken: string }
@@ -32,7 +32,6 @@ export type Identity =
  * - `{ view: 'new-post', title?, body?, board? }` pre-fills the new-post form
  * - `{ view: 'changelog', entryId? }` opens the changelog, optionally to one entry
  * - `{ view: 'help', query? }` opens help, optionally with search prefilled
- * - `{ view: 'chat' }` opens the live chat view
  * - `{ postId }` deep-links to a specific post
  * - `{ articleId }` deep-links to a help article
  *
@@ -47,7 +46,6 @@ export type OpenOptions =
   | { view: 'changelog'; entryId?: string }
   | { view: 'help'; query?: string }
   | { view: 'support'; ticketId?: string }
-  | { view: 'chat' }
   | { postId: string }
   | { articleId: string }
 

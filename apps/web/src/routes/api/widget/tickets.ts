@@ -1,5 +1,5 @@
 /**
- * Widget tickets — list (GET) and create (POST).
+ * Widget tickets - list (GET) and create (POST).
  *
  * Auth: requires a Bearer-authenticated widget session (`getWidgetSession`).
  * Anonymous principals are rejected here; the iframe UI must call
@@ -7,13 +7,13 @@
  *
  * GET ownership model: reuses the portal-side `listTicketsForPortalUser`
  * helper, which builds the identity-set
- *   `principalId(userId) ∪ linkedContactIds(userId)`
+ *   `principalId(userId) + linkedContactIds(userId)`
  * from `contact_user_links`. Phase 1 populates that link on verified
  * `identify`; Phase 2 also populates it lazily inside `createTicket` via
  * `resolveRequesterContactId`.
  *
  * POST stamps `channel='widget'` so analytics and routing can distinguish
- * widget-originated tickets. Requester defaults to the session principal —
+ * widget-originated tickets. Requester defaults to the session principal -
  * the widget never accepts an inbound `requesterContactId` field.
  */
 import { createFileRoute } from '@tanstack/react-router'
@@ -36,7 +36,7 @@ const tiptapDocSchema = z
 
 const statusCategorySchema = z.enum(['open', 'pending', 'on_hold', 'solved', 'closed'])
 
-// `urgent` is intentionally excluded from the widget surface — only staff may
+// `urgent` is intentionally excluded from the widget surface - only staff may
 // escalate to it, otherwise end-users would default everything to urgent.
 const widgetPrioritySchema = z.enum(['low', 'normal', 'high'])
 

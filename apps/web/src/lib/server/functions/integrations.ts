@@ -13,11 +13,17 @@ import {
   sql,
 } from '@/lib/server/db'
 import type { IntegrationId, BoardId, PrincipalId } from '@quackback/ids'
+import type { EventMappingFilters } from '@/lib/server/db'
 // cacheDel/CACHE_KEYS are imported dynamically inside handlers to keep ioredis out of the client bundle
 
 // ============================================
 // Schemas
 // ============================================
+
+const eventMappingFiltersSchema = z.record(
+  z.string(),
+  z.union([z.array(z.string()), z.string(), z.boolean(), z.number()])
+)
 
 const updateIntegrationSchema = z.object({
   id: z.string(),
@@ -28,6 +34,7 @@ const updateIntegrationSchema = z.object({
       z.object({
         eventType: z.string(),
         enabled: z.boolean(),
+        filters: eventMappingFiltersSchema.nullable().optional(),
       })
     )
     .optional(),
@@ -87,6 +94,7 @@ export const updateIntegrationFn = createServerFn({ method: 'POST' })
             integrationId,
             eventType: mapping.eventType,
             actionType: 'send_message' as const,
+            filters: (mapping.filters ?? null) as EventMappingFilters | null,
             enabled: mapping.enabled,
           }))
         )
@@ -102,6 +110,25 @@ export const updateIntegrationFn = createServerFn({ method: 'POST' })
             updatedAt: new Date(),
           },
         })
+
+      for (const mapping of data.eventMappings) {
+        if (mapping.filters === undefined) continue
+
+        await db
+          .update(integrationEventMappings)
+          .set({
+            filters: (mapping.filters ?? null) as EventMappingFilters | null,
+            updatedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(integrationEventMappings.integrationId, integrationId),
+              eq(integrationEventMappings.eventType, mapping.eventType),
+              eq(integrationEventMappings.actionType, 'send_message'),
+              eq(integrationEventMappings.targetKey, 'default')
+            )
+          )
+      }
     }
 
     const { cacheDel, CACHE_KEYS } = await import('@/lib/server/redis')
@@ -551,7 +578,7 @@ export const deleteUserMappingFn = createServerFn({ method: 'POST' })
 
 const fetchSyncLogSchema = z.object({
   integrationId: z.string(),
-  limit: z.number().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
   cursor: z.string().optional(),
   statusFilter: z.enum(['all', 'failed']).optional(),
 })
@@ -565,7 +592,7 @@ export const fetchSyncLogFn = createServerFn({ method: 'GET' })
     await requireAuth({ roles: ['admin'] })
     const { desc, lt, tickets } = await import('@/lib/server/db')
 
-    const limit = Math.min(data.limit ?? 25, 100)
+    const limit = data.limit ?? 25
     const conditions = [eq(integrationSyncLog.integrationId, data.integrationId as IntegrationId)]
 
     if (data.statusFilter === 'failed') {

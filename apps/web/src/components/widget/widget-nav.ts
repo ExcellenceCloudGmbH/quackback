@@ -31,6 +31,9 @@ export type WidgetView =
   | 'help-detail'
   | 'chat'
   | 'messages'
+  | 'support-list'
+  | 'support-new'
+  | 'support-detail'
 
 /** Which surfaces the workspace has enabled for this widget (from the loader). */
 export interface EnabledTabs {

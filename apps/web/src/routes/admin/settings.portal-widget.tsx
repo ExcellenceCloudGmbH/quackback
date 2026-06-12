@@ -14,6 +14,7 @@ import {
   HighlightedCode,
   type SyntaxLang,
 } from '@/components/admin/settings/widget/highlighted-code'
+import { WidgetTicketingToggle } from '@/components/admin/settings/widget/widget-ticketing-toggle'
 import { cn } from '@/lib/shared/utils'
 import { BackLink } from '@/components/ui/back-link'
 import { PageHeader } from '@/components/shared/page-header'
@@ -80,6 +81,7 @@ function PortalWidgetSettingsPage() {
     changelog: config.tabs?.changelog ?? false,
     help: (config.tabs?.help ?? false) && helpCenterFlagEnabled && helpCenterEnabled,
   })
+  const [ticketingEnabled, setTicketingEnabled] = useState(config.ticketing?.enabled ?? false)
 
   return (
     <div className="space-y-6 max-w-5xl">
@@ -93,6 +95,10 @@ function PortalWidgetSettingsPage() {
       />
 
       <WidgetToggle initialEnabled={config.enabled} />
+      <WidgetTicketingToggle
+        initialEnabled={ticketingEnabled}
+        onEnabledChange={setTicketingEnabled}
+      />
 
       {/* Appearance + Preview: two-column layout */}
       <BrandingLayout>
@@ -108,7 +114,11 @@ function PortalWidgetSettingsPage() {
           />
         </BrandingControlsPanel>
         <BrandingPreviewPanel label="Preview">
-          <WidgetPreview position={position} tabs={previewTabs} />
+          <WidgetPreview
+            position={position}
+            tabs={previewTabs}
+            ticketingEnabled={ticketingEnabled}
+          />
         </BrandingPreviewPanel>
       </BrandingLayout>
 

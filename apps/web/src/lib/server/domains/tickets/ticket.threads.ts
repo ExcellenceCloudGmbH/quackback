@@ -43,6 +43,15 @@ export interface AddThreadInput {
   bodyJson?: TiptapContent | null
   bodyText?: string | null
   sharedWithTeamId?: TeamId | null
+  syncSourceIntegrationId?: string | null
+}
+
+function threadPreview(bodyText: string): { bodyTextPreview: string; bodyTextTruncated: boolean } {
+  const PREVIEW_MAX = 500
+  return {
+    bodyTextPreview: bodyText.length > PREVIEW_MAX ? bodyText.slice(0, PREVIEW_MAX) : bodyText,
+    bodyTextTruncated: bodyText.length > PREVIEW_MAX,
+  }
 }
 
 export async function addThread(input: AddThreadInput): Promise<TicketThread> {
@@ -178,10 +187,10 @@ export async function addThread(input: AddThreadInput): Promise<TicketThread> {
         actor,
         refreshedTicket as unknown as Record<string, unknown>,
         created.id,
-        typeof now === 'string' ? now : now.toISOString()
+        typeof now === 'string' ? now : now.toISOString(),
+        { syncSourceIntegrationId: input.syncSourceIntegrationId }
       )
     }
-    const PREVIEW_MAX = 500
     const isFromRequester =
       input.principalId !== null && input.principalId === ticket.requesterPrincipalId
     await dispatchTicketThreadAdded(
@@ -191,12 +200,12 @@ export async function addThread(input: AddThreadInput): Promise<TicketThread> {
       input.audience,
       input.sharedWithTeamId ?? null,
       {
-        bodyTextPreview: bodyText.length > PREVIEW_MAX ? bodyText.slice(0, PREVIEW_MAX) : bodyText,
-        bodyTextTruncated: bodyText.length > PREVIEW_MAX,
+        ...threadPreview(bodyText),
         authorPrincipalId: input.principalId,
         isFromRequester,
         createdAt: created.createdAt ?? now,
-      }
+      },
+      { syncSourceIntegrationId: input.syncSourceIntegrationId }
     )
   } catch (err) {
     console.warn('[tickets] dispatchTicketThreadAdded failed', err)
@@ -207,9 +216,10 @@ export async function addThread(input: AddThreadInput): Promise<TicketThread> {
 
 export interface EditThreadInput {
   threadId: TicketThreadId
-  actorPrincipalId: PrincipalId
+  actorPrincipalId: PrincipalId | null
   bodyJson?: TiptapContent | null
   bodyText?: string | null
+  syncSourceIntegrationId?: string | null
 }
 
 export async function editThread(input: EditThreadInput): Promise<TicketThread> {
@@ -243,12 +253,47 @@ export async function editThread(input: EditThreadInput): Promise<TicketThread> 
   await writeActivity(existing.ticketId as TicketId, input.actorPrincipalId, 'thread.edited', {
     threadId: existing.id,
   })
+  try {
+    const ticket = await db.query.tickets.findFirst({
+      where: and(eq(tickets.id, existing.ticketId as TicketId), isNull(tickets.deletedAt)),
+    })
+    if (ticket) {
+      const { dispatchTicketThreadUpdated, buildEventActor } =
+        await import('@/lib/server/events/dispatch')
+      const actor = input.actorPrincipalId
+        ? buildEventActor({
+            principalId: input.actorPrincipalId,
+            displayName: 'ticket-system',
+          })
+        : { type: 'service' as const, displayName: 'ticket-system' }
+      const isFromRequester =
+        existing.principalId !== null && existing.principalId === ticket.requesterPrincipalId
+      await dispatchTicketThreadUpdated(
+        actor,
+        ticket as unknown as Record<string, unknown>,
+        updated.id,
+        updated.audience,
+        (updated.sharedWithTeamId as TeamId | null) ?? null,
+        {
+          ...threadPreview(bodyText),
+          authorPrincipalId: (updated.principalId as PrincipalId | null) ?? null,
+          isFromRequester,
+          createdAt: updated.createdAt,
+          editedAt: updated.editedAt ?? null,
+        },
+        { syncSourceIntegrationId: input.syncSourceIntegrationId }
+      )
+    }
+  } catch (err) {
+    console.warn('[tickets] dispatchTicketThreadUpdated failed', err)
+  }
   return updated
 }
 
 export async function softDeleteThread(
   threadId: TicketThreadId,
-  actorPrincipalId: PrincipalId
+  actorPrincipalId: PrincipalId | null,
+  syncSourceIntegrationId?: string | null
 ): Promise<TicketThread> {
   const existing = await db.query.ticketThreads.findFirst({
     where: eq(ticketThreads.id, threadId),
@@ -265,6 +310,29 @@ export async function softDeleteThread(
   await writeActivity(existing.ticketId as TicketId, actorPrincipalId, 'thread.deleted', {
     threadId: existing.id,
   })
+  try {
+    const ticket = await db.query.tickets.findFirst({
+      where: and(eq(tickets.id, existing.ticketId as TicketId), isNull(tickets.deletedAt)),
+    })
+    if (ticket) {
+      const { dispatchTicketThreadDeleted, buildEventActor } =
+        await import('@/lib/server/events/dispatch')
+      const actor = actorPrincipalId
+        ? buildEventActor({ principalId: actorPrincipalId, displayName: 'ticket-system' })
+        : { type: 'service' as const, displayName: 'ticket-system' }
+      await dispatchTicketThreadDeleted(
+        actor,
+        ticket as unknown as Record<string, unknown>,
+        updated.id,
+        updated.audience,
+        (updated.sharedWithTeamId as TeamId | null) ?? null,
+        actorPrincipalId,
+        { syncSourceIntegrationId }
+      )
+    }
+  } catch (err) {
+    console.warn('[tickets] dispatchTicketThreadDeleted failed', err)
+  }
   return updated
 }
 

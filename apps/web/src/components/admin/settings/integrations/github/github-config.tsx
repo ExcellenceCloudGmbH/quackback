@@ -20,12 +20,17 @@ import { useInboxes } from '@/lib/client/hooks/use-inboxes-queries'
 import { GitHubUserMappings } from './github-user-mappings'
 import { GitHubSyncHistory } from './github-sync-history'
 import type { GitHubSyncDirection } from '@/lib/server/integrations/github/types'
+import type { UpdateIntegrationInput } from '@/lib/server/functions/integrations'
+
+type StoredEventMappingFilters = Record<string, unknown>
+type EventMappingUpdate = NonNullable<UpdateIntegrationInput['eventMappings']>[number]
+type EventMappingUpdateFilters = EventMappingUpdate['filters']
 
 interface EventMapping {
   id: string
   eventType: string
   enabled: boolean
-  filters?: Record<string, unknown> | null
+  filters?: StoredEventMappingFilters | null
 }
 
 interface GitHubConfigProps {
@@ -62,6 +67,21 @@ const TICKET_EVENTS = [
     label: 'Ticket updated → Update issue',
     description: 'Sync ticket subject/description changes to GitHub issue',
   },
+  {
+    id: 'ticket.thread_added',
+    label: 'Public reply added → Comment on issue',
+    description: 'Sync new public ticket replies to GitHub issue comments',
+  },
+  {
+    id: 'ticket.thread_updated',
+    label: 'Public reply edited → Edit issue comment',
+    description: 'Sync edits to public ticket replies back to GitHub',
+  },
+  {
+    id: 'ticket.thread_deleted',
+    label: 'Public reply deleted → Delete issue comment',
+    description: 'Delete the linked GitHub issue comment when a public reply is deleted',
+  },
 ]
 
 const POST_EVENTS = [
@@ -76,6 +96,33 @@ const POST_EVENTS = [
     description: 'Update linked issues when feedback status changes',
   },
 ]
+
+const ALL_INBOXES_VALUE = '__all_inboxes__'
+const TICKET_EVENT_IDS = new Set(TICKET_EVENTS.map((event) => event.id))
+const TICKET_THREAD_EVENT_IDS = new Set([
+  'ticket.thread_added',
+  'ticket.thread_updated',
+  'ticket.thread_deleted',
+])
+
+function normalizeEventMappingFilters(
+  filters: StoredEventMappingFilters | null | undefined
+): EventMappingUpdateFilters {
+  if (!filters) return null
+
+  const normalized: NonNullable<EventMappingUpdateFilters> = {}
+  for (const [key, value] of Object.entries(filters)) {
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      normalized[key] = value
+      continue
+    }
+    if (Array.isArray(value) && value.every((item): item is string => typeof item === 'string')) {
+      normalized[key] = value
+    }
+  }
+
+  return Object.keys(normalized).length > 0 ? normalized : null
+}
 
 export function GitHubConfig({
   integrationId,
@@ -94,9 +141,8 @@ export function GitHubConfig({
   const [selectedRepo, setSelectedRepo] = useState((initialConfig.channelId as string) || '')
   const [_label, _setLabel] = useState((initialConfig.label as string) || '')
   const [integrationEnabled, setIntegrationEnabled] = useState(enabled)
-  const [syncDirection, setSyncDirection] = useState<GitHubSyncDirection>(
-    (initialConfig.syncDirection as GitHubSyncDirection) || 'outbound'
-  )
+  const initialSyncDirection = (initialConfig.syncDirection as GitHubSyncDirection) || 'outbound'
+  const [syncDirection, setSyncDirection] = useState<GitHubSyncDirection>(initialSyncDirection)
   const [assigneeSync, setAssigneeSync] = useState((initialConfig.assigneeSync as boolean) ?? false)
   const [createTicketsFromIssues, setCreateTicketsFromIssues] = useState(
     (initialConfig.createTicketsFromIssues as boolean) ?? false
@@ -104,17 +150,68 @@ export function GitHubConfig({
   const [defaultInboxId, setDefaultInboxId] = useState(
     (initialConfig.defaultInboxId as string) || ''
   )
+  const [eventFilters] = useState<Record<string, StoredEventMappingFilters | null>>(() =>
+    Object.fromEntries(
+      initialEventMappings.map((mapping) => [mapping.eventType, mapping.filters ?? null])
+    )
+  )
   const [eventSettings, setEventSettings] = useState<Record<string, boolean>>(() =>
     Object.fromEntries(
-      [...TICKET_EVENTS, ...POST_EVENTS].map((event) => [
-        event.id,
-        initialEventMappings.find((m) => m.eventType === event.id)?.enabled ?? false,
-      ])
+      [...TICKET_EVENTS, ...POST_EVENTS].map((event) => {
+        const explicit = initialEventMappings.find((m) => m.eventType === event.id)
+        const hasTicketSync = initialEventMappings.some(
+          (m) =>
+            TICKET_EVENT_IDS.has(m.eventType) &&
+            !TICKET_THREAD_EVENT_IDS.has(m.eventType) &&
+            m.enabled
+        )
+        const defaultThreadSync =
+          TICKET_THREAD_EVENT_IDS.has(event.id) &&
+          (initialSyncDirection === 'outbound' || initialSyncDirection === 'bidirectional') &&
+          hasTicketSync
+        return [event.id, explicit?.enabled ?? defaultThreadSync]
+      })
     )
   )
 
   const isInbound = syncDirection === 'inbound' || syncDirection === 'bidirectional'
   const isOutbound = syncDirection === 'outbound' || syncDirection === 'bidirectional'
+  const showInboxSelector = isOutbound || (isInbound && createTicketsFromIssues)
+  const inboxSelectValue = defaultInboxId || ALL_INBOXES_VALUE
+  const inboxAllLabel =
+    isOutbound && isInbound
+      ? 'All inboxes / no default'
+      : isOutbound
+        ? 'All inboxes'
+        : 'No default inbox'
+  const inboxHelpText = isOutbound
+    ? isInbound
+      ? 'Only tickets from this inbox sync to GitHub. New tickets from GitHub issues are created here when enabled.'
+      : 'Only tickets from this inbox sync to this GitHub repository. Choose All inboxes to sync every ticket.'
+    : 'New tickets from GitHub issues will be created in this inbox.'
+
+  const getTicketFilters = (
+    inboxId: string,
+    direction: GitHubSyncDirection
+  ): EventMappingUpdateFilters => {
+    const outbound = direction === 'outbound' || direction === 'bidirectional'
+    return outbound && inboxId ? { inboxIds: [inboxId] } : null
+  }
+
+  const buildEventMappingUpdates = (
+    settings: Record<string, boolean>,
+    inboxId: string,
+    direction: GitHubSyncDirection
+  ): NonNullable<UpdateIntegrationInput['eventMappings']> => {
+    const ticketFilters = getTicketFilters(inboxId, direction)
+    return Object.entries(settings).map(([eventType, enabled]) => ({
+      eventType,
+      enabled,
+      filters: TICKET_EVENT_IDS.has(eventType)
+        ? ticketFilters
+        : normalizeEventMappingFilters(eventFilters[eventType]),
+    }))
+  }
 
   const fetchRepos = useCallback(async () => {
     setLoadingRepos(true)
@@ -145,7 +242,11 @@ export function GitHubConfig({
 
   const handleSyncDirectionChange = (value: GitHubSyncDirection) => {
     setSyncDirection(value)
-    updateMutation.mutate({ id: integrationId, config: { syncDirection: value } })
+    updateMutation.mutate({
+      id: integrationId,
+      config: { syncDirection: value },
+      eventMappings: buildEventMappingUpdates(eventSettings, defaultInboxId, value),
+    })
   }
 
   const handleAssigneeSyncChange = (checked: boolean) => {
@@ -159,8 +260,13 @@ export function GitHubConfig({
   }
 
   const handleDefaultInboxChange = (value: string) => {
-    setDefaultInboxId(value)
-    updateMutation.mutate({ id: integrationId, config: { defaultInboxId: value } })
+    const nextInboxId = value === ALL_INBOXES_VALUE ? '' : value
+    setDefaultInboxId(nextInboxId)
+    updateMutation.mutate({
+      id: integrationId,
+      config: { defaultInboxId: nextInboxId || null },
+      eventMappings: buildEventMappingUpdates(eventSettings, nextInboxId, syncDirection),
+    })
   }
 
   const handleEventToggle = (eventId: string, checked: boolean) => {
@@ -168,10 +274,7 @@ export function GitHubConfig({
     setEventSettings(newSettings)
     updateMutation.mutate({
       id: integrationId,
-      eventMappings: Object.entries(newSettings).map(([eventType, enabled]) => ({
-        eventType,
-        enabled,
-      })),
+      eventMappings: buildEventMappingUpdates(newSettings, defaultInboxId, syncDirection),
     })
   }
 
@@ -306,31 +409,30 @@ export function GitHubConfig({
               disabled={saving || !integrationEnabled}
             />
           </div>
+        </div>
+      )}
 
-          {createTicketsFromIssues && (
-            <div className="space-y-2">
-              <Label className="text-sm">Default inbox</Label>
-              <Select
-                value={defaultInboxId}
-                onValueChange={handleDefaultInboxChange}
-                disabled={saving || !integrationEnabled}
-              >
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select an inbox" />
-                </SelectTrigger>
-                <SelectContent>
-                  {inboxes.map((inbox) => (
-                    <SelectItem key={inbox.id} value={inbox.id}>
-                      {inbox.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs text-muted-foreground">
-                New tickets from GitHub issues will be created in this inbox
-              </p>
-            </div>
-          )}
+      {showInboxSelector && (
+        <div className="space-y-2">
+          <Label className="text-sm">Inbox</Label>
+          <Select
+            value={inboxSelectValue}
+            onValueChange={handleDefaultInboxChange}
+            disabled={saving || !integrationEnabled || inboxesQuery.isLoading}
+          >
+            <SelectTrigger className="w-full">
+              <SelectValue placeholder="Select an inbox" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_INBOXES_VALUE}>{inboxAllLabel}</SelectItem>
+              {inboxes.map((inbox) => (
+                <SelectItem key={inbox.id} value={inbox.id}>
+                  {inbox.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">{inboxHelpText}</p>
         </div>
       )}
 

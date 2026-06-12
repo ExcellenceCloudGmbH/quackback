@@ -56,6 +56,7 @@ import {
 import type { UserAttributeId } from '@quackback/ids'
 import { sendInvitationEmail } from '@quackback/email'
 import { getBaseUrl } from '@/lib/server/config'
+import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils/date'
 
 /** Invitation expiry duration — 7 days in milliseconds */
 const INVITATION_EXPIRY_MS = 7 * 24 * 60 * 60 * 1000
@@ -231,7 +232,11 @@ export const fetchTeamMembers = createServerFn({ method: 'GET' }).handler(async 
 
     const result = await listTeamMembers()
     console.log(`[fn:admin] fetchTeamMembers: count=${result.length}`)
-    return result
+    return result.map((member) => ({
+      ...member,
+      createdAt: toIsoString(member.createdAt),
+      lastSignInAt: toIsoStringOrNull(member.lastSignInAt),
+    }))
   } catch (error) {
     console.error(`[fn:admin] ❌ fetchTeamMembers failed:`, error)
     throw error
