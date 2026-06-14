@@ -433,9 +433,10 @@ export async function listCustomerPeople(
       const linkedUsers = linksByContact.get(contact.id) ?? []
       const principalIds = linkedUsers.map((row) => row.principalId)
       const firstPortalUser = linkedUsers[0]
+      const kind: CustomerPersonKind = linkedUsers.length > 0 ? 'linked' : 'contact'
       return {
         id: `contact:${contact.id}`,
-        kind: linkedUsers.length > 0 ? 'linked' : 'contact',
+        kind,
         contactId: contact.id as ContactId,
         principalIds,
         userIds: linkedUsers.map((row) => row.userId),

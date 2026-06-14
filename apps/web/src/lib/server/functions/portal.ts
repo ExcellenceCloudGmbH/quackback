@@ -333,7 +333,7 @@ export const fetchPublicPostDetail = createServerFn({ method: 'GET' })
     const needsAnonCeiling = actor.principalType !== 'user'
     const [mergeInfo, mergedPostsList, allowAnonymous] = await Promise.all([
       getPostMergeInfo(postId, actor).then((info) =>
-        info ? { ...info, mergedAt: toISOString(info.mergedAt) } : null
+        info ? { ...info, mergedAt: toIsoString(info.mergedAt) } : null
       ),
       getMergedPosts(postId),
       needsAnonCeiling ? loadAllowAnonymous() : Promise.resolve(false),
@@ -359,7 +359,7 @@ export const fetchPublicPostDetail = createServerFn({ method: 'GET' })
     return {
       ...serializable,
       contentJson: result.contentJson ?? {},
-      createdAt: toISOString(result.createdAt),
+      createdAt: toIsoString(result.createdAt),
       comments: result.comments.map(serializeComment),
       mergeInfo,
       mergedPostCount: mergedPostsList.length > 0 ? mergedPostsList.length : undefined,

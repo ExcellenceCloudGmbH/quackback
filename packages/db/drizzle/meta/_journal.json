@@ -783,14 +783,28 @@
       "idx": 111,
       "version": "7",
       "when": 1782259200000,
-      "tag": "0111_ticketing_and_authz",
+      "tag": "0111_invitation_magic_link_token",
       "breakpoints": true
     },
     {
       "idx": 112,
       "version": "7",
       "when": 1782345600000,
-      "tag": "0112_ticket_thread_external_links",
+      "tag": "0112_invitation_magic_link_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 113,
+      "version": "7",
+      "when": 1782432000000,
+      "tag": "0113_ticketing_and_authz",
+      "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1782518400000,
+      "tag": "0114_ticket_thread_external_links",
       "breakpoints": true
     }
   ]
