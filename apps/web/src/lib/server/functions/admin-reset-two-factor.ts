@@ -17,13 +17,16 @@ import { z } from 'zod'
 import { and, db, eq, like, twoFactor, user, verification } from '@/lib/server/db'
 import { actorFromAuth, withAuditEvent } from '@/lib/server/audit/log'
 import { requireAuth } from './auth-helpers'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'admin-2fa-reset' })
 
 const input = z.object({
   userId: z.string().regex(/^user_/),
 })
 
 export const adminResetTwoFactorFn = createServerFn({ method: 'POST' })
-  .inputValidator(input)
+  .validator(input)
   .handler(async ({ data }) => {
     const auth = await requireAuth({ roles: ['admin'] })
     const userId = data.userId as UserId
@@ -50,7 +53,7 @@ export const adminResetTwoFactorFn = createServerFn({ method: 'POST' })
             )
         })
 
-        console.log(`[admin] admin=${auth.user.id} reset 2FA for user=${userId}`)
+        log.info({ admin_id: auth.user.id, user_id: userId }, 'reset 2fa for user')
         return { success: true }
       }
     )

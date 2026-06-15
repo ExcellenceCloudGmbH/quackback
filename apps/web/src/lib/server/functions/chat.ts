@@ -39,6 +39,9 @@ import {
   type AuthContext,
 } from './auth-helpers'
 import { isTeamMember } from '@/lib/shared/roles'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'chat' })
 
 const attachmentSchema = z.object({
   url: z.string().min(1),
@@ -183,7 +186,7 @@ async function assertVisitorChatAccess(role: string | null): Promise<void> {
 
 /** Send a visitor message; creates the conversation on the first message. */
 export const sendChatMessageFn = createServerFn({ method: 'POST' })
-  .inputValidator(sendMessageSchema)
+  .validator(sendMessageSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member', 'user'] })
@@ -228,7 +231,7 @@ export const sendChatMessageFn = createServerFn({ method: 'POST' })
         (data.contentJson ?? null) as import('@/lib/shared/db-types').TiptapContent | null
       )
     } catch (error) {
-      console.error('[fn:chat] sendChatMessageFn failed:', error)
+      log.error({ err: error }, 'send chat message failed')
       throw error
     }
   })
@@ -269,7 +272,7 @@ const myChatSchema = z.object({ conversationId: z.string().nullish() }).optional
 
 /** The current visitor's active conversation + first page of messages. */
 export const getMyChatFn = createServerFn({ method: 'GET' })
-  .inputValidator(myChatSchema)
+  .validator(myChatSchema)
   .handler(async ({ data }) => {
     try {
       const { getLiveChatConfig } = await import('@/lib/server/domains/settings/settings.widget')
@@ -384,7 +387,7 @@ export const getMyChatFn = createServerFn({ method: 'GET' })
         hasMore: page.hasMore,
       }
     } catch (error) {
-      console.error('[fn:chat] getMyChatFn failed:', error)
+      log.error({ err: error }, 'get my chat failed')
       throw error
     }
   })
@@ -414,14 +417,14 @@ export const getMyConversationsFn = createServerFn({ method: 'GET' }).handler(as
     const { listConversationsForVisitor } = await import('@/lib/server/domains/chat/chat.query')
     return { conversations: await listConversationsForVisitor(ctx.principal.id, 50, 'visitor') }
   } catch (error) {
-    console.error('[fn:chat] getMyConversationsFn failed:', error)
+    log.error({ err: error }, 'get my conversations failed')
     throw error
   }
 })
 
 /** Older messages for a conversation the caller can view (keyset pagination). */
 export const listChatMessagesFn = createServerFn({ method: 'GET' })
-  .inputValidator(listMessagesSchema)
+  .validator(listMessagesSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member', 'user'] })
@@ -449,14 +452,14 @@ export const listChatMessagesFn = createServerFn({ method: 'GET' })
       }
       return page
     } catch (error) {
-      console.error('[fn:chat] listChatMessagesFn failed:', error)
+      log.error({ err: error }, 'list chat messages failed')
       throw error
     }
   })
 
 /** Mark a conversation read up to now for the caller's side. */
 export const markChatReadFn = createServerFn({ method: 'POST' })
-  .inputValidator(conversationIdSchema)
+  .validator(conversationIdSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member', 'user'] })
@@ -468,14 +471,14 @@ export const markChatReadFn = createServerFn({ method: 'POST' })
       await markConversationRead(data.conversationId as ConversationId, actor)
       return { ok: true }
     } catch (error) {
-      console.error('[fn:chat] markChatReadFn failed:', error)
+      log.error({ err: error }, 'mark chat read failed')
       throw error
     }
   })
 
 /** Broadcast that the caller is typing (ephemeral; client-throttled). */
 export const sendChatTypingFn = createServerFn({ method: 'POST' })
-  .inputValidator(conversationIdSchema)
+  .validator(conversationIdSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member', 'user'] })
@@ -486,14 +489,14 @@ export const sendChatTypingFn = createServerFn({ method: 'POST' })
       await signalTyping(data.conversationId as ConversationId, actor)
       return { ok: true }
     } catch (error) {
-      console.error('[fn:chat] sendChatTypingFn failed:', error)
+      log.error({ err: error }, 'send chat typing failed')
       throw error
     }
   })
 
 /** Submit a CSAT rating for a conversation (visitor only). */
 export const submitCsatFn = createServerFn({ method: 'POST' })
-  .inputValidator(csatSchema)
+  .validator(csatSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member', 'user'] })
@@ -503,7 +506,7 @@ export const submitCsatFn = createServerFn({ method: 'POST' })
       await recordCsat(data.conversationId as ConversationId, data.rating, data.comment, actor)
       return { ok: true }
     } catch (error) {
-      console.error('[fn:chat] submitCsatFn failed:', error)
+      log.error({ err: error }, 'submit csat failed')
       throw error
     }
   })
@@ -512,7 +515,7 @@ const agentAvailabilitySchema = z.object({ availability: z.enum(['online', 'away
 
 /** Agent action: set my manual chat availability ('online' | 'away'). */
 export const setAgentAvailabilityFn = createServerFn({ method: 'POST' })
-  .inputValidator(agentAvailabilitySchema)
+  .validator(agentAvailabilitySchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -520,7 +523,7 @@ export const setAgentAvailabilityFn = createServerFn({ method: 'POST' })
       await setAgentAvailability(ctx.principal.id, data.availability)
       return { availability: data.availability }
     } catch (error) {
-      console.error('[fn:chat] setAgentAvailabilityFn failed:', error)
+      log.error({ err: error }, 'set agent availability failed')
       throw error
     }
   })
@@ -533,14 +536,14 @@ export const mintChatStreamTokenFn = createServerFn({ method: 'GET' }).handler(a
     const { mintStreamToken } = await import('@/lib/server/realtime/stream-token')
     return { token: mintStreamToken(ctx.principal.id) }
   } catch (error) {
-    console.error('[fn:chat] mintChatStreamTokenFn failed:', error)
+    log.error({ err: error }, 'mint chat stream token failed')
     throw error
   }
 })
 
 /** Soft-delete a message (team members; or a visitor deleting their own). */
 export const deleteChatMessageFn = createServerFn({ method: 'POST' })
-  .inputValidator(messageIdSchema)
+  .validator(messageIdSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member', 'user'] })
@@ -550,7 +553,7 @@ export const deleteChatMessageFn = createServerFn({ method: 'POST' })
       await deleteChatMessage(data.messageId as ChatMessageId, actor)
       return { ok: true }
     } catch (error) {
-      console.error('[fn:chat] deleteChatMessageFn failed:', error)
+      log.error({ err: error }, 'delete chat message failed')
       throw error
     }
   })
@@ -575,14 +578,14 @@ export const getCannedRepliesFn = createServerFn({ method: 'GET' }).handler(asyn
     const chat = await getLiveChatConfig()
     return { cannedReplies: chat.cannedReplies ?? [] }
   } catch (error) {
-    console.error('[fn:chat] getCannedRepliesFn failed:', error)
+    log.error({ err: error }, 'get canned replies failed')
     throw error
   }
 })
 
 /** Inbox feed for the support team. */
 export const listConversationsFn = createServerFn({ method: 'GET' })
-  .inputValidator(listConversationsSchema)
+  .validator(listConversationsSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -600,7 +603,7 @@ export const listConversationsFn = createServerFn({ method: 'GET' })
         before: data.before,
       })
     } catch (error) {
-      console.error('[fn:chat] listConversationsFn failed:', error)
+      log.error({ err: error }, 'list conversations failed')
       throw error
     }
   })
@@ -613,7 +616,7 @@ const userConversationsSchema = z.object({
 
 /** A single visitor's chat history (status-filterable, paginated) — admin user profile. */
 export const listConversationsForUserFn = createServerFn({ method: 'GET' })
-  .inputValidator(userConversationsSchema)
+  .validator(userConversationsSchema)
   .handler(async ({ data }) => {
     try {
       await requireAuth({ roles: ['admin', 'member'] })
@@ -624,14 +627,14 @@ export const listConversationsForUserFn = createServerFn({ method: 'GET' })
         before: data.before,
       })
     } catch (error) {
-      console.error('[fn:chat] listConversationsForUserFn failed:', error)
+      log.error({ err: error }, 'list conversations for user failed')
       throw error
     }
   })
 
 /** A single conversation (agent view) + first page of messages. */
 export const getConversationFn = createServerFn({ method: 'GET' })
-  .inputValidator(listMessagesSchema)
+  .validator(listMessagesSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -659,14 +662,14 @@ export const getConversationFn = createServerFn({ method: 'GET' })
       )
       return { conversation: dto, messages, hasMore: page.hasMore }
     } catch (error) {
-      console.error('[fn:chat] getConversationFn failed:', error)
+      log.error({ err: error }, 'get conversation failed')
       throw error
     }
   })
 
 /** Agent reply. */
 export const sendAgentMessageFn = createServerFn({ method: 'POST' })
-  .inputValidator(agentSendSchema)
+  .validator(agentSendSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -685,7 +688,7 @@ export const sendAgentMessageFn = createServerFn({ method: 'POST' })
         (data.contentJson ?? null) as import('@/lib/shared/db-types').TiptapContent | null
       )
     } catch (error) {
-      console.error('[fn:chat] sendAgentMessageFn failed:', error)
+      log.error({ err: error }, 'send agent message failed')
       throw error
     }
   })
@@ -696,7 +699,7 @@ export const sendAgentMessageFn = createServerFn({ method: 'POST' })
  * visitor surface needs to be on. The first message is always emailed.
  */
 export const startAgentConversationFn = createServerFn({ method: 'POST' })
-  .inputValidator(startConversationSchema)
+  .validator(startConversationSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -719,14 +722,14 @@ export const startAgentConversationFn = createServerFn({ method: 'POST' })
         actor
       )
     } catch (error) {
-      console.error('[fn:chat] startAgentConversationFn failed:', error)
+      log.error({ err: error }, 'start agent conversation failed')
       throw error
     }
   })
 
 /** Add an agent-only internal note (never sent to the visitor). */
 export const addChatNoteFn = createServerFn({ method: 'POST' })
-  .inputValidator(agentNoteSchema)
+  .validator(agentNoteSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -745,7 +748,7 @@ export const addChatNoteFn = createServerFn({ method: 'POST' })
         data.attachments as ChatAttachment[] | undefined
       )
     } catch (error) {
-      console.error('[fn:chat] addChatNoteFn failed:', error)
+      log.error({ err: error }, 'add chat note failed')
       throw error
     }
   })
@@ -761,7 +764,7 @@ const convertSchema = z.object({
 
 /** Create a feedback post from a conversation (create new, or upvote existing). */
 export const createPostFromConversationFn = createServerFn({ method: 'POST' })
-  .inputValidator(convertSchema)
+  .validator(convertSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -780,7 +783,7 @@ export const createPostFromConversationFn = createServerFn({ method: 'POST' })
         { agentActor: actor, agentPrincipalId: ctx.principal.id, agent }
       )
     } catch (error) {
-      console.error('[fn:chat] createPostFromConversationFn failed:', error)
+      log.error({ err: error }, 'create post from conversation failed')
       throw error
     }
   })
@@ -795,7 +798,7 @@ const captureContactEmailSchema = z.object({
 
 /** Agent action: store a contact email for a conversation's anonymous visitor. */
 export const captureVisitorContactEmailFn = createServerFn({ method: 'POST' })
-  .inputValidator(captureContactEmailSchema)
+  .validator(captureContactEmailSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -807,7 +810,7 @@ export const captureVisitorContactEmailFn = createServerFn({ method: 'POST' })
         actor
       )
     } catch (error) {
-      console.error('[fn:chat] captureVisitorContactEmailFn failed:', error)
+      log.error({ err: error }, 'capture visitor contact email failed')
       throw error
     }
   })
@@ -819,7 +822,7 @@ const sharePostSchema = z.object({
 
 /** Agent action: embed an existing feedback post into the conversation (visitor can upvote it). */
 export const sharePostFn = createServerFn({ method: 'POST' })
-  .inputValidator(sharePostSchema)
+  .validator(sharePostSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -835,13 +838,13 @@ export const sharePostFn = createServerFn({ method: 'POST' })
       )
       return { messageId: r.message.id }
     } catch (error) {
-      console.error('[fn:chat] sharePostFn failed:', error)
+      log.error({ err: error }, 'share post failed')
       throw error
     }
   })
 
 export const setConversationStatusFn = createServerFn({ method: 'POST' })
-  .inputValidator(setStatusSchema)
+  .validator(setStatusSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -850,14 +853,14 @@ export const setConversationStatusFn = createServerFn({ method: 'POST' })
       await setConversationStatus(data.conversationId as ConversationId, data.status, actor)
       return { ok: true }
     } catch (error) {
-      console.error('[fn:chat] setConversationStatusFn failed:', error)
+      log.error({ err: error }, 'set conversation status failed')
       throw error
     }
   })
 
 /** Agent action: end a conversation with a reason (+ optional note). */
 export const endConversationFn = createServerFn({ method: 'POST' })
-  .inputValidator(endConversationSchema)
+  .validator(endConversationSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -870,13 +873,13 @@ export const endConversationFn = createServerFn({ method: 'POST' })
         actor
       )
     } catch (error) {
-      console.error('[fn:chat] endConversationFn failed:', error)
+      log.error({ err: error }, 'end conversation failed')
       throw error
     }
   })
 
 export const assignConversationFn = createServerFn({ method: 'POST' })
-  .inputValidator(assignSchema)
+  .validator(assignSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -889,13 +892,13 @@ export const assignConversationFn = createServerFn({ method: 'POST' })
       await assignConversation(data.conversationId as ConversationId, assignTo, actor)
       return { ok: true }
     } catch (error) {
-      console.error('[fn:chat] assignConversationFn failed:', error)
+      log.error({ err: error }, 'assign conversation failed')
       throw error
     }
   })
 
 export const setConversationPriorityFn = createServerFn({ method: 'POST' })
-  .inputValidator(setPrioritySchema)
+  .validator(setPrioritySchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -904,14 +907,14 @@ export const setConversationPriorityFn = createServerFn({ method: 'POST' })
       await setConversationPriority(data.conversationId as ConversationId, data.priority, actor)
       return { ok: true }
     } catch (error) {
-      console.error('[fn:chat] setConversationPriorityFn failed:', error)
+      log.error({ err: error }, 'set conversation priority failed')
       throw error
     }
   })
 
 /** Add an emoji reaction to a message (agent-only, team-internal). */
 export const addMessageReactionFn = createServerFn({ method: 'POST' })
-  .inputValidator(messageReactionSchema)
+  .validator(messageReactionSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -919,14 +922,14 @@ export const addMessageReactionFn = createServerFn({ method: 'POST' })
       const { addMessageReaction } = await import('@/lib/server/domains/chat/message.actions')
       return await addMessageReaction(data.messageId as ChatMessageId, data.emoji, actor)
     } catch (error) {
-      console.error('[fn:chat] addMessageReactionFn failed:', error)
+      log.error({ err: error }, 'add message reaction failed')
       throw error
     }
   })
 
 /** Remove the caller's own emoji reaction from a message. */
 export const removeMessageReactionFn = createServerFn({ method: 'POST' })
-  .inputValidator(messageReactionSchema)
+  .validator(messageReactionSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -934,14 +937,14 @@ export const removeMessageReactionFn = createServerFn({ method: 'POST' })
       const { removeMessageReaction } = await import('@/lib/server/domains/chat/message.actions')
       return await removeMessageReaction(data.messageId as ChatMessageId, data.emoji, actor)
     } catch (error) {
-      console.error('[fn:chat] removeMessageReactionFn failed:', error)
+      log.error({ err: error }, 'remove message reaction failed')
       throw error
     }
   })
 
 /** Set or clear the team-wide flag on a message. */
 export const setMessageFlagFn = createServerFn({ method: 'POST' })
-  .inputValidator(messageFlagSchema)
+  .validator(messageFlagSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -949,14 +952,14 @@ export const setMessageFlagFn = createServerFn({ method: 'POST' })
       const { setMessageFlag } = await import('@/lib/server/domains/chat/message.actions')
       return await setMessageFlag(data.messageId as ChatMessageId, data.flagged, actor)
     } catch (error) {
-      console.error('[fn:chat] setMessageFlagFn failed:', error)
+      log.error({ err: error }, 'set message flag failed')
       throw error
     }
   })
 
 /** Mark a conversation unread for the agent side, starting at a message. */
 export const markConversationUnreadFromMessageFn = createServerFn({ method: 'POST' })
-  .inputValidator(markUnreadFromMessageSchema)
+  .validator(markUnreadFromMessageSchema)
   .handler(async ({ data }) => {
     try {
       const ctx = await requireAuth({ roles: ['admin', 'member'] })
@@ -970,7 +973,7 @@ export const markConversationUnreadFromMessageFn = createServerFn({ method: 'POS
       )
       return { ok: true }
     } catch (error) {
-      console.error('[fn:chat] markConversationUnreadFromMessageFn failed:', error)
+      log.error({ err: error }, 'mark conversation unread from message failed')
       throw error
     }
   })
@@ -982,33 +985,33 @@ export const listFlaggedMessagesFn = createServerFn({ method: 'GET' }).handler(a
     const { listFlaggedMessages } = await import('@/lib/server/domains/chat/chat.query')
     return await listFlaggedMessages(ctx.principal.id)
   } catch (error) {
-    console.error('[fn:chat] listFlaggedMessagesFn failed:', error)
+    log.error({ err: error }, 'list flagged messages failed')
     throw error
   }
 })
 
 export const getLinkedPostsForConversationFn = createServerFn({ method: 'GET' })
-  .inputValidator(conversationIdSchema)
+  .validator(conversationIdSchema)
   .handler(async ({ data }) => {
     try {
       await requireAuth({ roles: ['admin', 'member'] })
       const { getLinkedPostsForConversation } = await import('@/lib/server/domains/chat/chat.query')
       return await getLinkedPostsForConversation(data.conversationId as ConversationId)
     } catch (error) {
-      console.error('[fn:chat] getLinkedPostsForConversationFn failed:', error)
+      log.error({ err: error }, 'get linked posts for conversation failed')
       throw error
     }
   })
 
 export const getLinkedConversationsForPostFn = createServerFn({ method: 'GET' })
-  .inputValidator(z.object({ postId: z.string() }))
+  .validator(z.object({ postId: z.string() }))
   .handler(async ({ data }) => {
     try {
       await requireAuth({ roles: ['admin', 'member'] })
       const { getLinkedConversationsForPost } = await import('@/lib/server/domains/chat/chat.query')
       return await getLinkedConversationsForPost(data.postId as PostId)
     } catch (error) {
-      console.error('[fn:chat] getLinkedConversationsForPostFn failed:', error)
+      log.error({ err: error }, 'get linked conversations for post failed')
       throw error
     }
   })

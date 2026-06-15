@@ -11,6 +11,9 @@
  */
 
 import { z } from 'zod'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'config' })
 
 // =============================================================================
 // Schema Helpers
@@ -196,10 +199,11 @@ function loadConfig(): Config {
   const result = configSchema.safeParse(buildConfigFromEnv())
 
   if (!result.success) {
-    const errors = result.error.issues
-      .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
-      .join('\n')
-    console.error(`[Config] Validation failed:\n${errors}`)
+    const issues = result.error.issues.map((i) => ({
+      path: i.path.join('.'),
+      code: i.code,
+    }))
+    log.error({ issues }, 'config validation failed')
     throw new Error('Configuration validation failed')
   }
 

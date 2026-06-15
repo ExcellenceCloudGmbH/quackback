@@ -5,6 +5,9 @@
 import { z } from 'zod'
 import { createServerFn, createServerOnlyFn } from '@tanstack/react-start'
 import type { UserId, PrincipalId, SegmentId } from '@quackback/ids'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'portal-access' })
 
 // ---------------------------------------------------------------------------
 // Gate: evaluate the calling request's own access
@@ -205,7 +208,7 @@ export const resolvePortalAccessForRequest = createServerOnlyFn(
           const memberSet = await segmentIdsForPrincipal(resolvedPrincipalId as PrincipalId)
           isInAllowedSegment = allowedSegmentIds.some((id) => memberSet.has(id as SegmentId))
         } catch (err) {
-          console.warn('[fn:portal-access] segment lookup failed, failing closed:', err)
+          log.warn({ err }, 'segment lookup failed, failing closed')
           isInAllowedSegment = false
         }
       }
@@ -232,7 +235,7 @@ export const resolvePortalAccessForRequest = createServerOnlyFn(
       // Any other throw (DB error, cache deserialization, etc.) must fail
       // closed. An authenticated visitor gets the unauthorized screen; an
       // anonymous one gets bounced to login.
-      console.error('[fn:portal-access] resolve failed, failing closed:', err)
+      log.error({ err }, 'resolve failed, failing closed')
       return {
         granted: false,
         reason: isAuthenticated ? 'unauthorized' : 'unauthenticated',
@@ -277,7 +280,7 @@ const recordPortalAccessDeniedSchema = z.object({
  * is rejected by Vite's import-protection plugin in client-bundled code).
  */
 export const recordPortalAccessDeniedFn = createServerFn({ method: 'POST' })
-  .inputValidator(recordPortalAccessDeniedSchema)
+  .validator(recordPortalAccessDeniedSchema)
   .handler(async ({ data }) => {
     const { getRequestHeaders } = await import('@tanstack/react-start/server')
     const { auth } = await import('@/lib/server/auth/index')
@@ -365,7 +368,7 @@ export const updatePortalVisibilitySchema = z.object({
 // ---------------------------------------------------------------------------
 
 export const updatePortalAccessFn = createServerFn({ method: 'POST' })
-  .inputValidator(updatePortalVisibilitySchema.parse)
+  .validator(updatePortalVisibilitySchema.parse)
   .handler(async ({ data }) => {
     const [{ requireAuth }, { getRequestHeaders }, { actorFromAuth, recordAuditEvent }] =
       await Promise.all([
@@ -374,8 +377,14 @@ export const updatePortalAccessFn = createServerFn({ method: 'POST' })
         import('@/lib/server/audit/log'),
       ])
     const auth = await requireAuth({ roles: ['admin'] })
-    console.log(
-      `[fn:portal-access] updatePortalAccessFn: visibility=${data.visibility}, domainCount=${(data.allowedDomains ?? []).length}, widgetSignIn=${data.widgetSignIn}, segmentCount=${(data.allowedSegmentIds ?? []).length}`
+    log.debug(
+      {
+        visibility: data.visibility,
+        domain_count: (data.allowedDomains ?? []).length,
+        widget_sign_in: data.widgetSignIn,
+        segment_count: (data.allowedSegmentIds ?? []).length,
+      },
+      'update portal access'
     )
 
     const headers = getRequestHeaders()

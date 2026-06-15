@@ -14,6 +14,9 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getRequestHeaders } from '@tanstack/react-start/server'
 import { z } from 'zod'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'moderation' })
 import {
   db,
   posts,
@@ -141,7 +144,7 @@ export const listPendingCommentsFn = createServerFn({ method: 'GET' }).handler(a
 })
 
 export const approvePostFn = createServerFn({ method: 'POST' })
-  .inputValidator(ApproveInput.parse)
+  .validator(ApproveInput.parse)
   .handler(async ({ data }) => {
     const auth = await requireTeamAuth()
     const before = await db.query.posts.findFirst({ where: eq(posts.id, data.postId as never) })
@@ -179,13 +182,13 @@ export const approvePostFn = createServerFn({ method: 'POST' })
     try {
       await announcePublishedPost(data.postId as never)
     } catch (err) {
-      console.error('[moderation] announcePublishedPost failed:', err)
+      log.error({ err }, 'announce published post failed')
     }
     return { ok: true }
   })
 
 export const approveCommentFn = createServerFn({ method: 'POST' })
-  .inputValidator(ApproveCommentInput.parse)
+  .validator(ApproveCommentInput.parse)
   .handler(async ({ data }) => {
     const auth = await requireTeamAuth()
     const before = await db.query.comments.findFirst({
@@ -238,13 +241,13 @@ export const approveCommentFn = createServerFn({ method: 'POST' })
     try {
       await announcePublishedComment(data.commentId as never)
     } catch (err) {
-      console.error('[moderation] announcePublishedComment failed:', err)
+      log.error({ err }, 'announce published comment failed')
     }
     return { ok: true }
   })
 
 export const rejectCommentFn = createServerFn({ method: 'POST' })
-  .inputValidator(RejectCommentInput.parse)
+  .validator(RejectCommentInput.parse)
   .handler(async ({ data }) => {
     const auth = await requireTeamAuth()
     const before = await db.query.comments.findFirst({
@@ -280,7 +283,7 @@ export const rejectCommentFn = createServerFn({ method: 'POST' })
   })
 
 export const rejectPostFn = createServerFn({ method: 'POST' })
-  .inputValidator(RejectInput.parse)
+  .validator(RejectInput.parse)
   .handler(async ({ data }) => {
     const auth = await requireTeamAuth()
     const before = await db.query.posts.findFirst({ where: eq(posts.id, data.postId as never) })
@@ -343,10 +346,10 @@ export const getModerationStatus = createServerFn({ method: 'GET' }).handler(asy
       ),
   ])
   if (postsResult.status === 'rejected') {
-    console.error('[moderation] pending posts count failed:', postsResult.reason)
+    log.error({ err: postsResult.reason }, 'pending posts count failed')
   }
   if (commentsResult.status === 'rejected') {
-    console.error('[moderation] pending comments count failed:', commentsResult.reason)
+    log.error({ err: commentsResult.reason }, 'pending comments count failed')
   }
   const postsCount = postsResult.status === 'fulfilled' ? (postsResult.value[0]?.count ?? 0) : 0
   const commentsCount =
@@ -380,7 +383,7 @@ export const getModerationStatus = createServerFn({ method: 'GET' }).handler(asy
       )
     approvalCount = approvalRows[0]?.count ?? 0
   } catch (err) {
-    console.error('[moderation] per-board approval count failed:', err)
+    log.error({ err }, 'per-board approval count failed')
   }
 
   // Self-consistent: if there is a backlog (e.g. per-board approval routes

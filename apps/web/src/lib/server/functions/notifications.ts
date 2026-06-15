@@ -13,6 +13,9 @@ import {
   markAllAsRead,
   archiveNotification,
 } from '@/lib/server/domains/notifications/notification.service'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'notifications' })
 
 // ============================================
 // Schemas
@@ -36,10 +39,11 @@ const notificationIdSchema = z.object({
  * Get notifications for the current user with pagination
  */
 export const getNotificationsFn = createServerFn({ method: 'GET' })
-  .inputValidator(getNotificationsSchema)
+  .validator(getNotificationsSchema)
   .handler(async ({ data }) => {
-    console.log(
-      `[fn:notifications] getNotificationsFn: limit=${data.limit}, offset=${data.offset}, unreadOnly=${data.unreadOnly}`
+    log.debug(
+      { limit: data.limit, offset: data.offset, unread_only: data.unreadOnly },
+      'get notifications'
     )
     try {
       const auth = await requireAuth({ roles: ['admin', 'member', 'user'] })
@@ -83,7 +87,7 @@ export const getNotificationsFn = createServerFn({ method: 'GET' })
         hasMore: result.hasMore,
       }
     } catch (error) {
-      console.error(`[fn:notifications] getNotificationsFn failed:`, error)
+      log.error({ err: error }, 'get notifications failed')
       throw error
     }
   })
@@ -92,13 +96,13 @@ export const getNotificationsFn = createServerFn({ method: 'GET' })
  * Get unread notification count for the current user (for badge display)
  */
 export const getUnreadCountFn = createServerFn({ method: 'GET' }).handler(async () => {
-  console.log(`[fn:notifications] getUnreadCountFn`)
+  log.debug({}, 'get unread count')
   try {
     const auth = await requireAuth({ roles: ['admin', 'member', 'user'] })
     const count = await getUnreadCount(auth.principal.id)
     return { count }
   } catch (error) {
-    console.error(`[fn:notifications] getUnreadCountFn failed:`, error)
+    log.error({ err: error }, 'get unread count failed')
     throw error
   }
 })
@@ -111,17 +115,15 @@ export const getUnreadCountFn = createServerFn({ method: 'GET' }).handler(async 
  * Mark a single notification as read
  */
 export const markNotificationAsReadFn = createServerFn({ method: 'POST' })
-  .inputValidator(notificationIdSchema)
+  .validator(notificationIdSchema)
   .handler(async ({ data }) => {
-    console.log(
-      `[fn:notifications] markNotificationAsReadFn: notificationId=${data.notificationId}`
-    )
+    log.info({ notification_id: data.notificationId }, 'notification marked read')
     try {
       const auth = await requireAuth({ roles: ['admin', 'member', 'user'] })
       await markAsRead(auth.principal.id, data.notificationId as NotificationId)
       return { success: true }
     } catch (error) {
-      console.error(`[fn:notifications] markNotificationAsReadFn failed:`, error)
+      log.error({ err: error }, 'mark notification read failed')
       throw error
     }
   })
@@ -130,13 +132,13 @@ export const markNotificationAsReadFn = createServerFn({ method: 'POST' })
  * Mark all notifications as read for the current user
  */
 export const markAllNotificationsAsReadFn = createServerFn({ method: 'POST' }).handler(async () => {
-  console.log(`[fn:notifications] markAllNotificationsAsReadFn`)
+  log.info({}, 'all notifications marked read')
   try {
     const auth = await requireAuth({ roles: ['admin', 'member', 'user'] })
     await markAllAsRead(auth.principal.id)
     return { success: true }
   } catch (error) {
-    console.error(`[fn:notifications] markAllNotificationsAsReadFn failed:`, error)
+    log.error({ err: error }, 'mark all notifications read failed')
     throw error
   }
 })
@@ -145,15 +147,15 @@ export const markAllNotificationsAsReadFn = createServerFn({ method: 'POST' }).h
  * Archive (soft delete) a notification
  */
 export const archiveNotificationFn = createServerFn({ method: 'POST' })
-  .inputValidator(notificationIdSchema)
+  .validator(notificationIdSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:notifications] archiveNotificationFn: notificationId=${data.notificationId}`)
+    log.info({ notification_id: data.notificationId }, 'notification archived')
     try {
       const auth = await requireAuth({ roles: ['admin', 'member', 'user'] })
       await archiveNotification(auth.principal.id, data.notificationId as NotificationId)
       return { success: true }
     } catch (error) {
-      console.error(`[fn:notifications] archiveNotificationFn failed:`, error)
+      log.error({ err: error }, 'archive notification failed')
       throw error
     }
   })

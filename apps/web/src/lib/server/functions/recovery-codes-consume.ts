@@ -26,6 +26,9 @@ import { mintMagicLinkUrl } from '@/lib/server/auth/magic-link-mint'
 import { getClientIp } from '@/lib/server/domains/api/rate-limit'
 import { bucketRetryAfter, incrementBucket } from '@/lib/server/utils/redis-rate-bucket'
 import { config } from '@/lib/server/config'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'recovery' })
 
 const consumeRecoveryCodeInput = z.object({
   email: z.string().email(),
@@ -71,7 +74,7 @@ function getFakeHash(): Promise<string> {
 }
 
 export const consumeRecoveryCodeFn = createServerFn({ method: 'POST' })
-  .inputValidator(consumeRecoveryCodeInput)
+  .validator(consumeRecoveryCodeInput)
   .handler(async ({ data }): Promise<ConsumeResult> => {
     const headers = getRequestHeaders()
     const actor = { email: data.email }
@@ -204,6 +207,6 @@ async function sendRecoveryCodeAlert(opts: {
       occurredAt: opts.occurredAt.toUTCString(),
     })
   } catch (error) {
-    console.error('[recovery] failed to send security alert email:', error)
+    log.error({ err: error }, 'failed to send security alert email')
   }
 }
