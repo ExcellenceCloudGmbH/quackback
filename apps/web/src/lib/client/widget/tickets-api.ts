@@ -7,6 +7,25 @@ import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 import type { TicketId, TicketStatusId, PrincipalId } from '@quackback/ids'
 
 export type StatusCategory = 'open' | 'pending' | 'on_hold' | 'solved' | 'closed'
+export type WidgetSupportPriority = 'low' | 'normal' | 'high' | 'urgent'
+
+export interface WidgetSupportCategory {
+  categoryKey: string
+  label: string
+  description?: string
+  icon?: string
+  defaultPriority?: WidgetSupportPriority
+  allowedPriorities?: WidgetSupportPriority[]
+  visible?: boolean
+  display?: {
+    showPrioritySelector?: boolean
+    showAttachments?: boolean
+    showResolveAction?: boolean
+    showReopenAction?: boolean
+    emptyStateTitle?: string
+    emptyStateDescription?: string
+  }
+}
 
 export interface WidgetTicketRow {
   id: TicketId
@@ -53,7 +72,8 @@ export interface WidgetTicketDetailResponse {
 export interface WidgetTicketCreateInput {
   subject: string
   bodyText?: string | null
-  priority?: 'low' | 'normal' | 'high'
+  priority?: WidgetSupportPriority
+  categoryKey?: string
 }
 
 export interface WidgetTicketCreateResponse {

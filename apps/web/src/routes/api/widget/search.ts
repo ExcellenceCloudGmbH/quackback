@@ -3,6 +3,8 @@ import { listPublicPosts } from '@/lib/server/domains/posts/post.public'
 import { getWidgetSession } from '@/lib/server/functions/widget-auth'
 import { ANONYMOUS_ACTOR, type Actor } from '@/lib/server/policy'
 import { segmentIdsForPrincipal } from '@/lib/server/domains/segments/segment-membership.service'
+import { getWidgetRequestContext } from '@/lib/server/widget/context'
+import { mapDomainErrorToResponse, widgetCorsHeaders } from '@/lib/server/widget/cors'
 
 export const Route = createFileRoute('/api/widget/search')({
   server: {
@@ -18,6 +20,18 @@ export const Route = createFileRoute('/api/widget/search')({
         }
 
         try {
+          const widgetContext = await getWidgetRequestContext(request)
+          const feedbackFilters = widgetContext.contentFilters.feedback
+          const allowedBoardIds = new Set(feedbackFilters?.boardIds ?? [])
+          const allowedBoardSlugs = new Set(feedbackFilters?.boardSlugs ?? [])
+          const allowedStatusIds = new Set(feedbackFilters?.statusIds ?? [])
+          const hasBoardFilter = allowedBoardIds.size > 0 || allowedBoardSlugs.size > 0
+          const hasStatusFilter = allowedStatusIds.size > 0
+
+          if (board && hasBoardFilter && !allowedBoardSlugs.has(board)) {
+            return Response.json({ data: { posts: [] } }, { headers: corsHeaders() })
+          }
+
           // Read the widget session so identified widget users see
           // `authenticated` and segment-allowed boards in search. An
           // unidentified caller stays anonymous (sees only public).
@@ -43,6 +57,20 @@ export const Route = createFileRoute('/api/widget/search')({
 
           const posts = result.items
             .filter((p) => p.board)
+            .filter((p) => {
+              if (!p.board) return false
+              if (
+                hasBoardFilter &&
+                !allowedBoardIds.has(p.board.id) &&
+                !allowedBoardSlugs.has(p.board.slug)
+              ) {
+                return false
+              }
+              if (hasStatusFilter && (!p.statusId || !allowedStatusIds.has(p.statusId))) {
+                return false
+              }
+              return true
+            })
             .map((p) => ({
               id: p.id,
               title: p.title,
@@ -54,6 +82,8 @@ export const Route = createFileRoute('/api/widget/search')({
 
           return Response.json({ data: { posts } }, { headers: corsHeaders() })
         } catch (error) {
+          const mapped = mapDomainErrorToResponse(error)
+          if (mapped) return mapped
           console.error('[widget:search] Error:', error)
           return Response.json(
             { error: { code: 'SERVER_ERROR', message: 'Search failed' } },
@@ -66,8 +96,5 @@ export const Route = createFileRoute('/api/widget/search')({
 })
 
 function corsHeaders(): HeadersInit {
-  return {
-    'Access-Control-Allow-Origin': '*',
-    'Cache-Control': 'no-store',
-  }
+  return widgetCorsHeaders()
 }

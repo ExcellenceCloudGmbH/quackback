@@ -7,6 +7,10 @@ export interface InitOptions {
   instanceUrl: InstanceUrl
   placement?: 'left' | 'right'
   defaultBoard?: string
+  /** Public identifier for the external app embedding this widget. */
+  applicationKey?: string
+  /** Public environment identifier, e.g. local, development, staging, production. */
+  environment?: string
   /** Set `launcher: false` to hide the default floating button and open programmatically. */
   launcher?: boolean
   locale?: 'en' | 'fr' | 'de' | 'es' | 'ar' | string

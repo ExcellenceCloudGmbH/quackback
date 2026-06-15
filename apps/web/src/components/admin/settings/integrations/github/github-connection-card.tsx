@@ -10,6 +10,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/component
 import { cn } from '@/lib/shared/utils'
 import { useDeleteIntegration } from '@/lib/client/mutations'
 import { GitHubConfig } from './github-config'
+import { GitHubReconnectButton } from './github-connection-actions'
 
 interface ConnectionData {
   id: string
@@ -91,12 +92,18 @@ export function GitHubConnectionCard({ connection }: GitHubConnectionCardProps) 
             </button>
           </CollapsibleTrigger>
           <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+            <GitHubReconnectButton
+              integrationId={connection.id}
+              label="Reconnect"
+              className="h-8"
+            />
             <Button
               variant="ghost"
               size="icon"
               className="h-8 w-8 text-muted-foreground hover:text-destructive"
               onClick={() => setDisconnectOpen(true)}
               disabled={deleteMutation.isPending}
+              aria-label="Disconnect GitHub repository"
             >
               {deleteMutation.isPending ? (
                 <ArrowPathIcon className="h-4 w-4 animate-spin" />
@@ -109,6 +116,16 @@ export function GitHubConnectionCard({ connection }: GitHubConnectionCardProps) 
 
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-collapsible-up data-[state=open]:animate-collapsible-down">
           <div className="border-t border-border/50 px-6 py-5">
+            {connection.lastError && (
+              <div className="mb-4 flex flex-col gap-3 rounded-lg border border-red-500/30 bg-red-500/5 p-3 text-sm text-red-700 dark:text-red-300 sm:flex-row sm:items-center sm:justify-between">
+                <p>{connection.lastError}</p>
+                <GitHubReconnectButton
+                  integrationId={connection.id}
+                  label="Reconnect GitHub"
+                  className="self-start sm:self-auto"
+                />
+              </div>
+            )}
             <GitHubConfig
               integrationId={connection.id}
               initialConfig={connection.config}

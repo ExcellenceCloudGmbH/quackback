@@ -80,6 +80,9 @@ export type AuditEventType =
   | 'team.invite.expired'
   // v1 portal segment allowlist
   | 'portal.allowed_segments.changed'
+  // v1 support surface access policies
+  | 'widget.chat_access.changed'
+  | 'portal.support_access.changed'
   // v1 portal widget sign-in toggle
   | 'portal.widget_signin.changed'
   // v1 widget OTT handoff

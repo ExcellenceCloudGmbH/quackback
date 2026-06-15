@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { createServerFn } from '@tanstack/react-start'
+import { getRequestHeaders } from '@tanstack/react-start/server'
 import {
   type PostId,
   type PrincipalId,
@@ -40,6 +41,7 @@ import { listPublicRoadmaps } from '@/lib/server/domains/roadmaps/roadmap.servic
 import { getPublicRoadmapPosts } from '@/lib/server/domains/roadmaps/roadmap.query'
 import { resolvePortalAccessForRequest } from './portal-access'
 import { toIsoString } from '@/lib/shared/utils'
+import { getWidgetRequestContext, type WidgetRequestContext } from '@/lib/server/widget/context'
 
 // Schemas
 const sortSchema = z.enum(['top', 'new', 'trending'])
@@ -65,6 +67,52 @@ const fetchPortalDataSchema = z.object({
     .optional(),
   responded: z.enum(['responded', 'unresponded']).optional(),
 })
+
+async function getWidgetContextFromServerFnHeaders(): Promise<WidgetRequestContext> {
+  const headers = getRequestHeaders()
+  const request = new Request('https://widget-context.local/portal', { headers })
+  return getWidgetRequestContext(request)
+}
+
+function postAllowedByWidgetFeedbackFilters(
+  post: {
+    board?: { id?: string; slug?: string } | null
+    statusId?: string | null
+    tags?: Array<{ id?: string; slug?: string }> | null
+  },
+  context: WidgetRequestContext
+): boolean {
+  if (!context.profileId) return true
+  const feedbackFilters = context.contentFilters.feedback
+  const allowedBoardIds = new Set(feedbackFilters?.boardIds ?? [])
+  const allowedBoardSlugs = new Set(feedbackFilters?.boardSlugs ?? [])
+  const allowedStatusIds = new Set(feedbackFilters?.statusIds ?? [])
+  const allowedTagIds = new Set(feedbackFilters?.tagIds ?? [])
+  const allowedTagSlugs = new Set(feedbackFilters?.tagSlugs ?? [])
+  const hasBoardFilter = allowedBoardIds.size > 0 || allowedBoardSlugs.size > 0
+  const hasStatusFilter = allowedStatusIds.size > 0
+  const hasTagFilter = allowedTagIds.size > 0 || allowedTagSlugs.size > 0
+
+  if (
+    hasBoardFilter &&
+    !allowedBoardIds.has(post.board?.id as BoardId) &&
+    !allowedBoardSlugs.has(post.board?.slug ?? '')
+  ) {
+    return false
+  }
+  if (hasStatusFilter && (!post.statusId || !allowedStatusIds.has(post.statusId as StatusId))) {
+    return false
+  }
+  if (hasTagFilter) {
+    const tags = post.tags ?? []
+    return tags.some(
+      (tag) =>
+        (tag.id && allowedTagIds.has(tag.id as TagId)) ||
+        (tag.slug && allowedTagSlugs.has(tag.slug))
+    )
+  }
+  return true
+}
 
 /**
  * Build the per-board submit/vote capability map for `actor` from already-fetched
@@ -309,6 +357,8 @@ export const fetchPublicPostDetail = createServerFn({ method: 'GET' })
     const result = await getPublicPostDetail(data.postId as PostId, actor)
 
     if (!result) return null
+    const widgetContext = await getWidgetContextFromServerFnHeaders()
+    if (!postAllowedByWidgetFeedbackFilters(result, widgetContext)) return null
 
     type CommentType = (typeof result.comments)[0]
     type SerializedComment = Omit<CommentType, 'createdAt' | 'replies'> & {

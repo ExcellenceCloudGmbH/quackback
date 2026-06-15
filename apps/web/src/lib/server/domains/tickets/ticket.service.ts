@@ -33,6 +33,7 @@ import type {
   OrganizationId,
   InboxId,
   SlaPolicyId,
+  WidgetProfileId,
 } from '@quackback/ids'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { recordEvent } from '../audit'
@@ -69,6 +70,8 @@ export interface CreateTicketInput {
   organizationId?: OrganizationId | null
   /** Inbox the ticket should belong to (Phase 4). When omitted, the routing engine fills this in. */
   inboxId?: InboxId | null
+  /** Resolved embedded widget profile that created the ticket, if any. */
+  sourceWidgetProfileId?: WidgetProfileId | null
   /** SLA policy bound at ticket creation (Phase 5). When omitted, the engine selects via scope precedence. */
   slaPolicyId?: SlaPolicyId | null
   createdByPrincipalId?: PrincipalId | null
@@ -259,6 +262,7 @@ export async function createTicket(input: CreateTicketInput): Promise<Ticket> {
       requesterContactId: customerContext.requesterContactId,
       organizationId: customerContext.organizationId,
       inboxId: resolvedInboxId,
+      sourceWidgetProfileId: input.sourceWidgetProfileId ?? null,
       slaPolicyId: input.slaPolicyId ?? null,
       createdByPrincipalId: input.createdByPrincipalId ?? null,
       lastActivityAt: now,
@@ -273,6 +277,7 @@ export async function createTicket(input: CreateTicketInput): Promise<Ticket> {
       statusCategory: status.category,
       channel: input.channel ?? 'api',
       priority: input.priority ?? 'normal',
+      sourceWidgetProfileId: input.sourceWidgetProfileId ?? null,
     }
   )
   if (routingDecision && (routingDecision.matchedRuleId || routingDecision.inboxId)) {

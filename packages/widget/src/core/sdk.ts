@@ -133,6 +133,9 @@ export function createSDK(): SDK {
       widgetUrl: `${config!.instanceUrl}/widget`,
       placement: config!.placement ?? 'right',
       defaultBoard: config!.defaultBoard,
+      applicationKey: config!.applicationKey,
+      environment: config!.environment,
+      hostOrigin: window.location.origin,
       showCloseButton: config!.launcher === false,
       locale: config!.locale,
       onBackdropClick: () => dispatch('close'),
@@ -204,6 +207,9 @@ export function createSDK(): SDK {
         if (!next.instanceUrl) throw new Error('Quackback: init requires { instanceUrl }')
         if (!isSafeHttpUrl(next.instanceUrl))
           throw new Error('Quackback: instanceUrl must be an http(s) URL')
+        if (!!next.applicationKey !== !!next.environment) {
+          throw new Error('Quackback: applicationKey and environment must be provided together')
+        }
         // Validate before destroy so a bad re-init leaves the working instance intact.
         if (config) dispatch('destroy')
         config = next
@@ -215,7 +221,11 @@ export function createSDK(): SDK {
         sendIdentity(initialIdentity)
         const reveal = revealLauncherOnce()
         const fallback = window.setTimeout(reveal, LAUNCHER_REVEAL_FALLBACK_MS)
-        void fetchServerConfig(config.instanceUrl)
+        void fetchServerConfig(config.instanceUrl, {
+          applicationKey: config.applicationKey,
+          environment: config.environment,
+          hostOrigin: window.location.origin,
+        })
           .then(applyServerTheme)
           .finally(() => {
             window.clearTimeout(fallback)

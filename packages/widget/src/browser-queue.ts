@@ -23,6 +23,12 @@ declare global {
 const sdk = createSDK()
 const w = window
 const bakedUrl = w.__QUACKBACK_URL__
+const currentScript =
+  typeof document !== 'undefined' ? (document.currentScript as HTMLScriptElement | null) : null
+const scriptDefaults = {
+  applicationKey: currentScript?.dataset.applicationKey,
+  environment: currentScript?.dataset.environment,
+}
 
 // Suppresses the deferred fallback once the host has taken explicit control:
 // either by initializing (their options take precedence) or by destroying
@@ -33,7 +39,11 @@ function dispatch(command: unknown, a?: unknown, b?: unknown): unknown {
   if (command === 'init' || command === 'destroy') bootSuppressed = true
   if (command === 'init' && bakedUrl) {
     const opts = a && typeof a === 'object' ? (a as Record<string, unknown>) : {}
-    if (!opts.instanceUrl) a = { ...opts, instanceUrl: bakedUrl }
+    a = {
+      ...scriptDefaults,
+      ...opts,
+      instanceUrl: opts.instanceUrl ?? bakedUrl,
+    }
   }
   return sdk.dispatch(command as 'init', a, b)
 }

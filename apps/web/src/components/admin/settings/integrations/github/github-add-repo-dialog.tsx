@@ -34,9 +34,11 @@ export function GitHubAddRepoDialog({ open, onOpenChange }: GitHubAddRepoDialogP
       // Try to fetch repos using any existing GitHub connection's token
       const result = await fetchGitHubReposFn({ data: {} })
       setRepos(result)
-    } catch {
+    } catch (err) {
       setError(
-        'No active GitHub connection found. The new connection will authenticate with GitHub.'
+        err instanceof Error
+          ? err.message
+          : 'No active GitHub connection found. The new connection will authenticate with GitHub.'
       )
       setRepos([])
     } finally {

@@ -14,6 +14,7 @@ import {
   evaluateMyPortalAccessFn,
   recordPortalAccessDeniedFn,
 } from '@/lib/server/functions/portal-access'
+import { getSupportSurfaceAccessFn } from '@/lib/server/functions/chat'
 import { redactSettingsForClient } from '@/lib/shared/redact-portal-config'
 
 /** Resolve locale from Accept-Language header on the server. */
@@ -133,6 +134,7 @@ export const Route = createFileRoute('/_portal')({
     }
 
     const locale = await getPortalLocale()
+    const supportAccess = await getSupportSurfaceAccessFn({ data: { surface: 'portal' } })
 
     return {
       org: redactSettingsForClient(org),
@@ -148,6 +150,7 @@ export const Route = createFileRoute('/_portal')({
       initialUserData,
       authConfig,
       locale,
+      supportAccessGranted: supportAccess.granted,
     }
   },
   head: ({ loaderData }) => {
@@ -223,6 +226,7 @@ function PortalLayout() {
     initialUserData,
     authConfig,
     locale,
+    supportAccessGranted,
   } = loaderData
 
   return (
@@ -239,6 +243,7 @@ function PortalLayout() {
             userRole={userRole}
             initialUserData={initialUserData}
             showThemeToggle={themeMode === 'user'}
+            supportAccessGranted={supportAccessGranted}
           />
           <main className="flex-1 w-full flex flex-col">
             <Outlet />

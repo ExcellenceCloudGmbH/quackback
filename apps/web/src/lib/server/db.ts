@@ -350,6 +350,11 @@ export {
   integrationSyncLogRelations,
   // Schema tables - push devices
   pushDevices,
+  // Schema tables - widget profiles
+  widgetApplications,
+  widgetApplicationsRelations,
+  widgetEnvironmentProfiles,
+  widgetEnvironmentProfilesRelations,
   // Types/constants
   REACTION_EMOJIS,
   USE_CASE_TYPES,
@@ -365,6 +370,14 @@ export type {
   TicketPriority,
   TicketVisibilityScope,
   TicketStatusCategory,
+  WidgetProfileChangelogMode,
+  WidgetProfileConfigOverrides,
+  WidgetProfileContentFilters,
+  WidgetProfileSupportCategory,
+  WidgetProfileSupportConfig,
+  WidgetProfileSupportDisplayRules,
+  WidgetProfileTicketListScope,
+  WidgetProfileTicketPriority,
 } from '@quackback/db'
 
 // Re-export types (for client components that need types without side effects)

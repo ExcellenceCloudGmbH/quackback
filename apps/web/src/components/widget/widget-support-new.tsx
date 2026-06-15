@@ -1,28 +1,34 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   createWidgetTicket,
   WidgetTicketError,
   type WidgetTicketCreateResponse,
+  type WidgetSupportCategory,
+  type WidgetSupportPriority,
 } from '@/lib/client/widget/tickets-api'
 import { useWidgetAuth } from './widget-auth-provider'
 
 interface WidgetSupportNewProps {
   onCreated: (ticket: WidgetTicketCreateResponse) => void
+  categories?: WidgetSupportCategory[]
 }
 
 const inputCls =
   'w-full bg-background rounded-md border border-border/50 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/50 transition-colors'
 
-export function WidgetSupportNew({ onCreated }: WidgetSupportNewProps) {
+export function WidgetSupportNew({ onCreated, categories = [] }: WidgetSupportNewProps) {
   const intl = useIntl()
   const { isIdentified, hmacRequired, identifyWithEmail, ensureSessionThen, emitEvent } =
     useWidgetAuth()
 
   const [subject, setSubject] = useState('')
   const [body, setBody] = useState('')
-  const [priority, setPriority] = useState<'low' | 'normal' | 'high'>('normal')
+  const [priority, setPriority] = useState<WidgetSupportPriority>('normal')
+  const [categoryKey, setCategoryKey] = useState<string>(
+    categories.length === 1 ? categories[0].categoryKey : ''
+  )
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -30,11 +36,31 @@ export function WidgetSupportNew({ onCreated }: WidgetSupportNewProps) {
 
   const needsEmail = !isIdentified && !hmacRequired
   const cantIdentify = !isIdentified && hmacRequired
+  const selectedCategory = categories.find((category) => category.categoryKey === categoryKey)
+  const priorityOptions: WidgetSupportPriority[] = selectedCategory?.allowedPriorities?.length
+    ? selectedCategory.allowedPriorities
+    : selectedCategory
+      ? ['low', 'normal', 'high', 'urgent']
+      : ['low', 'normal', 'high']
+  const showPrioritySelector = selectedCategory?.display?.showPrioritySelector !== false
+
+  useEffect(() => {
+    if (categories.length === 1 && categoryKey !== categories[0].categoryKey) {
+      setCategoryKey(categories[0].categoryKey)
+    }
+    if (categories.length !== 1 && selectedCategory && !priorityOptions.includes(priority)) {
+      setPriority(selectedCategory.defaultPriority ?? priorityOptions[0] ?? 'normal')
+    }
+    if (selectedCategory?.defaultPriority && priority === 'normal') {
+      setPriority(selectedCategory.defaultPriority)
+    }
+  }, [categories, categoryKey, selectedCategory, priorityOptions, priority])
 
   const canSubmit =
     !cantIdentify &&
     subject.trim().length > 0 &&
     body.trim().length > 0 &&
+    (categories.length <= 1 || categoryKey.length > 0) &&
     (!needsEmail || email.trim().length > 0)
 
   const handleSubmit = useCallback(
@@ -63,7 +89,8 @@ export function WidgetSupportNew({ onCreated }: WidgetSupportNewProps) {
           created = await createWidgetTicket({
             subject: subject.trim(),
             bodyText: body.trim(),
-            priority,
+            priority: showPrioritySelector ? priority : undefined,
+            categoryKey: selectedCategory?.categoryKey,
           })
         })
         const finalCreated = created as WidgetTicketCreateResponse | null
@@ -107,6 +134,8 @@ export function WidgetSupportNew({ onCreated }: WidgetSupportNewProps) {
       subject,
       body,
       priority,
+      showPrioritySelector,
+      selectedCategory?.categoryKey,
       emitEvent,
       onCreated,
       intl,
@@ -117,6 +146,40 @@ export function WidgetSupportNew({ onCreated }: WidgetSupportNewProps) {
     <form onSubmit={handleSubmit} className="flex flex-col h-full">
       <ScrollArea className="flex-1 min-h-0">
         <div className="px-3 pt-2 pb-3 space-y-2">
+          {categories.length > 1 && (
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">
+                <FormattedMessage
+                  id="widget.support.composer.category.label"
+                  defaultMessage="Category"
+                />
+              </label>
+              <select
+                value={categoryKey}
+                onChange={(e) => setCategoryKey(e.target.value)}
+                disabled={submitting}
+                className={inputCls}
+              >
+                <option value="">
+                  {intl.formatMessage({
+                    id: 'widget.support.composer.category.placeholder',
+                    defaultMessage: 'Select a category',
+                  })}
+                </option>
+                {categories.map((category) => (
+                  <option key={category.categoryKey} value={category.categoryKey}>
+                    {category.label}
+                  </option>
+                ))}
+              </select>
+              {selectedCategory?.description && (
+                <p className="text-[11px] text-muted-foreground/70">
+                  {selectedCategory.description}
+                </p>
+              )}
+            </div>
+          )}
+
           <input
             type="text"
             value={subject}
@@ -142,39 +205,38 @@ export function WidgetSupportNew({ onCreated }: WidgetSupportNewProps) {
             className={`${inputCls} min-h-[120px] resize-y`}
           />
 
-          <div className="flex items-center gap-2">
-            <label className="text-[11px] text-muted-foreground shrink-0">
-              <FormattedMessage
-                id="widget.support.composer.priority.label"
-                defaultMessage="Priority"
-              />
-            </label>
-            <select
-              value={priority}
-              onChange={(e) => setPriority(e.target.value as 'low' | 'normal' | 'high')}
-              disabled={submitting}
-              className={inputCls}
-            >
-              <option value="low">
-                {intl.formatMessage({
-                  id: 'widget.support.composer.priority.low',
-                  defaultMessage: 'Low',
-                })}
-              </option>
-              <option value="normal">
-                {intl.formatMessage({
-                  id: 'widget.support.composer.priority.normal',
-                  defaultMessage: 'Normal',
-                })}
-              </option>
-              <option value="high">
-                {intl.formatMessage({
-                  id: 'widget.support.composer.priority.high',
-                  defaultMessage: 'High',
-                })}
-              </option>
-            </select>
-          </div>
+          {showPrioritySelector && (
+            <div className="flex items-center gap-2">
+              <label className="text-[11px] text-muted-foreground shrink-0">
+                <FormattedMessage
+                  id="widget.support.composer.priority.label"
+                  defaultMessage="Priority"
+                />
+              </label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as WidgetSupportPriority)}
+                disabled={submitting}
+                className={inputCls}
+              >
+                {priorityOptions.map((option) => (
+                  <option key={option} value={option}>
+                    {intl.formatMessage({
+                      id: `widget.support.composer.priority.${option}`,
+                      defaultMessage:
+                        option === 'low'
+                          ? 'Low'
+                          : option === 'normal'
+                            ? 'Normal'
+                            : option === 'high'
+                              ? 'High'
+                              : 'Urgent',
+                    })}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {needsEmail && (
             <div className="grid grid-cols-2 gap-2">

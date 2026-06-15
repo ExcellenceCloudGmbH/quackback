@@ -66,6 +66,19 @@ function buildTenantUrl(returnDomain: string, request: Request): string {
   return `https://${returnDomain}`
 }
 
+function normalizePreAuthConfig(
+  fields: Record<string, string> | undefined
+): Record<string, string> | undefined {
+  if (!fields) return undefined
+
+  const { repoFullName, ...config } = fields
+  if (repoFullName && !config.channelId) {
+    config.channelId = repoFullName
+  }
+
+  return config
+}
+
 /**
  * Handle the OAuth connect redirect (GET /oauth/:integration/connect)
  */
@@ -228,8 +241,9 @@ export async function handleOAuthCallback(
         : {}),
     }
     // Pass pre-auth fields as initial config for new connections (e.g., repo full name)
-    if (stateData.preAuthFields && stateData.intent === 'new') {
-      saveParams.config = { ...saveParams.config, ...stateData.preAuthFields }
+    const preAuthConfig = normalizePreAuthConfig(stateData.preAuthFields)
+    if (preAuthConfig && stateData.intent === 'new') {
+      saveParams.config = { ...saveParams.config, ...preAuthConfig }
     }
     await saveIntegration(integrationType, saveParams)
 

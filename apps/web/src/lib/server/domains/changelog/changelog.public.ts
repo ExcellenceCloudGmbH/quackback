@@ -99,6 +99,7 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
       postTitle: posts.title,
       postVoteCount: posts.voteCount,
       postStatusId: posts.statusId,
+      boardId: boards.id,
       boardSlug: boards.slug,
     })
     .from(changelogEntryPosts)
@@ -139,7 +140,9 @@ export async function getPublicChangelogById(id: ChangelogId): Promise<PublicCha
       id: lp.postId,
       title: lp.postTitle,
       voteCount: lp.postVoteCount,
+      boardId: lp.boardId,
       boardSlug: lp.boardSlug,
+      statusId: lp.postStatusId,
       status: lp.postStatusId ? (statusMap.get(lp.postStatusId) ?? null) : null,
     })),
   }
@@ -207,6 +210,7 @@ export async function listPublicChangelogs(params: {
             postTitle: posts.title,
             postVoteCount: posts.voteCount,
             postStatusId: posts.statusId,
+            boardId: boards.id,
             boardSlug: boards.slug,
           })
           .from(changelogEntryPosts)
@@ -261,7 +265,9 @@ export async function listPublicChangelogs(params: {
           id: lp.postId,
           title: lp.postTitle,
           voteCount: lp.postVoteCount,
+          boardId: lp.boardId,
           boardSlug: lp.boardSlug,
+          statusId: lp.postStatusId,
           status: lp.postStatusId ? (publicStatusMap.get(lp.postStatusId) ?? null) : null,
         })),
       }

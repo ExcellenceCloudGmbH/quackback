@@ -12,6 +12,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { IntlProvider } from 'react-intl'
 import {
   setWidgetToken,
+  setWidgetContextToken,
   clearWidgetToken,
   getWidgetToken,
   persistAnonymousToken,
@@ -74,6 +75,8 @@ interface WidgetAuthProviderProps {
    *  SSR and triggers React hydration error #418 — see issue #133. An SDK
    *  postMessage (quackback:locale) still overrides it after mount. */
   initialLocale?: SupportedLocale
+  /** Signed server-resolved widget profile context for scoped embeds. */
+  widgetContextToken?: string | null
   children: ReactNode
 }
 
@@ -82,6 +85,7 @@ export function WidgetAuthProvider({
   portalSessionToken,
   hmacRequired,
   initialLocale,
+  widgetContextToken,
   children,
 }: WidgetAuthProviderProps) {
   const queryClient = useQueryClient()
@@ -95,6 +99,10 @@ export function WidgetAuthProvider({
   // first client render matches the server (see issue #133).
   const [locale, setLocale] = useState<SupportedLocale>(initialLocale ?? DEFAULT_LOCALE)
   const messages = useIntlSetup(locale)
+
+  useEffect(() => {
+    setWidgetContextToken(widgetContextToken)
+  }, [widgetContextToken])
 
   const sessionVersionRef = useRef(0)
   const storeToken = useCallback((token: string) => {

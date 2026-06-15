@@ -1,11 +1,14 @@
 import { FormattedMessage } from 'react-intl'
 import { LifebuoyIcon, ChevronRightIcon } from '@heroicons/react/24/solid'
+import type { WidgetSupportCategory } from '@/lib/client/widget/tickets-api'
 
 interface WidgetSupportCardProps {
   onOpen: () => void
+  categories?: WidgetSupportCategory[]
 }
 
-export function WidgetSupportCard({ onOpen }: WidgetSupportCardProps) {
+export function WidgetSupportCard({ onOpen, categories = [] }: WidgetSupportCardProps) {
+  const firstCategory = categories.length === 1 ? categories[0] : null
   return (
     <button
       type="button"
@@ -17,13 +20,23 @@ export function WidgetSupportCard({ onOpen }: WidgetSupportCardProps) {
       </div>
       <div className="flex-1 min-w-0">
         <p className="font-medium text-foreground text-sm leading-tight">
-          <FormattedMessage id="widget.support.card.title" defaultMessage="Contact support" />
+          {firstCategory?.label ?? (
+            <FormattedMessage id="widget.support.card.title" defaultMessage="Contact support" />
+          )}
         </p>
         <p className="text-[11px] text-muted-foreground/80 line-clamp-1">
-          <FormattedMessage
-            id="widget.support.card.description"
-            defaultMessage="Get help directly from our team."
-          />
+          {firstCategory?.description ??
+            (categories.length > 1 ? (
+              <FormattedMessage
+                id="widget.support.card.categoriesDescription"
+                defaultMessage="Choose the right support category."
+              />
+            ) : (
+              <FormattedMessage
+                id="widget.support.card.description"
+                defaultMessage="Get help directly from our team."
+              />
+            ))}
         </p>
       </div>
       <ChevronRightIcon className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />

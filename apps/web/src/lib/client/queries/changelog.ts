@@ -62,25 +62,29 @@ export const changelogQueries = {
  * Public changelog queries
  */
 export const publicChangelogQueries = {
-  list: () =>
+  list: (headers?: Record<string, string>) =>
     infiniteQueryOptions({
-      queryKey: changelogKeys.publicList(),
+      queryKey: [...changelogKeys.publicList(), headers?.['X-Quackback-Widget-Context']] as const,
       queryFn: ({ pageParam }) =>
         listPublicChangelogsFn({
           data: {
             cursor: pageParam,
             limit: 10,
           },
+          headers,
         }),
       initialPageParam: undefined as string | undefined,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
       staleTime: STALE_TIME_MEDIUM,
     }),
 
-  detail: (id: ChangelogId) =>
+  detail: (id: ChangelogId, headers?: Record<string, string>) =>
     queryOptions({
-      queryKey: changelogKeys.publicDetail(id),
-      queryFn: () => getPublicChangelogFn({ data: { id } }),
+      queryKey: [
+        ...changelogKeys.publicDetail(id),
+        headers?.['X-Quackback-Widget-Context'],
+      ] as const,
+      queryFn: () => getPublicChangelogFn({ data: { id }, headers }),
       staleTime: STALE_TIME_MEDIUM,
     }),
 }

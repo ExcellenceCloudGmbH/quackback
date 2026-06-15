@@ -2,7 +2,7 @@
  * Shared integration save logic.
  * Replaces the per-integration save.ts files with a single function.
  */
-import { db, integrations, eq } from '@/lib/server/db'
+import { db, integrations, eq, and } from '@/lib/server/db'
 import { encryptSecrets } from './encryption'
 import { getIntegration } from './index'
 import type { IntegrationId, PrincipalId } from '@quackback/ids'
@@ -46,32 +46,50 @@ export async function saveIntegration(
   const now = new Date()
   const tokenExpiresAt = expiresIn ? new Date(now.getTime() + expiresIn * 1000) : undefined
 
-  const config = {
-    ...oauthConfig,
-    ...(tokenExpiresAt ? { tokenExpiresAt: toIsoString(tokenExpiresAt) } : {}),
-  }
-
   // Check if integration already exists (for reconnect — keep existing service principal)
   // NOTE: unique constraint on integration_type was dropped in migration 0057 to allow
   // multiple integrations per type, so we use manual find-then-update/insert instead of
   // onConflictDoUpdate.
-  let existing: { id: string; principalId: string | null } | undefined
+  let existing:
+    | {
+        id: string
+        principalId: string | null
+        config: Record<string, unknown> | null
+      }
+    | undefined
   if (targetIntegrationId) {
     // Reconnect a specific integration by ID
     existing =
       (await db.query.integrations.findFirst({
-        where: eq(integrations.id, targetIntegrationId),
-        columns: { id: true, principalId: true },
+        where: and(
+          eq(integrations.id, targetIntegrationId),
+          eq(integrations.integrationType, integrationType)
+        ),
+        columns: { id: true, principalId: true, config: true },
       })) ?? undefined
+
+    if (!existing) {
+      throw new Error(`${integrationType} integration not found`)
+    }
   } else if (!forceCreate) {
     // Default: find first integration by type (legacy single-instance behavior)
     existing =
       (await db.query.integrations.findFirst({
         where: eq(integrations.integrationType, integrationType),
-        columns: { id: true, principalId: true },
+        columns: { id: true, principalId: true, config: true },
       })) ?? undefined
   }
   // When forceCreate=true and no targetIntegrationId, skip lookup → always INSERT
+
+  const existingConfig =
+    existing?.config && typeof existing.config === 'object' && !Array.isArray(existing.config)
+      ? existing.config
+      : {}
+  const config = {
+    ...existingConfig,
+    ...oauthConfig,
+    ...(tokenExpiresAt ? { tokenExpiresAt: toIsoString(tokenExpiresAt) } : {}),
+  }
 
   // Create service principal if this is a new integration or missing one
   let integrationPrincipalId = (existing?.principalId as PrincipalId | null) ?? null

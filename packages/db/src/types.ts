@@ -46,6 +46,7 @@ import type {
 } from './schema/sla'
 import type { ticketSubscriptions } from './schema/ticket-subscriptions'
 import type { webhookDeliveries } from './schema/webhook-deliveries'
+import type { widgetApplications, widgetEnvironmentProfiles } from './schema/widget-profiles'
 
 // Status categories (defined here to avoid circular imports in tests)
 export const STATUS_CATEGORIES = ['active', 'complete', 'closed'] as const
@@ -509,6 +510,12 @@ export type NewTicketSubscription = InferInsertModel<typeof ticketSubscriptions>
 
 export type WebhookDelivery = InferSelectModel<typeof webhookDeliveries>
 export type NewWebhookDelivery = InferInsertModel<typeof webhookDeliveries>
+
+// Widget applications and environment profiles
+export type WidgetApplication = InferSelectModel<typeof widgetApplications>
+export type NewWidgetApplication = InferInsertModel<typeof widgetApplications>
+export type WidgetEnvironmentProfile = InferSelectModel<typeof widgetEnvironmentProfiles>
+export type NewWidgetEnvironmentProfile = InferInsertModel<typeof widgetEnvironmentProfiles>
 
 // Re-export SLA literal-union types & business-hours interfaces from the schema.
 export type {

@@ -9,6 +9,8 @@ import { getTopLevelCategories } from '@/components/help-center/help-center-util
 import { CategoryIcon } from '@/components/help-center/category-icon'
 import { WidgetMessagesSection } from './widget-messages-section'
 import { WidgetSupportCard } from './widget-support-card'
+import type { WidgetSupportCategory } from '@/lib/client/widget/tickets-api'
+import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 
 interface WidgetHelpArticle {
   id: string
@@ -29,6 +31,7 @@ interface WidgetHelpProps {
   onOpenChat?: (target?: import('@quackback/ids').ConversationId | 'new') => void
   /** Open the support-ticket surface. */
   onOpenSupport?: () => void
+  supportCategories?: WidgetSupportCategory[]
 }
 
 export function WidgetHelp({
@@ -36,6 +39,7 @@ export function WidgetHelp({
   onCategorySelect,
   onOpenChat,
   onOpenSupport,
+  supportCategories,
 }: WidgetHelpProps) {
   const intl = useIntl()
   const [search, setSearch] = useState('')
@@ -44,7 +48,7 @@ export function WidgetHelp({
   const abortRef = useRef<AbortController | null>(null)
   const cacheRef = useRef(new Map<string, WidgetHelpArticle[]>())
 
-  const categoriesQuery = useQuery(publicHelpCenterQueries.categories())
+  const categoriesQuery = useQuery(publicHelpCenterQueries.categories(getWidgetAuthHeaders()))
   const topLevelCategories = categoriesQuery.data ? getTopLevelCategories(categoriesQuery.data) : []
 
   const doSearch = useCallback(async (query: string) => {
@@ -72,6 +76,7 @@ export function WidgetHelp({
     try {
       const res = await fetch(`/api/widget/kb-search?q=${encodeURIComponent(query)}&limit=10`, {
         signal: controller.signal,
+        headers: getWidgetAuthHeaders(),
       })
       const data = await res.json()
       const articles = data.data?.articles ?? []
@@ -117,7 +122,7 @@ export function WidgetHelp({
             <>
               {onOpenSupport && (
                 <div className="mb-3">
-                  <WidgetSupportCard onOpen={onOpenSupport} />
+                  <WidgetSupportCard onOpen={onOpenSupport} categories={supportCategories} />
                 </div>
               )}
 

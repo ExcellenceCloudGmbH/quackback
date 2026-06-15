@@ -37,6 +37,8 @@ import {
   widgetJsonError,
 } from '@/lib/server/widget/cors'
 import { widgetTicketingGate } from '@/lib/server/widget/ticketing-gate'
+import { getWidgetRequestContext } from '@/lib/server/widget/context'
+import { assertTicketMatchesWidgetContext } from '@/lib/server/widget/ticket-scope'
 import type { PrincipalId, TicketId, TicketStatusId, UserId } from '@quackback/ids'
 
 const tiptapDocSchema = z
@@ -87,6 +89,7 @@ export async function handleGetWidgetTicket({
       userId: session.user.id as UserId,
       ticketId,
     })
+    assertTicketMatchesWidgetContext(ticket, await getWidgetRequestContext(request))
 
     const [threads, status, viewerPrincipal] = await Promise.all([
       listPublicThreadsForTicket(ticket.id as TicketId),
@@ -188,6 +191,12 @@ export async function handlePatchWidgetTicket({
   }
 
   try {
+    const ticket = await getTicketForPortalUser({
+      userId: session.user.id as UserId,
+      ticketId: params.ticketId as TicketId,
+    })
+    assertTicketMatchesWidgetContext(ticket, await getWidgetRequestContext(request))
+
     const updated = await updatePortalTicketDescription({
       userId: session.user.id as UserId,
       ticketId: params.ticketId as TicketId,

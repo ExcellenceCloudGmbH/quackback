@@ -3,7 +3,7 @@
  */
 
 import type { TiptapContent } from '@/lib/server/db'
-import type { ChangelogId, PrincipalId, PostId } from '@quackback/ids'
+import type { BoardId, ChangelogId, PrincipalId, PostId, StatusId } from '@quackback/ids'
 import type { PublishState } from '@/lib/shared/schemas/changelog'
 
 export type { PublishState } from '@/lib/shared/schemas/changelog'
@@ -124,7 +124,9 @@ export interface PublicChangelogLinkedPost {
   id: PostId
   title: string
   voteCount: number
+  boardId: BoardId
   boardSlug: string
+  statusId: StatusId | null
   status: {
     name: string
     color: string

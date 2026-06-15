@@ -41,6 +41,7 @@ import { listPublicRoadmaps } from '@/lib/server/domains/roadmaps/roadmap.servic
 import { getPublicRoadmapPosts } from '@/lib/server/domains/roadmaps/roadmap.query'
 import { resolvePortalAccessForRequest } from './portal-access'
 import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils'
+import { getWidgetRequestContext, type WidgetRequestContext } from '@/lib/server/widget/context'
 
 // ============================================
 // Schemas
@@ -128,6 +129,68 @@ export type GetVoteSidebarDataInput = z.infer<typeof getVoteSidebarDataSchema>
 // Server Functions
 // ============================================
 
+async function getWidgetContextFromServerFnHeaders(): Promise<WidgetRequestContext> {
+  const headers = getRequestHeaders()
+  const request = new Request('https://widget-context.local/feedback', { headers })
+  return getWidgetRequestContext(request)
+}
+
+function postAllowedByWidgetFeedbackFilters(
+  post: {
+    board?: { id?: string; slug?: string } | null
+    statusId?: string | null
+    tags?: Array<{ id?: string; slug?: string }> | null
+  },
+  context: WidgetRequestContext
+): boolean {
+  if (!context.profileId) return true
+  const feedbackFilters = context.contentFilters.feedback
+  const allowedBoardIds = new Set(feedbackFilters?.boardIds ?? [])
+  const allowedBoardSlugs = new Set(feedbackFilters?.boardSlugs ?? [])
+  const allowedStatusIds = new Set(feedbackFilters?.statusIds ?? [])
+  const allowedTagIds = new Set(feedbackFilters?.tagIds ?? [])
+  const allowedTagSlugs = new Set(feedbackFilters?.tagSlugs ?? [])
+  const hasBoardFilter = allowedBoardIds.size > 0 || allowedBoardSlugs.size > 0
+  const hasStatusFilter = allowedStatusIds.size > 0
+  const hasTagFilter = allowedTagIds.size > 0 || allowedTagSlugs.size > 0
+
+  if (
+    hasBoardFilter &&
+    !allowedBoardIds.has(post.board?.id as BoardId) &&
+    !allowedBoardSlugs.has(post.board?.slug ?? '')
+  ) {
+    return false
+  }
+  if (hasStatusFilter && (!post.statusId || !allowedStatusIds.has(post.statusId as StatusId))) {
+    return false
+  }
+  if (hasTagFilter) {
+    const tags = post.tags ?? []
+    if (
+      !tags.some(
+        (tag) =>
+          (tag.id && allowedTagIds.has(tag.id as TagId)) ||
+          (tag.slug && allowedTagSlugs.has(tag.slug))
+      )
+    ) {
+      return false
+    }
+  }
+  return true
+}
+
+function boardAllowedByWidgetFeedbackFilters(
+  board: { id: string; slug: string },
+  context: WidgetRequestContext
+): boolean {
+  if (!context.profileId) return true
+  const feedbackFilters = context.contentFilters.feedback
+  const allowedBoardIds = new Set(feedbackFilters?.boardIds ?? [])
+  const allowedBoardSlugs = new Set(feedbackFilters?.boardSlugs ?? [])
+  if (allowedBoardIds.size === 0 && allowedBoardSlugs.size === 0) return true
+  return allowedBoardIds.has(board.id as BoardId) || allowedBoardSlugs.has(board.slug)
+}
+
 /**
  * List public posts with filtering (no auth required).
  *
@@ -156,6 +219,7 @@ export const listPublicPostsFn = createServerFn({ method: 'GET' })
       // were entitled to more.
       const auth = await getOptionalAuth()
       const actor = await policyActorFromAuth(auth)
+      const widgetContext = await getWidgetContextFromServerFnHeaders()
 
       const result = await listPublicPosts({
         boardSlug: data.boardSlug,
@@ -176,10 +240,12 @@ export const listPublicPostsFn = createServerFn({ method: 'GET' })
       // Serialize Date fields
       return {
         ...result,
-        items: result.items.map((post) => ({
-          ...post,
-          createdAt: toIsoString(post.createdAt),
-        })),
+        items: result.items
+          .filter((post) => postAllowedByWidgetFeedbackFilters(post, widgetContext))
+          .map((post) => ({
+            ...post,
+            createdAt: toIsoString(post.createdAt),
+          })),
       }
     } catch (error) {
       console.error(`[fn:public-posts] ❌ listPublicPostsFn failed:`, error)
@@ -432,6 +498,7 @@ export const createPublicPostFn = createServerFn({ method: 'POST' })
       // existence). createPost will re-check via canCreatePost with
       // the same actor, so this stays as defense in depth.
       const actor = await policyActorFromAuth(ctx)
+      const widgetContext = await getWidgetContextFromServerFnHeaders()
 
       // Run remaining independent lookups in parallel
       const [board, principalRecord, defaultStatus, settings] = await Promise.all([
@@ -443,6 +510,9 @@ export const createPublicPostFn = createServerFn({ method: 'POST' })
 
       if (!board) {
         throw new Error('Board not found')
+      }
+      if (!boardAllowedByWidgetFeedbackFilters(board, widgetContext)) {
+        throw new Error('Board is not available in this widget')
       }
 
       if (!settings) {

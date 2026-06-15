@@ -29,6 +29,8 @@ import {
   widgetJsonError,
 } from '@/lib/server/widget/cors'
 import { widgetTicketingGate } from '@/lib/server/widget/ticketing-gate'
+import { getWidgetRequestContext } from '@/lib/server/widget/context'
+import { assertTicketMatchesWidgetContext } from '@/lib/server/widget/ticket-scope'
 import type { InboxId, PrincipalId, TicketId, TicketStatusId, UserId } from '@quackback/ids'
 
 const OPEN_CATEGORIES = new Set(['open', 'pending', 'on_hold'])
@@ -96,6 +98,7 @@ export async function handleReopenWidgetTicket({
       userId: session.user.id as UserId,
       ticketId,
     })
+    assertTicketMatchesWidgetContext(ticket, await getWidgetRequestContext(request))
 
     const currentStatus = ticket.statusId
       ? await db.query.ticketStatuses.findFirst({

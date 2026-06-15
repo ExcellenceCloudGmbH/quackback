@@ -39,6 +39,7 @@ export const getGitHubConnectUrl = createServerFn({ method: 'GET' })
   .handler(async ({ data }): Promise<string> => {
     const { randomBytes } = await import('crypto')
     const { requireAuth } = await import('../../functions/auth-helpers')
+    const { db, integrations, eq, and } = await import('@/lib/server/db')
     const { signOAuthState } = await import('@/lib/server/auth/oauth-state')
     const { getOAuthReturnDomain } = await import('@/lib/server/integrations/oauth')
 
@@ -52,6 +53,24 @@ export const getGitHubConnectUrl = createServerFn({ method: 'GET' })
     }
     const returnDomain = getOAuthReturnDomain()
 
+    if (data?.intent === 'reconnect') {
+      if (!data.integrationId) {
+        throw new Error('GitHub integration ID is required to reconnect')
+      }
+
+      const integration = await db.query.integrations.findFirst({
+        where: and(
+          eq(integrations.id, data.integrationId as IntegrationId),
+          eq(integrations.integrationType, 'github')
+        ),
+        columns: { id: true },
+      })
+
+      if (!integration) {
+        throw new Error('GitHub integration not found')
+      }
+    }
+
     const state = signOAuthState({
       type: 'github_oauth',
       workspaceId: auth.settings.id,
@@ -61,7 +80,7 @@ export const getGitHubConnectUrl = createServerFn({ method: 'GET' })
       ts: Date.now(),
       intent: data?.intent,
       integrationId: data?.integrationId,
-      preAuthFields: data?.repoFullName ? { repoFullName: data.repoFullName } : undefined,
+      preAuthFields: data?.repoFullName ? { channelId: data.repoFullName } : undefined,
     } satisfies GitHubOAuthState)
 
     return `/oauth/github/connect?state=${encodeURIComponent(state)}`
@@ -71,9 +90,9 @@ export const fetchGitHubReposFn = createServerFn({ method: 'GET' })
   .inputValidator(z.object({ integrationId: z.string().optional() }).optional())
   .handler(async ({ data }): Promise<GitHubRepo[]> => {
     const { requireAuth } = await import('../../functions/auth-helpers')
-    const { db, integrations, eq, and } = await import('@/lib/server/db')
+    const { db, integrations, eq, and, sql } = await import('@/lib/server/db')
     const { decryptSecrets } = await import('../encryption')
-    const { listGitHubRepos } = await import('./repos')
+    const { GitHubApiError, listGitHubRepos } = await import('./repos')
 
     await requireAuth({ roles: ['admin'] })
 
@@ -97,7 +116,37 @@ export const fetchGitHubReposFn = createServerFn({ method: 'GET' })
     }
 
     const secrets = decryptSecrets<{ accessToken: string }>(integration.secrets)
-    return listGitHubRepos(secrets.accessToken)
+    try {
+      const repos = await listGitHubRepos(secrets.accessToken)
+      if (integration.lastError) {
+        await db
+          .update(integrations)
+          .set({ lastError: null, lastErrorAt: null, errorCount: 0, updatedAt: new Date() })
+          .where(eq(integrations.id, integration.id))
+      }
+      return repos
+    } catch (err) {
+      const message =
+        err instanceof GitHubApiError && err.status === 401
+          ? 'GitHub authorization failed. Reconnect this repository to refresh access.'
+          : err instanceof GitHubApiError && err.status === 403
+            ? 'GitHub rejected access. Reconnect this repository and confirm repository permissions.'
+            : err instanceof Error
+              ? err.message
+              : 'Failed to load GitHub repositories.'
+
+      await db
+        .update(integrations)
+        .set({
+          lastError: message,
+          lastErrorAt: new Date(),
+          errorCount: sql`${integrations.errorCount} + 1`,
+          updatedAt: new Date(),
+        })
+        .where(eq(integrations.id, integration.id))
+
+      throw new Error(message, { cause: err })
+    }
   })
 
 /**

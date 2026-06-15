@@ -5,6 +5,7 @@
  */
 
 import { createServerFn } from '@tanstack/react-start'
+import { getRequestHeaders } from '@tanstack/react-start/server'
 import type { BoardId, ChangelogId, PostId } from '@quackback/ids'
 // Note: BoardId is only used for searchShippedPosts filtering
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
@@ -33,6 +34,53 @@ import {
   listPublicChangelogsSchema,
 } from '@/lib/shared/schemas/changelog'
 import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils'
+import { getWidgetRequestContext, type WidgetRequestContext } from '@/lib/server/widget/context'
+import type { PublicChangelogEntry } from '@/lib/server/domains/changelog/changelog.types'
+
+async function getWidgetContextFromServerFnHeaders(): Promise<WidgetRequestContext> {
+  const headers = getRequestHeaders()
+  const request = new Request('https://widget-context.local/changelog', { headers })
+  return getWidgetRequestContext(request)
+}
+
+function applyWidgetChangelogFilters(
+  entry: PublicChangelogEntry,
+  context: WidgetRequestContext
+): PublicChangelogEntry | null {
+  if (!context.profileId) return entry
+
+  const changelogFilter = context.contentFilters.changelog
+  const mode = changelogFilter?.mode ?? 'all_published'
+
+  if (mode === 'selected_entries') {
+    const selectedIds = new Set(changelogFilter?.entryIds ?? [])
+    return selectedIds.has(entry.id) ? entry : null
+  }
+
+  if (mode !== 'linked_to_allowed_feedback') return entry
+
+  const feedbackFilter = context.contentFilters.feedback
+  const allowedBoardIds = new Set(feedbackFilter?.boardIds ?? [])
+  const allowedBoardSlugs = new Set(feedbackFilter?.boardSlugs ?? [])
+  const allowedStatusIds = new Set(feedbackFilter?.statusIds ?? [])
+  const hasBoardFilter = allowedBoardIds.size > 0 || allowedBoardSlugs.size > 0
+  const hasStatusFilter = allowedStatusIds.size > 0
+  const linkedPosts = entry.linkedPosts.filter((post) => {
+    if (
+      hasBoardFilter &&
+      !allowedBoardIds.has(post.boardId) &&
+      !allowedBoardSlugs.has(post.boardSlug)
+    ) {
+      return false
+    }
+    if (hasStatusFilter && (!post.statusId || !allowedStatusIds.has(post.statusId))) {
+      return false
+    }
+    return true
+  })
+
+  return linkedPosts.length > 0 ? { ...entry, linkedPosts } : null
+}
 
 // ============================================================================
 // Admin Server Functions (Require Auth)
@@ -210,10 +258,18 @@ export const getPublicChangelogFn = createServerFn({ method: 'GET' })
       }
 
       const entry = await getPublicChangelogById(data.id as ChangelogId)
+      const widgetContext = await getWidgetContextFromServerFnHeaders()
+      const filteredEntry = applyWidgetChangelogFilters(entry, widgetContext)
+      if (!filteredEntry) {
+        throw new NotFoundError(
+          'CHANGELOG_NOT_FOUND',
+          `Published changelog entry with ID ${data.id} not found`
+        )
+      }
 
       return {
-        ...entry,
-        publishedAt: toIsoString(entry.publishedAt),
+        ...filteredEntry,
+        publishedAt: toIsoString(filteredEntry.publishedAt),
       }
     } catch (error) {
       console.error(`[fn:changelog] getPublicChangelogFn failed:`, error)
@@ -240,10 +296,14 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
         cursor: data.cursor,
         limit: data.limit,
       })
+      const widgetContext = await getWidgetContextFromServerFnHeaders()
+      const filteredItems = result.items
+        .map((entry) => applyWidgetChangelogFilters(entry, widgetContext))
+        .filter((entry): entry is PublicChangelogEntry => entry !== null)
 
       return {
         ...result,
-        items: result.items.map((entry) => ({
+        items: filteredItems.map((entry) => ({
           ...entry,
           publishedAt: toIsoString(entry.publishedAt),
         })),

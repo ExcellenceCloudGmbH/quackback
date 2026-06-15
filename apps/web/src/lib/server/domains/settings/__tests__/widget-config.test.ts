@@ -6,7 +6,7 @@ import {
   type UpdateWidgetConfigInput,
   type PublicWidgetConfig,
 } from '../settings.types'
-import { generateWidgetSecret } from '../settings.widget'
+import { generateWidgetSecret, publicLiveChatConfig } from '../settings.widget'
 
 describe('Widget Config Types', () => {
   describe('DEFAULT_LIVE_CHAT_CONFIG', () => {
@@ -100,6 +100,21 @@ describe('Widget Config Types', () => {
         ticketing: { enabled: true },
       }
       expect(publicConfig.ticketing?.enabled).toBe(true)
+    })
+
+    it('strips support access policy from the public chat projection', () => {
+      const publicChat = publicLiveChatConfig({
+        ...DEFAULT_LIVE_CHAT_CONFIG,
+        access: {
+          mode: 'selected',
+          segmentIds: ['segment_vip'],
+          principalIds: ['principal_vip'],
+        },
+      })
+
+      expect(publicChat).not.toHaveProperty('access')
+      expect(JSON.stringify(publicChat)).not.toContain('segment_vip')
+      expect(JSON.stringify(publicChat)).not.toContain('principal_vip')
     })
   })
 })

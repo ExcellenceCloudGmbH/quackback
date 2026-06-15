@@ -18,7 +18,15 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
-import { db, eq, inArray, ticketStatuses, type TiptapContent } from '@/lib/server/db'
+import {
+  db,
+  eq,
+  inArray,
+  inboxes,
+  ticketStatuses,
+  type TicketPriority,
+  type TiptapContent,
+} from '@/lib/server/db'
 import { getWidgetSession } from '@/lib/server/functions/widget-auth'
 import { createTicket } from '@/lib/server/domains/tickets/ticket.service'
 import { listTicketsForPortalUser } from '@/lib/server/domains/tickets/ticket.portal-query'
@@ -28,6 +36,11 @@ import {
   widgetJsonError,
 } from '@/lib/server/widget/cors'
 import { widgetTicketingGate } from '@/lib/server/widget/ticketing-gate'
+import { getWidgetRequestContext } from '@/lib/server/widget/context'
+import {
+  visibleWidgetSupportCategories,
+  widgetTicketListFilters,
+} from '@/lib/server/widget/ticket-scope'
 import type { TicketId, TicketStatusId, UserId } from '@quackback/ids'
 
 const tiptapDocSchema = z
@@ -36,15 +49,14 @@ const tiptapDocSchema = z
 
 const statusCategorySchema = z.enum(['open', 'pending', 'on_hold', 'solved', 'closed'])
 
-// `urgent` is intentionally excluded from the widget surface - only staff may
-// escalate to it, otherwise end-users would default everything to urgent.
-const widgetPrioritySchema = z.enum(['low', 'normal', 'high'])
+const widgetPrioritySchema = z.enum(['low', 'normal', 'high', 'urgent'])
 
 const createSchema = z.object({
   subject: z.string().min(1).max(500),
   bodyJson: tiptapDocSchema.nullable().optional(),
   bodyText: z.string().max(100_000).nullable().optional(),
   priority: widgetPrioritySchema.optional(),
+  categoryKey: z.string().min(1).max(120).optional(),
 })
 
 interface SerializedTicketRow {
@@ -116,11 +128,15 @@ export async function handleListWidgetTickets({
   }
 
   try {
+    const widgetContext = await getWidgetRequestContext(request)
+    const scopeFilters = widgetTicketListFilters(widgetContext)
+
     const { rows, total } = await listTicketsForPortalUser({
       userId: session.user.id as UserId,
       statusCategory: parsed.data.statusCategory,
       limit: parsed.data.limit,
       offset: parsed.data.offset,
+      ...scopeFilters,
     })
 
     const statusById = await hydrateStatuses(
@@ -178,12 +194,62 @@ export async function handleCreateWidgetTicket({
   }
 
   try {
+    const widgetContext = await getWidgetRequestContext(request)
+    const visibleCategories = visibleWidgetSupportCategories(widgetContext)
+    const selectedCategory =
+      visibleCategories.length === 1
+        ? visibleCategories[0]
+        : visibleCategories.find((category) => category.categoryKey === body.categoryKey)
+
+    if (visibleCategories.length > 1 && !body.categoryKey) {
+      return widgetJsonError('SUPPORT_CATEGORY_REQUIRED', 'Select a support category', 400)
+    }
+    if (body.categoryKey && !selectedCategory) {
+      return widgetJsonError(
+        'SUPPORT_CATEGORY_NOT_ALLOWED',
+        'Support category is not available',
+        400
+      )
+    }
+
+    const inbox = selectedCategory
+      ? await db.query.inboxes.findFirst({
+          where: eq(inboxes.id, selectedCategory.inboxId),
+        })
+      : null
+    if (selectedCategory && !inbox) {
+      return widgetJsonError('SUPPORT_INBOX_NOT_FOUND', 'Support inbox is not available', 400)
+    }
+
+    const allowedPriorities = selectedCategory?.allowedPriorities?.length
+      ? selectedCategory.allowedPriorities
+      : selectedCategory
+        ? (['low', 'normal', 'high', 'urgent'] as TicketPriority[])
+        : (['low', 'normal', 'high'] as TicketPriority[])
+    const priorityAllowed = new Set<TicketPriority>(allowedPriorities as TicketPriority[])
+    if (body.priority && !priorityAllowed.has(body.priority)) {
+      return widgetJsonError('TICKET_PRIORITY_NOT_ALLOWED', 'Priority is not available', 400)
+    }
+    const priority =
+      body.priority ??
+      (selectedCategory?.defaultPriority && priorityAllowed.has(selectedCategory.defaultPriority)
+        ? selectedCategory.defaultPriority
+        : inbox?.defaultPriority && priorityAllowed.has(inbox.defaultPriority)
+          ? inbox.defaultPriority
+          : (allowedPriorities[0] as TicketPriority | undefined)) ??
+      'normal'
+
     const ticket = await createTicket({
       subject: body.subject,
       descriptionJson: (body.bodyJson ?? null) as TiptapContent | null,
       descriptionText: body.bodyText ?? null,
-      priority: body.priority,
+      priority,
       channel: 'widget',
+      inboxId: selectedCategory?.inboxId ?? null,
+      statusId: (inbox?.defaultStatusId as TicketStatusId | null | undefined) ?? undefined,
+      primaryTeamId: inbox?.primaryTeamId ?? undefined,
+      visibilityScope: inbox?.defaultVisibilityScope ?? undefined,
+      sourceWidgetProfileId: widgetContext.profileId ?? null,
       requesterPrincipalId: session.principal.id,
       createdByPrincipalId: session.principal.id,
     })

@@ -7,19 +7,26 @@ import {
   listWidgetTickets,
   type WidgetTicketRow,
   type StatusCategory,
+  type WidgetSupportCategory,
 } from '@/lib/client/widget/tickets-api'
 import { useWidgetAuth } from './widget-auth-provider'
 
 interface WidgetSupportListProps {
   onNewTicket: () => void
   onTicketSelect: (ticketId: string) => void
+  categories?: WidgetSupportCategory[]
 }
 
 const RESOLVED_CATEGORIES: ReadonlySet<StatusCategory> = new Set(['solved', 'closed'])
 
-export function WidgetSupportList({ onNewTicket, onTicketSelect }: WidgetSupportListProps) {
+export function WidgetSupportList({
+  onNewTicket,
+  onTicketSelect,
+  categories = [],
+}: WidgetSupportListProps) {
   const intl = useIntl()
   const { isIdentified, sessionVersion } = useWidgetAuth()
+  const display = categories.length === 1 ? categories[0]?.display : undefined
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['widget', 'tickets', 'list', sessionVersion],
@@ -75,10 +82,12 @@ export function WidgetSupportList({ onNewTicket, onTicketSelect }: WidgetSupport
 
           {isIdentified && data && data.rows.length === 0 && (
             <p className="text-xs text-muted-foreground/70 text-center py-8">
-              <FormattedMessage
-                id="widget.support.list.empty"
-                defaultMessage="You haven't opened any tickets yet."
-              />
+              {display?.emptyStateDescription ?? (
+                <FormattedMessage
+                  id="widget.support.list.empty"
+                  defaultMessage="You haven't opened any tickets yet."
+                />
+              )}
             </p>
           )}
 

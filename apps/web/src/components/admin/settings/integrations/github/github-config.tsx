@@ -19,6 +19,7 @@ import { OnDeleteConfig } from '@/components/admin/settings/integrations/on-dele
 import { useInboxes } from '@/lib/client/hooks/use-inboxes-queries'
 import { GitHubUserMappings } from './github-user-mappings'
 import { GitHubSyncHistory } from './github-sync-history'
+import { GitHubReconnectButton } from './github-connection-actions'
 import type { GitHubSyncDirection } from '@/lib/server/integrations/github/types'
 import type { UpdateIntegrationInput } from '@/lib/server/functions/integrations'
 
@@ -219,12 +220,21 @@ export function GitHubConfig({
     try {
       const result = await fetchGitHubReposFn({ data: { integrationId } })
       setRepos(result)
-    } catch {
-      setRepoError('Failed to load repositories. Please try again.')
+      if (selectedRepo && !result.some((repo) => repo.fullName === selectedRepo)) {
+        setRepoError(
+          'The configured repository is no longer visible to this GitHub authorization. Reconnect GitHub or choose another repository.'
+        )
+      }
+    } catch (err) {
+      setRepoError(
+        err instanceof Error
+          ? err.message
+          : 'Failed to load GitHub repositories. Reconnect GitHub and try again.'
+      )
     } finally {
       setLoadingRepos(false)
     }
-  }, [integrationId])
+  }, [integrationId, selectedRepo])
 
   useEffect(() => {
     fetchRepos()
@@ -316,7 +326,14 @@ export function GitHubConfig({
           </Button>
         </div>
         {repoError ? (
-          <p className="text-sm text-destructive">{repoError}</p>
+          <div className="flex flex-col gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+            <p>{repoError}</p>
+            <GitHubReconnectButton
+              integrationId={integrationId}
+              label="Reconnect GitHub"
+              className="self-start sm:self-auto"
+            />
+          </div>
         ) : (
           <Select
             value={selectedRepo}

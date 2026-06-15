@@ -32,7 +32,14 @@ import {
   type TicketStatusCategory,
   type TiptapContent,
 } from '@/lib/server/db'
-import type { ContactId, PrincipalId, TicketId, UserId } from '@quackback/ids'
+import type {
+  ContactId,
+  InboxId,
+  PrincipalId,
+  TicketId,
+  UserId,
+  WidgetProfileId,
+} from '@quackback/ids'
 import type { TicketThread } from '@/lib/server/db'
 import { ConflictError, ForbiddenError, NotFoundError } from '@/lib/shared/errors'
 import { getMemberByUser } from '../principals/principal.service'
@@ -106,6 +113,8 @@ export interface ListTicketsForPortalUserOptions {
   statusCategory?: TicketStatusCategory
   limit?: number
   offset?: number
+  sourceWidgetProfileId?: WidgetProfileId | null
+  allowedInboxIds?: InboxId[] | null
 }
 
 export async function listTicketsForPortalUser(
@@ -129,6 +138,13 @@ export async function listTicketsForPortalUser(
           .where(eq(ticketStatuses.category, opts.statusCategory))
       )
     )
+  }
+  if (opts.sourceWidgetProfileId) {
+    filters.push(eq(tickets.sourceWidgetProfileId, opts.sourceWidgetProfileId))
+  }
+  if (opts.allowedInboxIds) {
+    if (opts.allowedInboxIds.length === 0) return { rows: [], total: 0 }
+    filters.push(inArray(tickets.inboxId, opts.allowedInboxIds))
   }
   const where = and(...filters)
 

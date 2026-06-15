@@ -32,6 +32,7 @@ import { principal } from './auth'
 import { teams } from './teams'
 import { contacts, organizations } from './organizations'
 import { ticketStatuses } from './ticket-statuses'
+import { widgetEnvironmentProfiles } from './widget-profiles'
 import type { TiptapContent } from '../types'
 
 export const TICKET_PRIORITIES = ['low', 'normal', 'high', 'urgent'] as const
@@ -67,6 +68,9 @@ export const tickets = pgTable(
     descriptionText: text('description_text'),
     priority: text('priority', { enum: TICKET_PRIORITIES }).notNull().default('normal'),
     channel: text('channel', { enum: TICKET_CHANNELS }).notNull().default('api'),
+    sourceWidgetProfileId: typeIdColumnNullable('widget_profile')(
+      'source_widget_profile_id'
+    ).references(() => widgetEnvironmentProfiles.id, { onDelete: 'set null' }),
     visibilityScope: text('visibility_scope', { enum: TICKET_VISIBILITY_SCOPES })
       .notNull()
       .default('team'),
@@ -132,6 +136,7 @@ export const tickets = pgTable(
     index('tickets_primary_team_idx').on(t.primaryTeamId),
     index('tickets_organization_idx').on(t.organizationId),
     index('tickets_requester_contact_idx').on(t.requesterContactId),
+    index('tickets_source_widget_profile_idx').on(t.sourceWidgetProfileId),
     index('tickets_created_at_idx').on(t.createdAt),
     index('tickets_last_activity_at_idx').on(t.lastActivityAt),
     index('tickets_deleted_at_idx').on(t.deletedAt),
@@ -340,6 +345,10 @@ export const ticketsRelations = relations(tickets, ({ one, many }) => ({
     fields: [tickets.primaryTeamId],
     references: [teams.id],
     relationName: 'ticketPrimaryTeam',
+  }),
+  sourceWidgetProfile: one(widgetEnvironmentProfiles, {
+    fields: [tickets.sourceWidgetProfileId],
+    references: [widgetEnvironmentProfiles.id],
   }),
   threads: many(ticketThreads),
   participants: many(ticketParticipants),

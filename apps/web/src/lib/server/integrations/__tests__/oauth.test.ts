@@ -22,11 +22,11 @@ describe('OAuth public origin resolution', () => {
     const headers = new Headers({
       host: 'localhost:3000',
       referer:
-        'https://heat-trucks-chancellor-return.trycloudflare.com/admin/settings/integrations/github',
+        'https://levy-methodology-procurement-softball.trycloudflare.com/admin/settings/integrations/github',
     })
 
     expect(getPublicOriginFromHeaders(headers, 'http://localhost:3000/oauth/github/connect')).toBe(
-      'https://heat-trucks-chancellor-return.trycloudflare.com'
+      'https://levy-methodology-procurement-softball.trycloudflare.com'
     )
   })
 
@@ -43,12 +43,12 @@ describe('OAuth public origin resolution', () => {
       headers: {
         host: 'localhost:3000',
         referer:
-          'https://heat-trucks-chancellor-return.trycloudflare.com/admin/settings/integrations/github',
+          'https://levy-methodology-procurement-softball.trycloudflare.com/admin/settings/integrations/github',
       },
     })
 
     expect(buildCallbackUri('github', request)).toBe(
-      'https://heat-trucks-chancellor-return.trycloudflare.com/oauth/github/callback'
+      'https://levy-methodology-procurement-softball.trycloudflare.com/oauth/github/callback'
     )
   })
 })

@@ -13,7 +13,10 @@
  */
 import { createFileRoute } from '@tanstack/react-router'
 import { z } from 'zod'
-import { addPortalReply } from '@/lib/server/domains/tickets/ticket.portal-query'
+import {
+  addPortalReply,
+  getTicketForPortalUser,
+} from '@/lib/server/domains/tickets/ticket.portal-query'
 import { getWidgetSession } from '@/lib/server/functions/widget-auth'
 import {
   mapDomainErrorToResponse,
@@ -21,6 +24,8 @@ import {
   widgetJsonError,
 } from '@/lib/server/widget/cors'
 import { widgetTicketingGate } from '@/lib/server/widget/ticketing-gate'
+import { getWidgetRequestContext } from '@/lib/server/widget/context'
+import { assertTicketMatchesWidgetContext } from '@/lib/server/widget/ticket-scope'
 import type { TicketId, UserId } from '@quackback/ids'
 
 const tiptapDocSchema = z
@@ -58,6 +63,12 @@ export async function handleReplyToWidgetTicket({
   }
 
   try {
+    const ticket = await getTicketForPortalUser({
+      userId: session.user.id as UserId,
+      ticketId: params.ticketId as TicketId,
+    })
+    assertTicketMatchesWidgetContext(ticket, await getWidgetRequestContext(request))
+
     const thread = await addPortalReply({
       userId: session.user.id as UserId,
       ticketId: params.ticketId as TicketId,

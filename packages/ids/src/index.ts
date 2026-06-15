@@ -78,6 +78,8 @@ export type {
   NoteId,
   RoadmapId,
   ChangelogId,
+  WidgetApplicationId,
+  WidgetProfileId,
   ConversationId,
   ChatMessageId,
   ChatTagId,

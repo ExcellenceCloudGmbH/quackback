@@ -23,6 +23,8 @@ import {
   widgetJsonError,
 } from '@/lib/server/widget/cors'
 import { widgetTicketingGate } from '@/lib/server/widget/ticketing-gate'
+import { getWidgetRequestContext } from '@/lib/server/widget/context'
+import { assertTicketMatchesWidgetContext } from '@/lib/server/widget/ticket-scope'
 import type { PrincipalId, TicketId, TicketStatusId, UserId } from '@quackback/ids'
 
 export async function handleResolveWidgetTicket({
@@ -55,6 +57,7 @@ export async function handleResolveWidgetTicket({
       userId: session.user.id as UserId,
       ticketId,
     })
+    assertTicketMatchesWidgetContext(ticket, await getWidgetRequestContext(request))
 
     const currentStatus = ticket.statusId
       ? await db.query.ticketStatuses.findFirst({

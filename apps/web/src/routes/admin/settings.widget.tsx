@@ -8,6 +8,8 @@ import {
   CheckIcon,
   EyeIcon,
   EyeSlashIcon,
+  PlusIcon,
+  TrashIcon,
 } from '@heroicons/react/24/solid'
 import {
   HighlightedCode,
@@ -39,6 +41,11 @@ import {
 import { settingsQueries } from '@/lib/client/queries/settings'
 import { adminQueries } from '@/lib/client/queries/admin'
 import { updateWidgetConfigFn, regenerateWidgetSecretFn } from '@/lib/server/functions/settings'
+import {
+  upsertWidgetApplicationFn,
+  upsertWidgetEnvironmentProfileFn,
+} from '@/lib/server/functions/widget-profiles'
+import { inboxQueries } from '@/lib/client/queries/inboxes'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
 
 export const Route = createFileRoute('/admin/settings/widget')({
@@ -51,6 +58,8 @@ export const Route = createFileRoute('/admin/settings/widget')({
       queryClient.ensureQueryData(settingsQueries.widgetConfig()),
       queryClient.ensureQueryData(settingsQueries.widgetSecret()),
       queryClient.ensureQueryData(settingsQueries.helpCenterConfig()),
+      queryClient.ensureQueryData(settingsQueries.widgetApplications()),
+      queryClient.ensureQueryData(inboxQueries.list()),
       queryClient.ensureQueryData(adminQueries.boards()),
     ])
 
@@ -63,6 +72,8 @@ function WidgetSettingsPage() {
   const widgetConfigQuery = useSuspenseQuery(settingsQueries.widgetConfig())
   const widgetSecretQuery = useSuspenseQuery(settingsQueries.widgetSecret())
   const helpCenterConfigQuery = useSuspenseQuery(settingsQueries.helpCenterConfig())
+  const widgetApplicationsQuery = useSuspenseQuery(settingsQueries.widgetApplications())
+  const inboxesQuery = useSuspenseQuery(inboxQueries.list())
   const boardsQuery = useSuspenseQuery(adminQueries.boards())
   const { baseUrl, settings } = useRouteContext({ from: '__root__' })
 
@@ -121,6 +132,13 @@ function WidgetSettingsPage() {
           />
         </BrandingPreviewPanel>
       </BrandingLayout>
+
+      <WidgetApplicationsSection
+        baseUrl={baseUrl ?? ''}
+        applications={widgetApplicationsQuery.data}
+        boards={boardsQuery.data}
+        inboxes={inboxesQuery.data}
+      />
 
       <WidgetInstallation config={config} secret={widgetSecretQuery.data} baseUrl={baseUrl ?? ''} />
     </div>
@@ -415,6 +433,614 @@ function WidgetAppearanceControls({
         </Select>
       </div>
     </>
+  )
+}
+
+type WidgetProfilePriority = 'low' | 'normal' | 'high' | 'urgent'
+
+type WidgetSupportCategoryRow = {
+  categoryKey: string
+  label: string
+  description?: string
+  icon?: string
+  inboxId: string
+  defaultPriority?: WidgetProfilePriority
+  allowedPriorities?: WidgetProfilePriority[]
+  visible?: boolean
+  display?: {
+    showPrioritySelector?: boolean
+  }
+}
+
+type WidgetProfileRow = {
+  id: string
+  environment: string
+  displayName: string
+  enabled: boolean
+  allowedOrigins: string[]
+  configOverrides?: {
+    tabs?: {
+      home?: boolean
+      feedback?: boolean
+      changelog?: boolean
+      help?: boolean
+      chat?: boolean
+    }
+  }
+  contentFilters?: {
+    feedback?: { boardIds?: string[] }
+    changelog?: { mode?: 'all_published' | 'linked_to_allowed_feedback' | 'selected_entries' }
+  }
+  supportConfig?: {
+    categories?: WidgetSupportCategoryRow[]
+  }
+}
+
+type WidgetApplicationRow = {
+  id: string
+  key: string
+  name: string
+  description: string | null
+  profiles: WidgetProfileRow[]
+}
+
+type SupportCategoryDraft = {
+  categoryKey: string
+  label: string
+  description: string
+  icon: string
+  inboxId: string
+  defaultPriority: WidgetProfilePriority
+  visible: boolean
+  showPrioritySelector: boolean
+}
+
+const fieldCls =
+  'w-full rounded-md border border-border/60 bg-background px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/15'
+
+function emptySupportCategoryDraft(): SupportCategoryDraft {
+  return {
+    categoryKey: '',
+    label: '',
+    description: '',
+    icon: '',
+    inboxId: '',
+    defaultPriority: 'normal',
+    visible: true,
+    showPrioritySelector: true,
+  }
+}
+
+function supportCategoryDrafts(categories?: WidgetSupportCategoryRow[]): SupportCategoryDraft[] {
+  const drafts =
+    categories?.map((category) => ({
+      categoryKey: category.categoryKey ?? '',
+      label: category.label ?? '',
+      description: category.description ?? '',
+      icon: category.icon ?? '',
+      inboxId: category.inboxId ?? '',
+      defaultPriority: category.defaultPriority ?? 'normal',
+      visible: category.visible ?? true,
+      showPrioritySelector: category.display?.showPrioritySelector ?? true,
+    })) ?? []
+
+  return drafts.length > 0 ? drafts : [emptySupportCategoryDraft()]
+}
+
+function WidgetApplicationsSection({
+  baseUrl,
+  applications,
+  boards,
+  inboxes,
+}: {
+  baseUrl: string
+  applications: WidgetApplicationRow[]
+  boards: { id: string; name: string; slug: string }[]
+  inboxes: { id: string; name: string }[]
+}) {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [saving, setSaving] = useState(false)
+  const [selectedAppId, setSelectedAppId] = useState(applications[0]?.id ?? '')
+  const selectedApp = applications.find((app) => app.id === selectedAppId) ?? applications[0]
+  const [appKey, setAppKey] = useState('')
+  const [appName, setAppName] = useState('')
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    selectedApp?.profiles[0]?.id ?? null
+  )
+  const selectedProfile =
+    selectedApp?.profiles.find((profile) => profile.id === selectedProfileId) ??
+    selectedApp?.profiles[0] ??
+    null
+  const [environment, setEnvironment] = useState(selectedProfile?.environment ?? 'production')
+  const [enabled, setEnabled] = useState(selectedProfile?.enabled ?? true)
+  const [origins, setOrigins] = useState((selectedProfile?.allowedOrigins ?? []).join('\n'))
+  const [tabs, setTabs] = useState({
+    home: selectedProfile?.configOverrides?.tabs?.home ?? true,
+    feedback: selectedProfile?.configOverrides?.tabs?.feedback ?? true,
+    changelog: selectedProfile?.configOverrides?.tabs?.changelog ?? false,
+    help: selectedProfile?.configOverrides?.tabs?.help ?? false,
+    chat: selectedProfile?.configOverrides?.tabs?.chat ?? false,
+  })
+  const [allowedBoardIds, setAllowedBoardIds] = useState<string[]>(
+    selectedProfile?.contentFilters?.feedback?.boardIds ?? []
+  )
+  const [changelogMode, setChangelogMode] = useState<
+    'all_published' | 'linked_to_allowed_feedback' | 'selected_entries'
+  >(selectedProfile?.contentFilters?.changelog?.mode ?? 'all_published')
+  const [supportCategories, setSupportCategories] = useState<SupportCategoryDraft[]>(() =>
+    supportCategoryDrafts(selectedProfile?.supportConfig?.categories)
+  )
+
+  useEffect(() => {
+    if (selectedApp && !applications.some((app) => app.id === selectedAppId)) {
+      setSelectedAppId(selectedApp.id)
+    }
+  }, [applications, selectedApp, selectedAppId])
+
+  useEffect(() => {
+    const profile =
+      selectedApp?.profiles.find((p) => p.id === selectedProfileId) ??
+      selectedApp?.profiles[0] ??
+      null
+    setSelectedProfileId(profile?.id ?? null)
+    setEnvironment(profile?.environment ?? 'production')
+    setEnabled(profile?.enabled ?? true)
+    setOrigins((profile?.allowedOrigins ?? []).join('\n'))
+    setTabs({
+      home: profile?.configOverrides?.tabs?.home ?? true,
+      feedback: profile?.configOverrides?.tabs?.feedback ?? true,
+      changelog: profile?.configOverrides?.tabs?.changelog ?? false,
+      help: profile?.configOverrides?.tabs?.help ?? false,
+      chat: profile?.configOverrides?.tabs?.chat ?? false,
+    })
+    setAllowedBoardIds(profile?.contentFilters?.feedback?.boardIds ?? [])
+    setChangelogMode(profile?.contentFilters?.changelog?.mode ?? 'all_published')
+    setSupportCategories(supportCategoryDrafts(profile?.supportConfig?.categories))
+  }, [selectedApp?.id, selectedProfileId])
+
+  async function saveApplication() {
+    if (!appKey.trim() || !appName.trim()) return
+    setSaving(true)
+    try {
+      const app = await upsertWidgetApplicationFn({
+        data: { key: appKey, name: appName },
+      })
+      if (!app) return
+      setSelectedAppId(app.id)
+      setAppKey('')
+      setAppName('')
+      startTransition(() => router.invalidate())
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveProfile() {
+    if (!selectedApp || !environment.trim()) return
+    setSaving(true)
+    try {
+      const categories = supportCategories
+        .map((category) => ({
+          categoryKey: category.categoryKey.trim(),
+          label: category.label.trim(),
+          description: category.description.trim() || undefined,
+          icon: category.icon.trim() || undefined,
+          inboxId: category.inboxId,
+          defaultPriority: category.defaultPriority,
+          allowedPriorities: ['low', 'normal', 'high', 'urgent'] as WidgetProfilePriority[],
+          visible: category.visible,
+          display: {
+            showPrioritySelector: category.showPrioritySelector,
+          },
+        }))
+        .filter((category) => category.categoryKey && category.label && category.inboxId)
+      const profile = await upsertWidgetEnvironmentProfileFn({
+        data: {
+          id: selectedProfileId ?? undefined,
+          applicationId: selectedApp.id,
+          environment,
+          displayName: environment,
+          enabled,
+          allowedOrigins: origins
+            .split(/\n|,/)
+            .map((origin) => origin.trim())
+            .filter(Boolean),
+          configOverrides: { tabs },
+          contentFilters: {
+            feedback: allowedBoardIds.length > 0 ? { boardIds: allowedBoardIds } : {},
+            changelog: { mode: changelogMode },
+          },
+          supportConfig: {
+            ticketListScope: 'same_profile_allowed_inboxes',
+            categories,
+          },
+        },
+      })
+      if (!profile) return
+      setSelectedProfileId(profile.id)
+      startTransition(() => router.invalidate())
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function updateSupportCategory(index: number, patch: Partial<SupportCategoryDraft>) {
+    setSupportCategories((prev) =>
+      prev.map((category, categoryIndex) =>
+        categoryIndex === index ? { ...category, ...patch } : category
+      )
+    )
+  }
+
+  function addSupportCategory() {
+    setSupportCategories((prev) => [...prev, emptySupportCategoryDraft()])
+  }
+
+  function removeSupportCategory(index: number) {
+    setSupportCategories((prev) => {
+      const next = prev.filter((_, categoryIndex) => categoryIndex !== index)
+      return next.length > 0 ? next : [emptySupportCategoryDraft()]
+    })
+  }
+
+  const installSnippet = selectedApp
+    ? `<script async src="${baseUrl}/api/widget/sdk.js" data-application-key="${selectedApp.key}" data-environment="${environment}"></script>`
+    : ''
+  const isBusy = saving || isPending
+
+  return (
+    <SettingsCard
+      title="Applications & environments"
+      description="Scope embedded widget features, content, origins, and support routing per external app."
+    >
+      <div className="space-y-5">
+        <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <input
+            value={appKey}
+            onChange={(e) => setAppKey(e.target.value)}
+            placeholder="customer-dashboard"
+            className={fieldCls}
+            disabled={isBusy}
+          />
+          <input
+            value={appName}
+            onChange={(e) => setAppName(e.target.value)}
+            placeholder="Customer dashboard"
+            className={fieldCls}
+            disabled={isBusy}
+          />
+          <Button type="button" onClick={saveApplication} disabled={isBusy}>
+            Add app
+          </Button>
+        </div>
+
+        {applications.length > 0 && (
+          <div className="grid gap-4 lg:grid-cols-[220px_1fr]">
+            <div className="space-y-2">
+              {applications.map((app) => (
+                <button
+                  key={app.id}
+                  type="button"
+                  onClick={() => setSelectedAppId(app.id)}
+                  className={cn(
+                    'w-full rounded-md border px-3 py-2 text-left text-sm transition-colors',
+                    selectedApp?.id === app.id
+                      ? 'border-primary/60 bg-primary/5'
+                      : 'border-border/60 hover:bg-muted/40'
+                  )}
+                >
+                  <span className="block font-medium">{app.name}</span>
+                  <span className="block text-xs text-muted-foreground">{app.key}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-4 rounded-lg border border-border/60 p-4">
+              {selectedApp && (
+                <>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedApp.profiles.map((profile) => (
+                      <Button
+                        key={profile.id}
+                        type="button"
+                        variant={selectedProfileId === profile.id ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setSelectedProfileId(profile.id)}
+                      >
+                        {profile.environment}
+                      </Button>
+                    ))}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setSelectedProfileId(null)
+                        setEnvironment('production')
+                      }}
+                    >
+                      New environment
+                    </Button>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Environment</Label>
+                      <input
+                        value={environment}
+                        onChange={(e) => setEnvironment(e.target.value)}
+                        className={fieldCls}
+                        disabled={isBusy}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+                      <div>
+                        <Label className="text-xs font-medium">Enabled</Label>
+                        <p className="text-xs text-muted-foreground">Disable to hide this embed.</p>
+                      </div>
+                      <Switch checked={enabled} onCheckedChange={setEnabled} disabled={isBusy} />
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Allowed origins</Label>
+                    <textarea
+                      value={origins}
+                      onChange={(e) => setOrigins(e.target.value)}
+                      placeholder={`https://app.example.com\nhttp://localhost:*`}
+                      className={`${fieldCls} min-h-20`}
+                      disabled={isBusy}
+                    />
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="space-y-3">
+                      <Label className="text-xs text-muted-foreground">Features</Label>
+                      {(['home', 'feedback', 'changelog', 'help', 'chat'] as const).map((tab) => (
+                        <div
+                          key={tab}
+                          className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2"
+                        >
+                          <span className="text-sm capitalize">{tab}</span>
+                          <Switch
+                            checked={tabs[tab]}
+                            onCheckedChange={(checked) =>
+                              setTabs((prev) => ({ ...prev, [tab]: checked }))
+                            }
+                            disabled={isBusy}
+                          />
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label className="text-xs text-muted-foreground">Allowed boards</Label>
+                      <div className="max-h-44 overflow-auto rounded-md border border-border/60 p-2">
+                        {boards.map((board) => (
+                          <label
+                            key={board.id}
+                            className="flex items-center gap-2 px-1 py-1 text-sm"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={allowedBoardIds.includes(board.id)}
+                              onChange={(e) =>
+                                setAllowedBoardIds((prev) =>
+                                  e.target.checked
+                                    ? [...prev, board.id]
+                                    : prev.filter((id) => id !== board.id)
+                                )
+                              }
+                              disabled={isBusy}
+                            />
+                            {board.name}
+                          </label>
+                        ))}
+                      </div>
+
+                      <Label className="text-xs text-muted-foreground">Changelog</Label>
+                      <Select
+                        value={changelogMode}
+                        onValueChange={(value) => setChangelogMode(value as typeof changelogMode)}
+                        disabled={isBusy}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all_published">All published entries</SelectItem>
+                          <SelectItem value="linked_to_allowed_feedback">
+                            Linked to allowed feedback
+                          </SelectItem>
+                          <SelectItem value="selected_entries">Selected entries</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <Label className="text-xs text-muted-foreground">Support categories</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addSupportCategory}
+                        disabled={isBusy}
+                      >
+                        <PlusIcon className="mr-1.5 h-4 w-4" />
+                        Add category
+                      </Button>
+                    </div>
+
+                    {supportCategories.map((category, index) => (
+                      <div key={index} className="space-y-3 rounded-md border border-border/60 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium">Category {index + 1}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Route this widget support option into an inbox.
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <Label className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <Switch
+                                checked={category.visible}
+                                onCheckedChange={(visible) =>
+                                  updateSupportCategory(index, { visible })
+                                }
+                                disabled={isBusy}
+                              />
+                              Visible
+                            </Label>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeSupportCategory(index)}
+                              disabled={isBusy}
+                              aria-label="Remove support category"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Support key</Label>
+                            <input
+                              value={category.categoryKey}
+                              onChange={(e) =>
+                                updateSupportCategory(index, { categoryKey: e.target.value })
+                              }
+                              placeholder="billing"
+                              className={fieldCls}
+                              disabled={isBusy}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Label</Label>
+                            <input
+                              value={category.label}
+                              onChange={(e) =>
+                                updateSupportCategory(index, { label: e.target.value })
+                              }
+                              placeholder="Billing"
+                              className={fieldCls}
+                              disabled={isBusy}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Inbox</Label>
+                            <Select
+                              value={category.inboxId}
+                              onValueChange={(inboxId) => updateSupportCategory(index, { inboxId })}
+                              disabled={isBusy}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select inbox" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {inboxes.map((inbox) => (
+                                  <SelectItem key={inbox.id} value={inbox.id}>
+                                    {inbox.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">
+                              Default priority
+                            </Label>
+                            <Select
+                              value={category.defaultPriority}
+                              onValueChange={(defaultPriority) =>
+                                updateSupportCategory(index, {
+                                  defaultPriority: defaultPriority as WidgetProfilePriority,
+                                })
+                              }
+                              disabled={isBusy}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="low">Low</SelectItem>
+                                <SelectItem value="normal">Normal</SelectItem>
+                                <SelectItem value="high">High</SelectItem>
+                                <SelectItem value="urgent">Urgent</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Description</Label>
+                            <input
+                              value={category.description}
+                              onChange={(e) =>
+                                updateSupportCategory(index, { description: e.target.value })
+                              }
+                              placeholder="Questions about invoices and plans"
+                              className={fieldCls}
+                              disabled={isBusy}
+                            />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label className="text-xs text-muted-foreground">Icon</Label>
+                            <input
+                              value={category.icon}
+                              onChange={(e) =>
+                                updateSupportCategory(index, { icon: e.target.value })
+                              }
+                              placeholder="credit-card"
+                              className={fieldCls}
+                              disabled={isBusy}
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+                          <div>
+                            <Label className="text-xs font-medium">Priority selector</Label>
+                            <p className="text-xs text-muted-foreground">
+                              Allow requesters to choose priority for this category.
+                            </p>
+                          </div>
+                          <Switch
+                            checked={category.showPrioritySelector}
+                            onCheckedChange={(showPrioritySelector) =>
+                              updateSupportCategory(index, { showPrioritySelector })
+                            }
+                            disabled={isBusy}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {installSnippet && (
+                    <pre className="overflow-auto rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+                      {installSnippet}
+                    </pre>
+                  )}
+
+                  <div className="flex justify-end">
+                    <Button type="button" onClick={saveProfile} disabled={isBusy || !selectedApp}>
+                      Save environment
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </SettingsCard>
   )
 }
 

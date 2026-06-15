@@ -49,6 +49,12 @@ export type RoadmapId = TypeId<'roadmap'>
 /** Changelog entry ID - e.g., changelog_01h455vb4pex5vsknk084sn02q */
 export type ChangelogId = TypeId<'changelog'>
 
+/** Widget application ID - e.g., widget_app_01h455vb4pex5vsknk084sn02q */
+export type WidgetApplicationId = TypeId<'widget_app'>
+
+/** Widget environment profile ID - e.g., widget_profile_01h455vb4pex5vsknk084sn02q */
+export type WidgetProfileId = TypeId<'widget_profile'>
+
 /** Support-inbox conversation ID - e.g., conversation_01h455vb4pex5vsknk084sn02q */
 export type ConversationId = TypeId<'conversation'>
 
@@ -364,6 +370,8 @@ export interface EntityIdMap {
   merge_suggestion: MergeSuggestionId
   roadmap: RoadmapId
   changelog: ChangelogId
+  widget_application: WidgetApplicationId
+  widget_profile: WidgetProfileId
   conversation: ConversationId
   chat_message: ChatMessageId
   chat_tag: ChatTagId

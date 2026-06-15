@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
+import { useQuery } from '@tanstack/react-query'
 import { FormattedMessage } from 'react-intl'
 import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline'
 import { Button } from '@/components/ui/button'
@@ -8,6 +9,7 @@ import {
   listPublicCategoriesFn,
   listPublicCategoryEditorsFn,
 } from '@/lib/server/functions/help-center'
+import { getSupportSurfaceAccessFn } from '@/lib/server/functions/chat'
 import type { HelpCenterConfig } from '@/lib/shared/types/settings'
 
 export const Route = createFileRoute('/_portal/hc/')({
@@ -55,8 +57,15 @@ export const Route = createFileRoute('/_portal/hc/')({
 function HelpCenterLandingPage() {
   const { categories, editors, helpCenterConfig } = Route.useLoaderData()
   const { settings } = Route.useRouteContext()
-  const supportEnabled =
+  const supportConfigured =
     !!settings?.featureFlags?.supportInbox && !!settings?.portalConfig?.support?.enabled
+  const supportAccess = useQuery({
+    queryKey: ['portal', 'support-access'],
+    queryFn: () => getSupportSurfaceAccessFn({ data: { surface: 'portal' } }),
+    enabled: supportConfigured,
+    staleTime: 30_000,
+  })
+  const supportEnabled = supportConfigured && (supportAccess.data?.granted ?? false)
 
   const title = helpCenterConfig?.homepageTitle ?? 'How can we help?'
   const description =

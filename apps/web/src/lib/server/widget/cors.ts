@@ -7,6 +7,7 @@
  * does not enable CSRF.
  */
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '@/lib/shared/errors'
+import { WidgetContextError } from '@/lib/server/widget/context'
 
 export function widgetCorsHeaders(extra?: HeadersInit): Headers {
   const h = new Headers(extra)
@@ -44,6 +45,9 @@ export function mapDomainErrorToResponse(err: unknown): Response | null {
     return widgetJsonError(err.code, err.message, 400)
   }
   if (err instanceof ForbiddenError) {
+    return widgetJsonError(err.code, err.message, 403)
+  }
+  if (err instanceof WidgetContextError) {
     return widgetJsonError(err.code, err.message, 403)
   }
   return null

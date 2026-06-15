@@ -28,6 +28,7 @@ export * from './hook-deliveries'
 export * from './audit-log'
 export * from './sso-recovery-code'
 export * from './push-devices'
+export * from './widget-profiles'
 
 // Ticketing — access & visibility (Phase 1 foundation)
 export * from './teams'
