@@ -133,7 +133,18 @@ export const enableStatusSyncFn = createServerFn({ method: 'POST' })
         }
       }
 
-      await storeWebhookConfig(integrationId, secret, externalWebhookId)
+      await storeWebhookConfig(
+        integrationId,
+        secret,
+        externalWebhookId,
+        data.integrationType === 'github'
+          ? {
+              githubWebhookEventsVersion: (
+                await import('@/lib/server/integrations/github/webhook-registration')
+              ).GITHUB_WEBHOOK_EVENTS_VERSION,
+            }
+          : undefined
+      )
 
       return {
         success: true,

@@ -252,7 +252,9 @@ export async function handleGitHubIssueCommentEvent(
 ): Promise<boolean> {
   const config = integration.config
   const syncDirection = config.syncDirection ?? 'outbound'
-  if (syncDirection !== 'inbound' && syncDirection !== 'bidirectional') {
+  const inboundTicketSync = syncDirection === 'inbound' || syncDirection === 'bidirectional'
+  const inboundWebhookSync = config.statusSyncEnabled === true || Boolean(config.webhookSecret)
+  if (!inboundTicketSync && !inboundWebhookSync) {
     return false
   }
 

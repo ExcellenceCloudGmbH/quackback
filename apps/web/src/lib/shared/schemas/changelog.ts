@@ -23,6 +23,10 @@ export const createChangelogSchema = z.object({
   title: z.string().min(1).max(200),
   content: z.string(),
   contentJson: tiptapContentSchema.nullable().optional(),
+  categoryId: z.string().nullable().optional(),
+  categoryName: z.string().max(200).nullable().optional(),
+  productId: z.string().nullable().optional(),
+  productName: z.string().max(200).nullable().optional(),
   linkedPostIds: z.array(z.string()).optional(),
   publishState: publishStateSchema,
 })
@@ -35,6 +39,10 @@ export const updateChangelogSchema = z.object({
   title: z.string().min(1).max(200).optional(),
   content: z.string().optional(),
   contentJson: tiptapContentSchema.nullable().optional(),
+  categoryId: z.string().nullable().optional(),
+  categoryName: z.string().max(200).nullable().optional(),
+  productId: z.string().nullable().optional(),
+  productName: z.string().max(200).nullable().optional(),
   linkedPostIds: z.array(z.string()).optional(),
   publishState: publishStateSchema.optional(),
 })

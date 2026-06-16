@@ -5,9 +5,21 @@
  */
 
 const GITHUB_API = 'https://api.github.com'
+export const GITHUB_WEBHOOK_EVENTS = ['issues', 'issue_comment'] as const
+export const GITHUB_WEBHOOK_EVENTS_VERSION = 2
 
 interface GitHubWebhookResult {
   webhookId: string
+}
+
+function githubWebhookHeaders(accessToken: string) {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'User-Agent': 'quackback',
+    'X-GitHub-Api-Version': '2022-11-28',
+  }
 }
 
 /**
@@ -21,17 +33,11 @@ export async function registerGitHubWebhook(
 ): Promise<GitHubWebhookResult> {
   const response = await fetch(`${GITHUB_API}/repos/${ownerRepo}/hooks`, {
     method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-      'User-Agent': 'quackback',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
+    headers: githubWebhookHeaders(accessToken),
     body: JSON.stringify({
       name: 'web',
       active: true,
-      events: ['issues', 'issue_comment'],
+      events: [...GITHUB_WEBHOOK_EVENTS],
       config: {
         url: callbackUrl,
         content_type: 'json',
@@ -51,6 +57,30 @@ export async function registerGitHubWebhook(
 }
 
 /**
+ * Ensure an existing GitHub webhook is subscribed to every event required for
+ * ticket sync. This repairs hooks created before issue-comment sync existed.
+ */
+export async function ensureGitHubWebhookEvents(
+  accessToken: string,
+  ownerRepo: string,
+  webhookId: string
+): Promise<void> {
+  const response = await fetch(`${GITHUB_API}/repos/${ownerRepo}/hooks/${webhookId}`, {
+    method: 'PATCH',
+    headers: githubWebhookHeaders(accessToken),
+    body: JSON.stringify({
+      active: true,
+      add_events: [...GITHUB_WEBHOOK_EVENTS],
+    }),
+  })
+
+  if (!response.ok) {
+    const body = await response.text()
+    throw new Error(`GitHub API error ${response.status}: ${body}`)
+  }
+}
+
+/**
  * Delete a webhook from GitHub.
  */
 export async function deleteGitHubWebhook(
@@ -60,11 +90,6 @@ export async function deleteGitHubWebhook(
 ): Promise<void> {
   await fetch(`${GITHUB_API}/repos/${ownerRepo}/hooks/${webhookId}`, {
     method: 'DELETE',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: 'application/vnd.github+json',
-      'User-Agent': 'quackback',
-      'X-GitHub-Api-Version': '2022-11-28',
-    },
+    headers: githubWebhookHeaders(accessToken),
   })
 }

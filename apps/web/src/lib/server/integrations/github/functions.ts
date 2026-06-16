@@ -171,6 +171,7 @@ export const fetchGitHubIntegrationsFn = createServerFn({ method: 'GET' }).handl
     with: { eventMappings: true },
     orderBy: (int, { desc }) => [desc(int.connectedAt)],
   })
+  await repairGitHubWebhookEventSubscriptions(allGithub)
 
   const connections = allGithub.map((int) => {
     const config = (int.config ?? {}) as Record<string, string | number | boolean | null>
@@ -191,3 +192,59 @@ export const fetchGitHubIntegrationsFn = createServerFn({ method: 'GET' }).handl
 
   return { connections, platformCredentialFields, platformCredentialsConfigured }
 })
+
+async function repairGitHubWebhookEventSubscriptions(
+  connections: Array<{
+    id: string
+    status: string
+    secrets: string | null
+    config: unknown
+  }>
+): Promise<void> {
+  const repairs = connections.map(async (connection) => {
+    const config =
+      connection.config &&
+      typeof connection.config === 'object' &&
+      !Array.isArray(connection.config)
+        ? (connection.config as Record<string, unknown>)
+        : {}
+
+    const ownerRepo = typeof config.channelId === 'string' ? config.channelId : ''
+    const webhookId = typeof config.externalWebhookId === 'string' ? config.externalWebhookId : ''
+    if (
+      connection.status !== 'active' ||
+      config.statusSyncEnabled !== true ||
+      config.githubWebhookEventsVersion === 2 ||
+      !ownerRepo ||
+      !webhookId ||
+      !connection.secrets
+    ) {
+      return
+    }
+
+    try {
+      const { db, integrations, eq } = await import('@/lib/server/db')
+      const { decryptSecrets } = await import('../encryption')
+      const { ensureGitHubWebhookEvents, GITHUB_WEBHOOK_EVENTS_VERSION } =
+        await import('./webhook-registration')
+      const secrets = decryptSecrets<{ accessToken?: string }>(connection.secrets)
+      if (!secrets.accessToken) return
+
+      await ensureGitHubWebhookEvents(secrets.accessToken, ownerRepo, webhookId)
+      await db
+        .update(integrations)
+        .set({
+          config: { ...config, githubWebhookEventsVersion: GITHUB_WEBHOOK_EVENTS_VERSION },
+          updatedAt: new Date(),
+        })
+        .where(eq(integrations.id, connection.id as IntegrationId))
+    } catch (error) {
+      console.warn(
+        `[GitHub] Failed to repair webhook event subscriptions for integration ${connection.id}:`,
+        error
+      )
+    }
+  })
+
+  await Promise.allSettled(repairs)
+}

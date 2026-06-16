@@ -35,6 +35,7 @@ import { stripHtml, truncate } from './hook-utils'
 import { buildHookContext, type HookContext } from './hook-context'
 import type { EventData, EventActor, PostMergedPayload, PostUnmergedPayload } from './types'
 import { getOpenAI } from '@/lib/server/domains/ai/config'
+import { getTicketEmailTargets } from './ticket-targets'
 
 /**
  * Drop subscribers who can't view the post under its current board
@@ -204,6 +205,12 @@ export async function getHookTargets(event: EventData): Promise<HookTarget[]> {
     if (MENTION_EVENT_TYPES.includes(event.type as (typeof MENTION_EVENT_TYPES)[number])) {
       const mentionTargets = await getMentionTargets(event, context)
       targets.push(...mentionTargets)
+    }
+
+    // Ticket Email Targets
+    if (event.type.startsWith('ticket.')) {
+      const ticketEmailTargets = await getTicketEmailTargets(event, context)
+      targets.push(...ticketEmailTargets)
     }
 
     // AI targets (sentiment, embeddings) - only when AI is configured

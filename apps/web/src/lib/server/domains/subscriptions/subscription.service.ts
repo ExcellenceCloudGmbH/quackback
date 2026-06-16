@@ -280,6 +280,13 @@ export async function getNotificationPreferences(
       emailStatusChange: prefs.emailStatusChange,
       emailNewComment: prefs.emailNewComment,
       emailMuted: prefs.emailMuted,
+      emailTicketThreads: prefs.emailTicketThreads,
+      emailTicketProperties: prefs.emailTicketProperties,
+      emailTicketStatus: prefs.emailTicketStatus,
+      emailTicketAssignment: prefs.emailTicketAssignment,
+      emailTicketParticipants: prefs.emailTicketParticipants,
+      emailTicketShares: prefs.emailTicketShares,
+      emailTicketSla: prefs.emailTicketSla,
     }
   }
 
@@ -288,6 +295,13 @@ export async function getNotificationPreferences(
     emailStatusChange: true,
     emailNewComment: true,
     emailMuted: false,
+    emailTicketThreads: true,
+    emailTicketProperties: true,
+    emailTicketStatus: true,
+    emailTicketAssignment: true,
+    emailTicketParticipants: false,
+    emailTicketShares: false,
+    emailTicketSla: true,
   }
 }
 
@@ -295,6 +309,13 @@ const DEFAULT_NOTIFICATION_PREFS: NotificationPreferencesData = {
   emailStatusChange: true,
   emailNewComment: true,
   emailMuted: false,
+  emailTicketThreads: true,
+  emailTicketProperties: true,
+  emailTicketStatus: true,
+  emailTicketAssignment: true,
+  emailTicketParticipants: false,
+  emailTicketShares: false,
+  emailTicketSla: true,
 }
 
 /**
@@ -315,6 +336,13 @@ export async function batchGetNotificationPreferences(
       emailStatusChange: notificationPreferences.emailStatusChange,
       emailNewComment: notificationPreferences.emailNewComment,
       emailMuted: notificationPreferences.emailMuted,
+      emailTicketThreads: notificationPreferences.emailTicketThreads,
+      emailTicketProperties: notificationPreferences.emailTicketProperties,
+      emailTicketStatus: notificationPreferences.emailTicketStatus,
+      emailTicketAssignment: notificationPreferences.emailTicketAssignment,
+      emailTicketParticipants: notificationPreferences.emailTicketParticipants,
+      emailTicketShares: notificationPreferences.emailTicketShares,
+      emailTicketSla: notificationPreferences.emailTicketSla,
     })
     .from(notificationPreferences)
     .where(inArray(notificationPreferences.principalId, principalIds))
@@ -327,6 +355,13 @@ export async function batchGetNotificationPreferences(
         emailStatusChange: row.emailStatusChange,
         emailNewComment: row.emailNewComment,
         emailMuted: row.emailMuted,
+        emailTicketThreads: row.emailTicketThreads,
+        emailTicketProperties: row.emailTicketProperties,
+        emailTicketStatus: row.emailTicketStatus,
+        emailTicketAssignment: row.emailTicketAssignment,
+        emailTicketParticipants: row.emailTicketParticipants,
+        emailTicketShares: row.emailTicketShares,
+        emailTicketSla: row.emailTicketSla,
       },
     ])
   )
@@ -366,6 +401,13 @@ export async function updateNotificationPreferences(
       emailStatusChange: updated.emailStatusChange,
       emailNewComment: updated.emailNewComment,
       emailMuted: updated.emailMuted,
+      emailTicketThreads: updated.emailTicketThreads,
+      emailTicketProperties: updated.emailTicketProperties,
+      emailTicketStatus: updated.emailTicketStatus,
+      emailTicketAssignment: updated.emailTicketAssignment,
+      emailTicketParticipants: updated.emailTicketParticipants,
+      emailTicketShares: updated.emailTicketShares,
+      emailTicketSla: updated.emailTicketSla,
     }
   } else {
     const [created] = await db
@@ -375,6 +417,13 @@ export async function updateNotificationPreferences(
         emailStatusChange: preferences.emailStatusChange ?? true,
         emailNewComment: preferences.emailNewComment ?? true,
         emailMuted: preferences.emailMuted ?? false,
+        emailTicketThreads: preferences.emailTicketThreads ?? true,
+        emailTicketProperties: preferences.emailTicketProperties ?? true,
+        emailTicketStatus: preferences.emailTicketStatus ?? true,
+        emailTicketAssignment: preferences.emailTicketAssignment ?? true,
+        emailTicketParticipants: preferences.emailTicketParticipants ?? false,
+        emailTicketShares: preferences.emailTicketShares ?? false,
+        emailTicketSla: preferences.emailTicketSla ?? true,
       })
       .returning()
 
@@ -382,6 +431,13 @@ export async function updateNotificationPreferences(
       emailStatusChange: created.emailStatusChange,
       emailNewComment: created.emailNewComment,
       emailMuted: created.emailMuted,
+      emailTicketThreads: created.emailTicketThreads,
+      emailTicketProperties: created.emailTicketProperties,
+      emailTicketStatus: created.emailTicketStatus,
+      emailTicketAssignment: created.emailTicketAssignment,
+      emailTicketParticipants: created.emailTicketParticipants,
+      emailTicketShares: created.emailTicketShares,
+      emailTicketSla: created.emailTicketSla,
     }
   }
 }

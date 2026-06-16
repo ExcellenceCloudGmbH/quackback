@@ -11,7 +11,9 @@ import { relations, sql } from 'drizzle-orm'
 import { typeIdWithDefault, typeIdColumn } from '@quackback/ids/drizzle'
 import type {
   BoardId,
+  ChangelogCategoryId,
   ChangelogId,
+  ChangelogProductId,
   HelpCenterArticleId,
   HelpCenterCategoryId,
   InboxId,
@@ -74,6 +76,10 @@ export interface WidgetProfileContentFilters {
   changelog?: {
     mode?: WidgetProfileChangelogMode
     entryIds?: ChangelogId[]
+    categoryIds?: ChangelogCategoryId[]
+    categorySlugs?: string[]
+    productIds?: ChangelogProductId[]
+    productSlugs?: string[]
   }
   help?: {
     categoryIds?: HelpCenterCategoryId[]

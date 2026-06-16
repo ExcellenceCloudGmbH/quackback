@@ -20,9 +20,6 @@ import {
   isNull,
   ticketShares,
   teamMemberships,
-  principal,
-  user,
-  notificationPreferences,
   type Ticket,
 } from '@/lib/server/db'
 import type { TicketId, PrincipalId, ContactId, TeamId } from '@quackback/ids'
@@ -93,110 +90,6 @@ async function dispatch(options: DispatchOptions): Promise<void> {
     metadata: { ticketId: options.ticket.id, ...(options.metadata ?? {}) },
   }))
   await createNotificationsBatch(inputs)
-
-  // Phase 7.5: best-effort email fan-out for the same allowed recipients.
-  // Errors here never propagate — email is supplementary to the in-app row.
-  void sendTicketEventEmails({
-    ticket: options.ticket,
-    recipients: allowed,
-    title: options.title,
-    body: options.body,
-  }).catch((err) => {
-    console.warn('[tickets.notifications] email fan-out failed', err)
-  })
-}
-
-/**
- * Resolve principal → email (skipping muted recipients) and fan out
- * one ticket-event email per recipient.
- *
- * This is intentionally serial-tolerant and best-effort:
- *   - one failed lookup or send must not stop the others
- *   - if neither SMTP nor Resend is configured, `sendTicketEventEmail`
- *     returns `{ sent: false }` silently (handled in the email package)
- */
-async function sendTicketEventEmails(args: {
-  ticket: Ticket
-  recipients: ReadonlyArray<PrincipalId>
-  title: string
-  body?: string
-}): Promise<void> {
-  const { ticket, recipients, title, body } = args
-  if (recipients.length === 0) return
-
-  // Lazy imports keep the email package out of the cold-start critical path.
-  const [{ sendTicketEventEmail, isEmailConfigured }, { getBaseUrl }] = await Promise.all([
-    import('@quackback/email'),
-    import('@/lib/server/config'),
-  ])
-  if (!isEmailConfigured()) return
-
-  // Resolve workspace branding once (best-effort — fall back to defaults).
-  let workspaceName = 'Quackback'
-  let logoUrl: string | undefined
-  try {
-    const { buildHookContext } = await import('@/lib/server/events/hook-context')
-    const ctx = await buildHookContext()
-    if (ctx) {
-      workspaceName = ctx.workspaceName
-      logoUrl = ctx.logoUrl ?? undefined
-    }
-  } catch {
-    // keep defaults
-  }
-
-  const baseUrl = getBaseUrl()
-  const ticketUrl = `${baseUrl}/inbox/tickets/${ticket.id}`
-  const unsubscribeUrl = `${baseUrl}/settings/notifications`
-
-  // Batch-fetch principal → user email + notification prefs in two queries.
-  const recipientIds = Array.from(new Set(recipients))
-  const [emailRows, prefsRows] = await Promise.all([
-    db
-      .select({ principalId: principal.id, email: user.email })
-      .from(principal)
-      .innerJoin(user, eq(principal.userId, user.id))
-      .where(inArray(principal.id, recipientIds as PrincipalId[])),
-    db
-      .select({
-        principalId: notificationPreferences.principalId,
-        emailMuted: notificationPreferences.emailMuted,
-      })
-      .from(notificationPreferences)
-      .where(inArray(notificationPreferences.principalId, recipientIds as PrincipalId[])),
-  ])
-
-  const emailByPrincipal = new Map<string, string>()
-  for (const r of emailRows) {
-    if (r.email) emailByPrincipal.set(r.principalId, r.email)
-  }
-  const mutedSet = new Set<string>()
-  for (const r of prefsRows) {
-    if (r.emailMuted) mutedSet.add(r.principalId)
-  }
-
-  await Promise.allSettled(
-    recipientIds.map(async (principalId) => {
-      if (mutedSet.has(principalId)) return
-      const to = emailByPrincipal.get(principalId)
-      if (!to) return
-      try {
-        await sendTicketEventEmail({
-          to,
-          title,
-          body,
-          ticketSubject: ticket.subject ?? 'ticket',
-          ticketUrl,
-          workspaceName,
-          unsubscribeUrl,
-          logoUrl,
-          priorityLabel: ticket.priority ?? undefined,
-        })
-      } catch (err) {
-        console.warn(`[tickets.notifications] sendTicketEventEmail failed for ${principalId}:`, err)
-      }
-    })
-  )
 }
 
 async function loadActiveShares(ticketId: TicketId) {

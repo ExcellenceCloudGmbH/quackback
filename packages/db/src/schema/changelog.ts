@@ -5,6 +5,33 @@ import { principal } from './auth'
 import { posts } from './posts'
 import type { TiptapContent } from '../types'
 
+export const changelogCategories = pgTable(
+  'changelog_categories',
+  {
+    id: typeIdWithDefault('changelog_cat')('id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    description: text('description'),
+    color: text('color'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex('changelog_categories_slug_idx').on(table.slug)]
+)
+
+export const changelogProducts = pgTable(
+  'changelog_products',
+  {
+    id: typeIdWithDefault('changelog_prod')('id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull(),
+    description: text('description'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [uniqueIndex('changelog_products_slug_idx').on(table.slug)]
+)
+
 export const changelogEntries = pgTable(
   'changelog_entries',
   {
@@ -17,6 +44,14 @@ export const changelogEntries = pgTable(
     principalId: typeIdColumnNullable('principal')('principal_id').references(() => principal.id, {
       onDelete: 'set null',
     }),
+    categoryId: typeIdColumnNullable('changelog_cat')('category_id').references(
+      () => changelogCategories.id,
+      { onDelete: 'set null' }
+    ),
+    productId: typeIdColumnNullable('changelog_prod')('product_id').references(
+      () => changelogProducts.id,
+      { onDelete: 'set null' }
+    ),
     publishedAt: timestamp('published_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
@@ -28,6 +63,8 @@ export const changelogEntries = pgTable(
   (table) => [
     index('changelog_published_at_idx').on(table.publishedAt),
     index('changelog_principal_id_idx').on(table.principalId),
+    index('changelog_category_id_idx').on(table.categoryId),
+    index('changelog_product_id_idx').on(table.productId),
     index('changelog_deleted_at_idx').on(table.deletedAt),
   ]
 )
@@ -57,7 +94,23 @@ export const changelogEntriesRelations = relations(changelogEntries, ({ one, man
     references: [principal.id],
     relationName: 'changelogAuthor',
   }),
+  category: one(changelogCategories, {
+    fields: [changelogEntries.categoryId],
+    references: [changelogCategories.id],
+  }),
+  product: one(changelogProducts, {
+    fields: [changelogEntries.productId],
+    references: [changelogProducts.id],
+  }),
   linkedPosts: many(changelogEntryPosts),
+}))
+
+export const changelogCategoriesRelations = relations(changelogCategories, ({ many }) => ({
+  entries: many(changelogEntries),
+}))
+
+export const changelogProductsRelations = relations(changelogProducts, ({ many }) => ({
+  entries: many(changelogEntries),
 }))
 
 export const changelogEntryPostsRelations = relations(changelogEntryPosts, ({ one }) => ({

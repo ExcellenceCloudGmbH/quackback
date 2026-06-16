@@ -4,7 +4,7 @@
  */
 
 import type { HookHandler, HookResult } from '../../events/hook-types'
-import type { EventData } from '../../events/types'
+import type { EventData, EventTicketRef } from '../../events/types'
 import { isRetryableError } from '../../events/hook-utils'
 import { buildGitHubIssueBody } from './message'
 import { buildTicketIssueBody, buildTicketUpdateBody } from './ticket-message'
@@ -25,7 +25,7 @@ import {
   type GitHubSyncDirection,
 } from './types'
 import type { TicketStatusCategory } from '@/lib/server/db'
-import type { IntegrationId, TicketId } from '@quackback/ids'
+import type { InboxId, IntegrationId, TicketId } from '@quackback/ids'
 
 const GITHUB_API = 'https://api.github.com'
 
@@ -125,6 +125,7 @@ export interface GitHubConfig {
   syncDirection?: GitHubSyncDirection
   statusMappings?: Partial<Record<TicketStatusCategory, GitHubStatusMapping>>
   assigneeSync?: boolean
+  defaultInboxId?: string | null
 }
 
 /** Standard GitHub API headers */
@@ -209,6 +210,30 @@ async function findGitHubUsername(
     columns: { externalUsername: true },
   })
   return mapping?.externalUsername ?? null
+}
+
+/**
+ * Resolve the slug for the inbox selected on the GitHub repository connection.
+ */
+async function findConfiguredInboxSlug(
+  config: GitHubConfig,
+  ticket: EventTicketRef
+): Promise<string | null> {
+  const configuredInboxId =
+    typeof config.defaultInboxId === 'string' ? config.defaultInboxId.trim() : ''
+  if (!configuredInboxId) return null
+
+  if (ticket.inboxId === configuredInboxId && ticket.inboxSlug) {
+    return ticket.inboxSlug
+  }
+
+  const { db, inboxes, eq } = await import('@/lib/server/db')
+  const inbox = await db.query.inboxes.findFirst({
+    where: eq(inboxes.id, configuredInboxId as InboxId),
+    columns: { slug: true },
+  })
+
+  return inbox?.slug ?? null
 }
 
 /**
@@ -380,12 +405,16 @@ async function handleTicketCreated(
 
   console.log(`[GitHub] Creating issue for ticket -> repo ${ownerRepo}`)
   const { title, body, labels } = buildTicketIssueBody(event)
+  const configuredInboxSlug = await findConfiguredInboxSlug(config, event.data.ticket)
+  const issueLabels = configuredInboxSlug
+    ? Array.from(new Set([...labels, configuredInboxSlug]))
+    : labels
 
   try {
     const response = await fetch(`${GITHUB_API}/repos/${ownerRepo}/issues`, {
       method: 'POST',
       headers: githubHeaders(config.accessToken),
-      body: JSON.stringify({ title, body, labels }),
+      body: JSON.stringify({ title, body, labels: issueLabels }),
     })
 
     if (!response.ok) {

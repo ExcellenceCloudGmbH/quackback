@@ -175,10 +175,14 @@ export {
   postExternalLinks,
   postExternalLinksRelations,
   // Schema tables - changelog
+  changelogCategories,
+  changelogCategoriesRelations,
   changelogEntries,
   changelogEntriesRelations,
   changelogEntryPosts,
   changelogEntryPostsRelations,
+  changelogProducts,
+  changelogProductsRelations,
   // Schema tables - live chat
   conversations,
   conversationsRelations,

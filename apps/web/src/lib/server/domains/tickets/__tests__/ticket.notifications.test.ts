@@ -25,6 +25,7 @@ vi.mock('@/lib/server/db', () => {
     from: vi.fn((tbl: { _name: string }) => {
       const isShares = tbl?._name === 'ticket_shares'
       return {
+        innerJoin: vi.fn().mockReturnThis(),
         where: vi.fn().mockResolvedValue(isShares ? sharesRows : teamMembersRows),
       }
     }),
@@ -32,6 +33,7 @@ vi.mock('@/lib/server/db', () => {
   return {
     db: {
       select: vi.fn(() => sharesChain),
+      selectDistinct: vi.fn(() => sharesChain),
     },
     eq: vi.fn(),
     and: vi.fn(),
@@ -45,6 +47,14 @@ vi.mock('@/lib/server/db', () => {
     },
     teamMemberships: { _name: 'team_memberships', principalId: 'principal_id', teamId: 'team_id' },
     ticketSubscriptions: { _name: 'ticket_subscriptions' },
+    ticketParticipants: {
+      _name: 'ticket_participants',
+      principalId: 'principal_id',
+      contactId: 'contact_id',
+      ticketId: 'ticket_id',
+    },
+    contactUserLinks: { _name: 'contact_user_links', contactId: 'contact_id', userId: 'user_id' },
+    principal: { _name: 'principal', id: 'id', userId: 'user_id' },
   }
 })
 

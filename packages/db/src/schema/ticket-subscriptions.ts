@@ -25,6 +25,7 @@ export const ticketSubscriptions = pgTable(
       .notNull()
       .references(() => principal.id, { onDelete: 'cascade' }),
     notifyThreads: boolean('notify_threads').default(true).notNull(),
+    notifyProperties: boolean('notify_properties').default(true).notNull(),
     notifyStatus: boolean('notify_status').default(true).notNull(),
     notifyAssignment: boolean('notify_assignment').default(true).notNull(),
     notifyParticipants: boolean('notify_participants').default(false).notNull(),

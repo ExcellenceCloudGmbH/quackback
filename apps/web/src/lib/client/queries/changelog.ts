@@ -9,6 +9,7 @@ import type { ChangelogId } from '@quackback/ids'
 import {
   listChangelogsFn,
   getChangelogFn,
+  listChangelogTaxonomyFn,
   listPublicChangelogsFn,
   getPublicChangelogFn,
 } from '@/lib/server/functions/changelog'
@@ -23,6 +24,7 @@ export const changelogKeys = {
   all: ['changelogs'] as const,
   lists: () => [...changelogKeys.all, 'list'] as const,
   list: (filters: { status?: string }) => [...changelogKeys.lists(), filters] as const,
+  taxonomy: () => [...changelogKeys.all, 'taxonomy'] as const,
   details: () => [...changelogKeys.all, 'detail'] as const,
   detail: (id: ChangelogId) => [...changelogKeys.details(), id] as const,
   public: () => [...changelogKeys.all, 'public'] as const,
@@ -54,6 +56,13 @@ export const changelogQueries = {
     queryOptions({
       queryKey: changelogKeys.detail(id),
       queryFn: () => getChangelogFn({ data: { id } }),
+      staleTime: STALE_TIME_MEDIUM,
+    }),
+
+  taxonomy: () =>
+    queryOptions({
+      queryKey: changelogKeys.taxonomy(),
+      queryFn: () => listChangelogTaxonomyFn(),
       staleTime: STALE_TIME_MEDIUM,
     }),
 }

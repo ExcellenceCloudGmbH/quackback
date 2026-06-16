@@ -482,6 +482,37 @@ describe('syncSourceIntegrationId — loop prevention', () => {
 })
 
 describe('handleGitHubIssueCommentEvent', () => {
+  it('returns false when outbound-only sync has no inbound webhook configured', async () => {
+    const result = await handleGitHubIssueCommentEvent(
+      makeCommentPayload('created'),
+      makeIntegration({ syncDirection: 'outbound' })
+    )
+
+    expect(result).toBe(false)
+    expect(addThreadMock).not.toHaveBeenCalled()
+  })
+
+  it('creates a public ticket thread when status sync is enabled with outbound direction', async () => {
+    findFirstLinkMock.mockResolvedValueOnce({ ticketId: 'ticket_linked1' })
+    findFirstThreadLinkMock.mockResolvedValueOnce(null)
+    addThreadMock.mockResolvedValueOnce({ id: 'ticket_thread_1' })
+
+    const result = await handleGitHubIssueCommentEvent(
+      makeCommentPayload('created'),
+      makeIntegration({ syncDirection: 'outbound', statusSyncEnabled: true })
+    )
+
+    expect(result).toBe(true)
+    expect(addThreadMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ticketId: 'ticket_linked1',
+        audience: 'public',
+        bodyText: 'GitHub reply from octocat:\n\nThis is a GitHub comment',
+        syncSourceIntegrationId: 'integration_gh1',
+      })
+    )
+  })
+
   it('creates a public ticket thread and link row on issue_comment.created', async () => {
     findFirstLinkMock.mockResolvedValueOnce({ ticketId: 'ticket_linked1' })
     findFirstThreadLinkMock.mockResolvedValueOnce(null)

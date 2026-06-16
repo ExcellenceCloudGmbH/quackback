@@ -619,6 +619,20 @@ export async function dispatchTicketAttachmentRemoved(
   })
 }
 
+export async function dispatchTicketDeleted(
+  actor: EventActor,
+  ticket: Record<string, unknown>,
+  deletedByPrincipalId: string | null,
+  options?: TicketDispatchOptions
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    ...sourceFields(options),
+    type: 'ticket.deleted',
+    data: { ticket: ticketRef(ticket), deletedByPrincipalId },
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Post mention events
 // ---------------------------------------------------------------------------

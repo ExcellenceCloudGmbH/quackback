@@ -303,11 +303,14 @@ export async function updatePortalTicketDescription(
     throw new ConflictError('TICKET_CLOSED', 'cannot edit a closed ticket')
   }
 
-  // Only the requester may edit the description — participants cannot.
+  // Requesters and collaborators may edit the description.
   const identity = await buildPortalIdentity(opts.userId)
   const relationship = await resolveViewerRelationship(ticket, identity)
-  if (relationship !== 'requester') {
-    throw new ForbiddenError('PORTAL_EDIT_DENIED', 'only the requester can edit the description')
+  if (relationship !== 'requester' && relationship !== 'collaborator') {
+    throw new ForbiddenError(
+      'PORTAL_EDIT_DENIED',
+      'participants with this role cannot edit the description'
+    )
   }
 
   return updateTicket(opts.ticketId, {

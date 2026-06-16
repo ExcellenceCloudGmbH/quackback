@@ -11,7 +11,12 @@ import type {
   postNotes,
 } from './schema/posts'
 import type { integrations } from './schema/integrations'
-import type { changelogEntries, changelogEntryPosts } from './schema/changelog'
+import type {
+  changelogCategories,
+  changelogEntries,
+  changelogEntryPosts,
+  changelogProducts,
+} from './schema/changelog'
 import type {
   conversations,
   chatMessages,
@@ -436,6 +441,10 @@ export type ChangelogEntry = InferSelectModel<typeof changelogEntries>
 export type NewChangelogEntry = InferInsertModel<typeof changelogEntries>
 export type ChangelogEntryPost = InferSelectModel<typeof changelogEntryPosts>
 export type NewChangelogEntryPost = InferInsertModel<typeof changelogEntryPosts>
+export type ChangelogCategory = InferSelectModel<typeof changelogCategories>
+export type NewChangelogCategory = InferInsertModel<typeof changelogCategories>
+export type ChangelogProduct = InferSelectModel<typeof changelogProducts>
+export type NewChangelogProduct = InferInsertModel<typeof changelogProducts>
 
 // Principal types
 export type Principal = InferSelectModel<typeof principal>

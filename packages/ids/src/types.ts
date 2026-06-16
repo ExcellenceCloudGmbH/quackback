@@ -49,6 +49,12 @@ export type RoadmapId = TypeId<'roadmap'>
 /** Changelog entry ID - e.g., changelog_01h455vb4pex5vsknk084sn02q */
 export type ChangelogId = TypeId<'changelog'>
 
+/** Changelog category ID - e.g., changelog_cat_01h455vb4pex5vsknk084sn02q */
+export type ChangelogCategoryId = TypeId<'changelog_cat'>
+
+/** Changelog product ID - e.g., changelog_prod_01h455vb4pex5vsknk084sn02q */
+export type ChangelogProductId = TypeId<'changelog_prod'>
+
 /** Widget application ID - e.g., widget_app_01h455vb4pex5vsknk084sn02q */
 export type WidgetApplicationId = TypeId<'widget_app'>
 
@@ -370,6 +376,8 @@ export interface EntityIdMap {
   merge_suggestion: MergeSuggestionId
   roadmap: RoadmapId
   changelog: ChangelogId
+  changelog_category: ChangelogCategoryId
+  changelog_product: ChangelogProductId
   widget_application: WidgetApplicationId
   widget_profile: WidgetProfileId
   conversation: ConversationId

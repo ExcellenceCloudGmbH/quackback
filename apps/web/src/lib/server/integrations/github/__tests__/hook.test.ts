@@ -14,6 +14,7 @@ const findFirstTicketLinkMock = vi.fn()
 const findFirstThreadLinkMock = vi.fn()
 const findFirstThreadMock = vi.fn()
 const findFirstPrincipalMock = vi.fn()
+const findFirstInboxMock = vi.fn()
 
 vi.mock('@/lib/server/db', () => ({
   db: {
@@ -26,6 +27,7 @@ vi.mock('@/lib/server/db', () => ({
       },
       ticketThreads: { findFirst: (...args: unknown[]) => findFirstThreadMock(...args) },
       principal: { findFirst: (...args: unknown[]) => findFirstPrincipalMock(...args) },
+      inboxes: { findFirst: (...args: unknown[]) => findFirstInboxMock(...args) },
     },
   },
   integrationSyncLog: {},
@@ -49,6 +51,7 @@ vi.mock('@/lib/server/db', () => ({
   },
   ticketThreads: { id: 'id' },
   principal: { id: 'id' },
+  inboxes: { id: 'id' },
   integrationUserMappings: {
     integrationId: 'integrationId',
     principalId: 'principalId',
@@ -154,10 +157,38 @@ function makeThreadEvent(
   } as EventData
 }
 
+function makeTicketCreatedEvent(): EventData {
+  return {
+    id: 'evt-ticket-created',
+    type: 'ticket.created',
+    timestamp: '2026-06-12T00:00:00Z',
+    actor: { type: 'service', principalId: 'principal_customer1' },
+    data: {
+      ticket: {
+        id: 'ticket_1',
+        subject: 'Login issue',
+        descriptionText: 'Cannot log in from the portal.',
+        statusId: null,
+        statusCategory: 'open',
+        priority: 'normal',
+        channel: 'portal',
+        visibility: 'team',
+        inboxId: 'inbox_support',
+        primaryTeamId: null,
+        assigneePrincipalId: null,
+        assigneeTeamId: null,
+        requesterPrincipalId: 'principal_customer1',
+        requesterContactId: null,
+      },
+    },
+  } as EventData
+}
+
 describe('githubHook sync logging', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
+    findFirstInboxMock.mockResolvedValue(null)
     findFirstTicketLinkMock.mockResolvedValue({ externalId: '42' })
     findFirstThreadLinkMock.mockResolvedValue(null)
     findFirstThreadMock.mockResolvedValue({
@@ -242,10 +273,47 @@ describe('githubHook sync logging', () => {
   })
 })
 
+describe('githubHook ticket issue creation', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    vi.unstubAllGlobals()
+    findFirstInboxMock.mockResolvedValue({ slug: 'support' })
+  })
+
+  it('adds the configured inbox slug as a GitHub issue label', async () => {
+    const fetchMock = mockFetch(201, {
+      number: 42,
+      html_url: 'https://github.com/org/repo/issues/42',
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const result = await githubHook.run(makeTicketCreatedEvent(), target, {
+      ...config,
+      defaultInboxId: 'inbox_support',
+    })
+
+    expect(result).toEqual({
+      success: true,
+      externalId: '42',
+      externalDisplayId: '#42',
+      externalUrl: 'https://github.com/org/repo/issues/42',
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/org/repo/issues',
+      expect.objectContaining({ method: 'POST' })
+    )
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string)).toMatchObject({
+      title: 'Login issue',
+      labels: ['priority:normal', 'channel:portal', 'support'],
+    })
+  })
+})
+
 describe('githubHook ticket comment sync', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     vi.unstubAllGlobals()
+    findFirstInboxMock.mockResolvedValue(null)
     findFirstTicketLinkMock.mockResolvedValue({ externalId: '42' })
     findFirstThreadLinkMock.mockResolvedValue(null)
     findFirstThreadMock.mockResolvedValue({

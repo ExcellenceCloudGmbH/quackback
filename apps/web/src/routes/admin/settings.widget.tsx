@@ -40,6 +40,8 @@ import {
 } from '@/components/ui/select'
 import { settingsQueries } from '@/lib/client/queries/settings'
 import { adminQueries } from '@/lib/client/queries/admin'
+import { helpCenterQueries } from '@/lib/client/queries/help-center'
+import { changelogQueries } from '@/lib/client/queries/changelog'
 import { useUpdateWidgetConfig, useRegenerateWidgetSecret } from '@/lib/client/mutations/settings'
 import {
   upsertWidgetApplicationFn,
@@ -61,6 +63,8 @@ export const Route = createFileRoute('/admin/settings/widget')({
       queryClient.ensureQueryData(settingsQueries.widgetApplications()),
       queryClient.ensureQueryData(inboxQueries.list()),
       queryClient.ensureQueryData(adminQueries.boards()),
+      queryClient.ensureQueryData(helpCenterQueries.categories()),
+      queryClient.ensureQueryData(changelogQueries.taxonomy()),
     ])
 
     return {}
@@ -75,6 +79,8 @@ function WidgetSettingsPage() {
   const widgetApplicationsQuery = useSuspenseQuery(settingsQueries.widgetApplications())
   const inboxesQuery = useSuspenseQuery(inboxQueries.list())
   const boardsQuery = useSuspenseQuery(adminQueries.boards())
+  const helpCategoriesQuery = useSuspenseQuery(helpCenterQueries.categories())
+  const changelogTaxonomyQuery = useSuspenseQuery(changelogQueries.taxonomy())
   const { baseUrl, settings } = useRouteContext({ from: '__root__' })
 
   const flags = settings?.featureFlags as FeatureFlags | undefined
@@ -137,6 +143,8 @@ function WidgetSettingsPage() {
         baseUrl={baseUrl ?? ''}
         applications={widgetApplicationsQuery.data}
         boards={boardsQuery.data}
+        helpCategories={helpCategoriesQuery.data}
+        changelogTaxonomy={changelogTaxonomyQuery.data}
         inboxes={inboxesQuery.data}
       />
 
@@ -497,6 +505,18 @@ type SupportCategoryDraft = {
   showPrioritySelector: boolean
 }
 
+type HelpCenterCategoryRow = {
+  id: string
+  parentId: string | null
+  name: string
+  isPublic: boolean
+  recursivePublishedArticleCount?: number
+}
+
+type HelpCenterCategoryOption = HelpCenterCategoryRow & {
+  depth: number
+}
+
 const fieldCls =
   'w-full rounded-md border border-border/60 bg-background px-3 py-2 text-sm outline-none focus:border-primary/60 focus:ring-2 focus:ring-primary/15'
 
@@ -529,15 +549,56 @@ function supportCategoryDrafts(categories?: WidgetSupportCategoryRow[]): Support
   return drafts.length > 0 ? drafts : [emptySupportCategoryDraft()]
 }
 
+function buildHelpCategoryOptions(categories: HelpCenterCategoryRow[]): HelpCenterCategoryOption[] {
+  const childrenByParent = new Map<string | null, HelpCenterCategoryRow[]>()
+  for (const category of categories) {
+    const key = category.parentId ?? null
+    const existing = childrenByParent.get(key)
+    if (existing) existing.push(category)
+    else childrenByParent.set(key, [category])
+  }
+  for (const siblings of childrenByParent.values()) {
+    siblings.sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  const options: HelpCenterCategoryOption[] = []
+  const visited = new Set<string>()
+
+  function visit(category: HelpCenterCategoryRow, depth: number) {
+    if (visited.has(category.id)) return
+    visited.add(category.id)
+    options.push({ ...category, depth })
+    for (const child of childrenByParent.get(category.id) ?? []) {
+      visit(child, depth + 1)
+    }
+  }
+
+  for (const category of childrenByParent.get(null) ?? []) {
+    visit(category, 0)
+  }
+  for (const category of categories) {
+    visit(category, 0)
+  }
+
+  return options
+}
+
 function WidgetApplicationsSection({
   baseUrl,
   applications,
   boards,
+  helpCategories,
+  changelogTaxonomy,
   inboxes,
 }: {
   baseUrl: string
   applications: WidgetApplicationRow[]
   boards: { id: string; name: string; slug: string }[]
+  helpCategories: HelpCenterCategoryRow[]
+  changelogTaxonomy: {
+    categories: { id: string; name: string }[]
+    products: { id: string; name: string }[]
+  }
   inboxes: { id: string; name: string }[]
 }) {
   const router = useRouter()
@@ -566,6 +627,15 @@ function WidgetApplicationsSection({
   })
   const [allowedBoardIds, setAllowedBoardIds] = useState<string[]>(
     selectedProfile?.contentFilters?.feedback?.boardIds ?? []
+  )
+  const [allowedHelpCategoryIds, setAllowedHelpCategoryIds] = useState<string[]>(
+    selectedProfile?.contentFilters?.help?.categoryIds ?? []
+  )
+  const [allowedChangelogCategoryIds, setAllowedChangelogCategoryIds] = useState<string[]>(
+    selectedProfile?.contentFilters?.changelog?.categoryIds ?? []
+  )
+  const [allowedChangelogProductIds, setAllowedChangelogProductIds] = useState<string[]>(
+    selectedProfile?.contentFilters?.changelog?.productIds ?? []
   )
   const [changelogMode, setChangelogMode] = useState<
     'all_published' | 'linked_to_allowed_feedback' | 'selected_entries'
@@ -597,6 +667,9 @@ function WidgetApplicationsSection({
       chat: profile?.configOverrides?.tabs?.chat ?? false,
     })
     setAllowedBoardIds(profile?.contentFilters?.feedback?.boardIds ?? [])
+    setAllowedHelpCategoryIds(profile?.contentFilters?.help?.categoryIds ?? [])
+    setAllowedChangelogCategoryIds(profile?.contentFilters?.changelog?.categoryIds ?? [])
+    setAllowedChangelogProductIds(profile?.contentFilters?.changelog?.productIds ?? [])
     setChangelogMode(profile?.contentFilters?.changelog?.mode ?? 'all_published')
     setSupportCategories(supportCategoryDrafts(profile?.supportConfig?.categories))
   }, [selectedApp?.id, selectedProfileId])
@@ -651,7 +724,17 @@ function WidgetApplicationsSection({
           configOverrides: { tabs },
           contentFilters: {
             feedback: allowedBoardIds.length > 0 ? { boardIds: allowedBoardIds } : {},
-            changelog: { mode: changelogMode },
+            changelog: {
+              mode: changelogMode,
+              categoryIds:
+                allowedChangelogCategoryIds.length > 0 ? allowedChangelogCategoryIds : undefined,
+              productIds:
+                allowedChangelogProductIds.length > 0 ? allowedChangelogProductIds : undefined,
+            },
+            help:
+              allowedHelpCategoryIds.length > 0
+                ? { categoryIds: allowedHelpCategoryIds }
+                : undefined,
           },
           supportConfig: {
             ticketListScope: 'same_profile_allowed_inboxes',
@@ -705,6 +788,10 @@ function WidgetApplicationsSection({
 </script>`
     : ''
   const isBusy = saving || isPending
+  const helpCategoryOptions = useMemo(
+    () => buildHelpCategoryOptions(helpCategories),
+    [helpCategories]
+  )
 
   return (
     <SettingsCard
@@ -857,6 +944,49 @@ function WidgetApplicationsSection({
                         ))}
                       </div>
 
+                      <div className="flex items-center justify-between gap-3 mt-3">
+                        <Label className="text-xs text-muted-foreground">
+                          Help center categories
+                        </Label>
+                        {allowedHelpCategoryIds.length === 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            All categories included
+                          </span>
+                        )}
+                      </div>
+                      <div className="max-h-44 overflow-auto rounded-md border border-border/60 p-2">
+                        {helpCategoryOptions.length === 0 ? (
+                          <p className="px-1 py-1 text-sm text-muted-foreground">
+                            No help center categories yet.
+                          </p>
+                        ) : (
+                          helpCategoryOptions.map((category) => (
+                            <label
+                              key={category.id}
+                              className="flex items-center gap-2 px-1 py-1 text-sm"
+                              style={{ paddingLeft: 4 + category.depth * 16 }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={allowedHelpCategoryIds.includes(category.id)}
+                                onChange={(e) =>
+                                  setAllowedHelpCategoryIds((prev) =>
+                                    e.target.checked
+                                      ? [...prev, category.id]
+                                      : prev.filter((id) => id !== category.id)
+                                  )
+                                }
+                                disabled={isBusy}
+                              />
+                              <span className="min-w-0 flex-1 truncate">{category.name}</span>
+                              <span className="shrink-0 text-xs text-muted-foreground">
+                                {category.isPublic ? 'Public' : 'Private'}
+                              </span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+
                       <Label className="text-xs text-muted-foreground">Changelog</Label>
                       <Select
                         value={changelogMode}
@@ -874,6 +1004,82 @@ function WidgetApplicationsSection({
                           <SelectItem value="selected_entries">Selected entries</SelectItem>
                         </SelectContent>
                       </Select>
+
+                      <div className="flex items-center justify-between gap-3 mt-3">
+                        <Label className="text-xs text-muted-foreground">
+                          Changelog categories
+                        </Label>
+                        {allowedChangelogCategoryIds.length === 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            All categories included
+                          </span>
+                        )}
+                      </div>
+                      <div className="max-h-44 overflow-auto rounded-md border border-border/60 p-2">
+                        {changelogTaxonomy.categories.length === 0 ? (
+                          <p className="px-1 py-1 text-sm text-muted-foreground">
+                            No changelog categories yet.
+                          </p>
+                        ) : (
+                          changelogTaxonomy.categories.map((category) => (
+                            <label
+                              key={category.id}
+                              className="flex items-center gap-2 px-1 py-1 text-sm"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={allowedChangelogCategoryIds.includes(category.id)}
+                                onChange={(e) =>
+                                  setAllowedChangelogCategoryIds((prev) =>
+                                    e.target.checked
+                                      ? [...prev, category.id]
+                                      : prev.filter((id) => id !== category.id)
+                                  )
+                                }
+                                disabled={isBusy}
+                              />
+                              <span className="min-w-0 flex-1 truncate">{category.name}</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 mt-3">
+                        <Label className="text-xs text-muted-foreground">Changelog products</Label>
+                        {allowedChangelogProductIds.length === 0 && (
+                          <span className="text-xs text-muted-foreground">
+                            All products included
+                          </span>
+                        )}
+                      </div>
+                      <div className="max-h-44 overflow-auto rounded-md border border-border/60 p-2">
+                        {changelogTaxonomy.products.length === 0 ? (
+                          <p className="px-1 py-1 text-sm text-muted-foreground">
+                            No changelog products yet.
+                          </p>
+                        ) : (
+                          changelogTaxonomy.products.map((product) => (
+                            <label
+                              key={product.id}
+                              className="flex items-center gap-2 px-1 py-1 text-sm"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={allowedChangelogProductIds.includes(product.id)}
+                                onChange={(e) =>
+                                  setAllowedChangelogProductIds((prev) =>
+                                    e.target.checked
+                                      ? [...prev, product.id]
+                                      : prev.filter((id) => id !== product.id)
+                                  )
+                                }
+                                disabled={isBusy}
+                              />
+                              <span className="min-w-0 flex-1 truncate">{product.name}</span>
+                            </label>
+                          ))
+                        )}
+                      </div>
                     </div>
                   </div>
 

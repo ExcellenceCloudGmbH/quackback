@@ -43,6 +43,10 @@ export interface GitHubIntegrationConfig {
   externalWebhookId?: string
   /** HMAC secret for webhook signature verification */
   webhookSecret?: string
+  /** Whether the inbound GitHub webhook has been configured */
+  statusSyncEnabled?: boolean
+  /** Version marker for the GitHub provider webhook event subscription shape */
+  githubWebhookEventsVersion?: number
   /** Whether to auto-create tickets from new GitHub issues */
   createTicketsFromIssues?: boolean
   /** Default inbox for tickets created from inbound GitHub issues */

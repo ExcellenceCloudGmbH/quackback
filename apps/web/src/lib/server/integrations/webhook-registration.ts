@@ -125,7 +125,8 @@ export function buildWebhookCallbackUrl(
 export async function storeWebhookConfig(
   integrationId: IntegrationId,
   webhookSecret: string,
-  externalWebhookId?: string
+  externalWebhookId?: string,
+  extraConfig?: Record<string, unknown>
 ): Promise<void> {
   const integration = await db.query.integrations.findFirst({
     where: eq(integrations.id, integrationId),
@@ -141,6 +142,7 @@ export async function storeWebhookConfig(
         ...existingConfig,
         webhookSecret,
         statusSyncEnabled: true,
+        ...(extraConfig ?? {}),
         ...(externalWebhookId ? { externalWebhookId } : {}),
       },
       updatedAt: new Date(),

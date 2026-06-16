@@ -731,6 +731,19 @@ export async function softDeleteTicket(
     targetType: 'ticket',
     targetId: ticketId,
   })
+  try {
+    const { dispatchTicketDeleted, buildEventActor } = await import('@/lib/server/events/dispatch')
+    const actor = actorPrincipalId
+      ? buildEventActor({ principalId: actorPrincipalId })
+      : { type: 'service' as const, displayName: 'ticket-system' }
+    await dispatchTicketDeleted(
+      actor,
+      updated as unknown as Record<string, unknown>,
+      actorPrincipalId
+    )
+  } catch (err) {
+    console.warn('[tickets] dispatchTicketDeleted failed', err)
+  }
   return updated
 }
 

@@ -43,6 +43,7 @@ const AUTO_SOURCES: ReadonlySet<TicketSubscriptionSource> = new Set([
 
 export type TicketSubscriptionEvent =
   | 'thread'
+  | 'properties'
   | 'status'
   | 'assignment'
   | 'participants'
@@ -51,6 +52,7 @@ export type TicketSubscriptionEvent =
 
 export interface TicketSubscriptionPrefsPatch {
   notifyThreads?: boolean
+  notifyProperties?: boolean
   notifyStatus?: boolean
   notifyAssignment?: boolean
   notifyParticipants?: boolean
@@ -80,6 +82,7 @@ export async function subscribeToTicket(
     principalId: input.principalId,
     source: input.source,
     notifyThreads: input.prefs?.notifyThreads ?? true,
+    notifyProperties: input.prefs?.notifyProperties ?? true,
     notifyStatus: input.prefs?.notifyStatus ?? true,
     notifyAssignment: input.prefs?.notifyAssignment ?? true,
     notifyParticipants: input.prefs?.notifyParticipants ?? false,
@@ -112,6 +115,7 @@ export async function subscribeToTicket(
       set: {
         source: 'manual',
         notifyThreads: values.notifyThreads,
+        notifyProperties: values.notifyProperties,
         notifyStatus: values.notifyStatus,
         notifyAssignment: values.notifyAssignment,
         notifyParticipants: values.notifyParticipants,
@@ -169,6 +173,8 @@ export async function updateSubscriptionPrefs(
 
   const patch: Record<string, unknown> = { updatedAt: sql`now()` }
   if (input.patch.notifyThreads !== undefined) patch.notifyThreads = input.patch.notifyThreads
+  if (input.patch.notifyProperties !== undefined)
+    patch.notifyProperties = input.patch.notifyProperties
   if (input.patch.notifyStatus !== undefined) patch.notifyStatus = input.patch.notifyStatus
   if (input.patch.notifyAssignment !== undefined)
     patch.notifyAssignment = input.patch.notifyAssignment
@@ -234,6 +240,7 @@ export async function getSubscription(
 
 const EVENT_TO_FLAG = {
   thread: ticketSubscriptions.notifyThreads,
+  properties: ticketSubscriptions.notifyProperties,
   status: ticketSubscriptions.notifyStatus,
   assignment: ticketSubscriptions.notifyAssignment,
   participants: ticketSubscriptions.notifyParticipants,

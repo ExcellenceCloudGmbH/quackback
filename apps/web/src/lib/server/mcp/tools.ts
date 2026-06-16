@@ -548,6 +548,8 @@ const createChangelogSchema = {
     .describe(
       'ISO 8601 datetime to publish at (e.g. "2025-03-15T12:00:00Z"). Overrides publish flag. Past dates backdate the entry, future dates schedule it.'
     ),
+  categoryName: z.string().max(200).optional().describe('Changelog category name'),
+  productName: z.string().max(200).optional().describe('Product name for this changelog entry'),
 }
 
 const updateChangelogSchema = {
@@ -571,6 +573,18 @@ const updateChangelogSchema = {
     .array(z.string())
     .optional()
     .describe('Replace linked posts with these post TypeIDs'),
+  categoryName: z
+    .string()
+    .max(200)
+    .nullable()
+    .optional()
+    .describe('Changelog category name; null clears the category'),
+  productName: z
+    .string()
+    .max(200)
+    .nullable()
+    .optional()
+    .describe('Product name; null clears the product'),
 }
 
 const deleteChangelogSchema = {
@@ -792,6 +806,8 @@ type CreateChangelogArgs = {
   content: string
   publish: boolean
   publishedAt?: string
+  categoryName?: string
+  productName?: string
 }
 
 type UpdateChangelogArgs = {
@@ -801,6 +817,8 @@ type UpdateChangelogArgs = {
   publish?: boolean
   publishedAt?: string
   linkedPostIds?: string[]
+  categoryName?: string | null
+  productName?: string | null
 }
 
 type DeleteChangelogArgs = { changelogId: string }
@@ -1337,6 +1355,8 @@ Examples:
           {
             title: args.title,
             content: args.content,
+            categoryName: args.categoryName,
+            productName: args.productName,
             publishState,
           },
           { principalId: auth.principalId, name: auth.name }
@@ -1346,6 +1366,8 @@ Examples:
           id: result.id,
           title: result.title,
           status: result.status,
+          category: result.category,
+          product: result.product,
           publishedAt: result.publishedAt,
           createdAt: result.createdAt,
         })
@@ -1385,6 +1407,8 @@ Examples:
         const result = await updateChangelog(args.changelogId as ChangelogId, {
           title: args.title,
           content: args.content,
+          categoryName: args.categoryName,
+          productName: args.productName,
           linkedPostIds: args.linkedPostIds as PostId[] | undefined,
           publishState,
         })
@@ -1393,6 +1417,8 @@ Examples:
           id: result.id,
           title: result.title,
           status: result.status,
+          category: result.category,
+          product: result.product,
           publishedAt: result.publishedAt,
           updatedAt: result.updatedAt,
         })
@@ -4020,6 +4046,8 @@ async function getChangelogDetails(changelogId: ChangelogId): Promise<CallToolRe
     content: entry.content,
     status: entry.status,
     authorName: entry.author?.name ?? null,
+    category: entry.category,
+    product: entry.product,
     linkedPosts: entry.linkedPosts.map((p) => ({
       id: p.id,
       title: p.title,

@@ -10,8 +10,10 @@
 
 import {
   db,
+  changelogCategories,
   changelogEntries,
   changelogEntryPosts,
+  changelogProducts,
   posts,
   principal,
   postStatuses,
@@ -20,8 +22,15 @@ import {
   isNull,
   inArray,
 } from '@/lib/server/db'
-import type { ChangelogId, PrincipalId, PostId } from '@quackback/ids'
+import type {
+  ChangelogCategoryId,
+  ChangelogId,
+  ChangelogProductId,
+  PrincipalId,
+  PostId,
+} from '@quackback/ids'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
+import { slugify } from '@/lib/shared/utils'
 import { markdownToTiptapJson } from '@/lib/server/markdown-tiptap'
 import { rehostExternalImages } from '@/lib/server/content/rehost-images'
 import { buildEventActor, dispatchChangelogPublished } from '@/lib/server/events/dispatch'
@@ -32,7 +41,9 @@ import type {
   ChangelogEntryWithDetails,
   PublishState,
   ChangelogAuthor,
+  ChangelogCategorySummary,
   ChangelogLinkedPost,
+  ChangelogProductSummary,
 } from './changelog.types'
 
 // ============================================================================
@@ -66,6 +77,8 @@ export async function createChangelog(
 
   // Determine publishedAt based on publish state
   const publishedAt = getPublishedAtFromState(input.publishState)
+  const categoryId = await resolveChangelogCategory(input.categoryId, input.categoryName)
+  const productId = await resolveChangelogProduct(input.productId, input.productName)
 
   // Create the changelog entry
   const parsedContentJson = input.contentJson ?? markdownToTiptapJson(content)
@@ -81,6 +94,8 @@ export async function createChangelog(
       content,
       contentJson,
       principalId: author.principalId,
+      categoryId,
+      productId,
       publishedAt,
     })
     .returning()
@@ -157,6 +172,12 @@ export async function updateChangelog(
 
   if (input.title !== undefined) updateData.title = input.title.trim()
   if (input.content !== undefined) updateData.content = input.content.trim()
+  if (input.categoryId !== undefined || input.categoryName !== undefined) {
+    updateData.categoryId = await resolveChangelogCategory(input.categoryId, input.categoryName)
+  }
+  if (input.productId !== undefined || input.productName !== undefined) {
+    updateData.productId = await resolveChangelogProduct(input.productId, input.productName)
+  }
   if (input.contentJson !== undefined || input.content !== undefined) {
     const parsed = input.contentJson ?? markdownToTiptapJson((input.content ?? '').trim())
     updateData.contentJson = await rehostExternalImages(parsed, {
@@ -285,6 +306,11 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
     }
   }
 
+  const [category, product] = await Promise.all([
+    getChangelogCategorySummary(entry.categoryId),
+    getChangelogProductSummary(entry.productId),
+  ])
+
   // Get linked posts
   const linkedPostRecords = await db.query.changelogEntryPosts.findMany({
     where: eq(changelogEntryPosts.changelogEntryId, id),
@@ -328,10 +354,14 @@ export async function getChangelogById(id: ChangelogId): Promise<ChangelogEntryW
     content: entry.content,
     contentJson: entry.contentJson,
     principalId: entry.principalId,
+    categoryId: entry.categoryId,
+    productId: entry.productId,
     publishedAt: entry.publishedAt,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
     author,
+    category,
+    product,
     linkedPosts,
     status: computeStatus(entry.publishedAt),
   }
@@ -362,6 +392,94 @@ async function linkPostsToChangelog(changelogId: ChangelogId, postIds: PostId[])
       }))
     )
   }
+}
+
+async function resolveChangelogCategory(
+  categoryId?: ChangelogCategoryId | null,
+  categoryName?: string | null
+): Promise<ChangelogCategoryId | null> {
+  const name = categoryName?.trim()
+  if (name) {
+    const slug = slugify(name)
+    if (!slug) {
+      throw new ValidationError('VALIDATION_ERROR', 'Category name must contain letters or numbers')
+    }
+    const existing = await db.query.changelogCategories.findFirst({
+      where: eq(changelogCategories.slug, slug),
+      columns: { id: true },
+    })
+    if (existing) return existing.id
+
+    const [created] = await db
+      .insert(changelogCategories)
+      .values({ name, slug })
+      .onConflictDoNothing({ target: changelogCategories.slug })
+      .returning({ id: changelogCategories.id })
+    if (created) return created.id
+
+    const afterConflict = await db.query.changelogCategories.findFirst({
+      where: eq(changelogCategories.slug, slug),
+      columns: { id: true },
+    })
+    if (afterConflict) return afterConflict.id
+  }
+
+  return categoryId ?? null
+}
+
+async function resolveChangelogProduct(
+  productId?: ChangelogProductId | null,
+  productName?: string | null
+): Promise<ChangelogProductId | null> {
+  const name = productName?.trim()
+  if (name) {
+    const slug = slugify(name)
+    if (!slug) {
+      throw new ValidationError('VALIDATION_ERROR', 'Product name must contain letters or numbers')
+    }
+    const existing = await db.query.changelogProducts.findFirst({
+      where: eq(changelogProducts.slug, slug),
+      columns: { id: true },
+    })
+    if (existing) return existing.id
+
+    const [created] = await db
+      .insert(changelogProducts)
+      .values({ name, slug })
+      .onConflictDoNothing({ target: changelogProducts.slug })
+      .returning({ id: changelogProducts.id })
+    if (created) return created.id
+
+    const afterConflict = await db.query.changelogProducts.findFirst({
+      where: eq(changelogProducts.slug, slug),
+      columns: { id: true },
+    })
+    if (afterConflict) return afterConflict.id
+  }
+
+  return productId ?? null
+}
+
+async function getChangelogCategorySummary(
+  categoryId: ChangelogCategoryId | null
+): Promise<ChangelogCategorySummary | null> {
+  if (!categoryId) return null
+  const category = await db.query.changelogCategories.findFirst({
+    where: eq(changelogCategories.id, categoryId),
+    columns: { id: true, name: true, slug: true, color: true },
+  })
+  return category ?? null
+}
+
+async function getChangelogProductSummary(
+  productId: ChangelogProductId | null
+): Promise<ChangelogProductSummary | null> {
+  if (!productId) return null
+  const product = await db.query.changelogProducts.findFirst({
+    where: eq(changelogProducts.id, productId),
+    columns: { id: true, name: true, slug: true },
+  })
+  return product ?? null
 }
 
 /**

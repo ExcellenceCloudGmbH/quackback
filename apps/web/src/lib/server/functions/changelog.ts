@@ -6,7 +6,13 @@
 
 import { createServerFn } from '@tanstack/react-start'
 import { getRequestHeaders } from '@tanstack/react-start/server'
-import type { BoardId, ChangelogId, PostId } from '@quackback/ids'
+import type {
+  BoardId,
+  ChangelogCategoryId,
+  ChangelogId,
+  ChangelogProductId,
+  PostId,
+} from '@quackback/ids'
 // Note: BoardId is only used for searchShippedPosts filtering
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import { NotFoundError } from '@/lib/shared/errors'
@@ -18,7 +24,11 @@ import {
   deleteChangelog,
   getChangelogById,
 } from '@/lib/server/domains/changelog/changelog.service'
-import { listChangelogs, searchShippedPosts } from '@/lib/server/domains/changelog/changelog.query'
+import {
+  listChangelogs,
+  listChangelogTaxonomy,
+  searchShippedPosts,
+} from '@/lib/server/domains/changelog/changelog.query'
 import {
   getPublicChangelogById,
   listPublicChangelogs,
@@ -51,6 +61,32 @@ function applyWidgetChangelogFilters(
 
   const changelogFilter = context.contentFilters.changelog
   const mode = changelogFilter?.mode ?? 'all_published'
+
+  const allowedCategoryIds = new Set(changelogFilter?.categoryIds ?? [])
+  const allowedCategorySlugs = new Set(changelogFilter?.categorySlugs ?? [])
+  const hasCategoryFilter = allowedCategoryIds.size > 0 || allowedCategorySlugs.size > 0
+  if (hasCategoryFilter) {
+    const category = entry.category
+    if (
+      !category ||
+      (!allowedCategoryIds.has(category.id) && !allowedCategorySlugs.has(category.slug))
+    ) {
+      return null
+    }
+  }
+
+  const allowedProductIds = new Set(changelogFilter?.productIds ?? [])
+  const allowedProductSlugs = new Set(changelogFilter?.productSlugs ?? [])
+  const hasProductFilter = allowedProductIds.size > 0 || allowedProductSlugs.size > 0
+  if (hasProductFilter) {
+    const product = entry.product
+    if (
+      !product ||
+      (!allowedProductIds.has(product.id) && !allowedProductSlugs.has(product.slug))
+    ) {
+      return null
+    }
+  }
 
   if (mode === 'selected_entries') {
     const selectedIds = new Set(changelogFilter?.entryIds ?? [])
@@ -106,6 +142,10 @@ export const createChangelogFn = createServerFn({ method: 'POST' })
           title: data.title,
           content: data.content,
           contentJson: data.contentJson ? sanitizeTiptapContent(data.contentJson) : null,
+          categoryId: data.categoryId as ChangelogCategoryId | null | undefined,
+          categoryName: data.categoryName,
+          productId: data.productId as ChangelogProductId | null | undefined,
+          productName: data.productName,
           linkedPostIds: (data.linkedPostIds ?? []) as PostId[],
           publishState: data.publishState as PublishState,
         },
@@ -141,6 +181,10 @@ export const updateChangelogFn = createServerFn({ method: 'POST' })
         title: data.title,
         content: data.content,
         contentJson: data.contentJson ? sanitizeTiptapContent(data.contentJson) : undefined,
+        categoryId: data.categoryId as ChangelogCategoryId | null | undefined,
+        categoryName: data.categoryName,
+        productId: data.productId as ChangelogProductId | null | undefined,
+        productName: data.productName,
         linkedPostIds: data.linkedPostIds as PostId[] | undefined,
         publishState: data.publishState as PublishState | undefined,
       })
@@ -292,11 +336,30 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
         return { items: [], nextCursor: null, hasMore: false }
       }
 
+      const widgetContext = await getWidgetContextFromServerFnHeaders()
+      const changelogFilter = widgetContext.profileId
+        ? widgetContext.contentFilters.changelog
+        : undefined
+      const mode = changelogFilter?.mode ?? 'all_published'
+      const entryIds =
+        mode === 'selected_entries'
+          ? ((changelogFilter?.entryIds ?? []) as ChangelogId[])
+          : undefined
+      const categoryIds =
+        (changelogFilter?.categoryIds?.length ?? 0) > 0
+          ? (changelogFilter?.categoryIds as ChangelogCategoryId[])
+          : undefined
+      const productIds =
+        (changelogFilter?.productIds?.length ?? 0) > 0
+          ? (changelogFilter?.productIds as ChangelogProductId[])
+          : undefined
       const result = await listPublicChangelogs({
         cursor: data.cursor,
         limit: data.limit,
+        entryIds,
+        categoryIds,
+        productIds,
       })
-      const widgetContext = await getWidgetContextFromServerFnHeaders()
       const filteredItems = result.items
         .map((entry) => applyWidgetChangelogFilters(entry, widgetContext))
         .filter((entry): entry is PublicChangelogEntry => entry !== null)
@@ -313,6 +376,11 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
       throw error
     }
   })
+
+export const listChangelogTaxonomyFn = createServerFn({ method: 'GET' }).handler(async () => {
+  await requireAuth({ roles: ['admin', 'member'] })
+  return listChangelogTaxonomy()
+})
 
 // ============================================================================
 // Shipped Posts Search (for linking)
