@@ -6,6 +6,9 @@ import { generateId } from '@quackback/ids'
 import { db, invitation, principal, user, and, eq } from '@/lib/server/db'
 import { getPublicUrlOrNull } from '@/lib/server/storage/s3'
 import { getSession } from '@/lib/server/auth/session'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'invitations' })
 
 /**
  * Get invitation details for the complete-signup page.
@@ -15,19 +18,17 @@ import { getSession } from '@/lib/server/auth/session'
  * accessible to newly authenticated users who may not yet have a member record.
  */
 export const getInvitationDetailsFn = createServerFn({ method: 'GET' })
-  .inputValidator((invitationId: string) => invitationId)
+  .validator((invitationId: string) => invitationId)
   .handler(async ({ data: invitationId }) => {
-    console.log(`[fn:invitations] getInvitationDetailsFn: invitationId=${invitationId}`)
+    log.debug({ invitation_id: invitationId }, 'get invitation details: entry')
 
     const session = await getSession()
     if (!session?.user) {
-      console.warn(`[fn:invitations] getInvitationDetailsFn: no session - user not authenticated`)
+      log.warn('get invitation details: no session')
       throw new Error('Not authenticated')
     }
 
-    console.log(
-      `[fn:invitations] getInvitationDetailsFn: session user=${session.user.email} (${session.user.id})`
-    )
+    log.debug({ user_id: session.user.id }, 'get invitation details: session resolved')
 
     const [inv, settings, authConfig] = await Promise.all([
       db.query.invitation.findFirst({
@@ -39,21 +40,21 @@ export const getInvitationDetailsFn = createServerFn({ method: 'GET' })
     ])
 
     if (!inv) {
-      console.warn(
-        `[fn:invitations] getInvitationDetailsFn: invitation not found for id=${invitationId}`
-      )
+      log.warn({ invitation_id: invitationId }, 'get invitation details: invitation not found')
       throw new Error(
         'This invitation could not be found. It may have been cancelled. Please contact your administrator.'
       )
     }
 
-    console.log(
-      `[fn:invitations] getInvitationDetailsFn: invitation found - email=${inv.email}, status=${inv.status}, expiresAt=${inv.expiresAt}`
+    log.debug(
+      { invitation_id: invitationId, status: inv.status },
+      'get invitation details: invitation found'
     )
 
     if (inv.status !== 'pending') {
-      console.warn(
-        `[fn:invitations] getInvitationDetailsFn: invitation status is '${inv.status}', expected 'pending'`
+      log.warn(
+        { invitation_id: invitationId, status: inv.status },
+        'get invitation details: invalid status'
       )
       throw new Error(
         inv.status === 'accepted'
@@ -63,16 +64,15 @@ export const getInvitationDetailsFn = createServerFn({ method: 'GET' })
     }
 
     if (new Date(inv.expiresAt) < new Date()) {
-      console.warn(
-        `[fn:invitations] getInvitationDetailsFn: invitation expired at ${inv.expiresAt}`
-      )
+      log.warn({ invitation_id: invitationId }, 'get invitation details: invitation expired')
       throw new Error('This invitation has expired. Please ask your administrator to resend it.')
     }
 
     // Verify the authenticated user's email matches the invitation
     if (inv.email.toLowerCase() !== session.user.email?.toLowerCase()) {
-      console.warn(
-        `[fn:invitations] getInvitationDetailsFn: email mismatch - invitation=${inv.email}, session=${session.user.email}`
+      log.warn(
+        { invitation_id: invitationId, user_id: session.user.id },
+        'get invitation details: email mismatch'
       )
       throw new Error(
         'This invitation was sent to a different email address. Please sign in with the email address that received the invitation, or ask your administrator to send a new invitation to your current email.'
@@ -85,8 +85,13 @@ export const getInvitationDetailsFn = createServerFn({ method: 'GET' })
     const isExistingUser = new Date(session.user.createdAt) < inv.createdAt
     const passwordEnabled = !isExistingUser && (authConfig.oauth.password ?? true)
 
-    console.log(
-      `[fn:invitations] getInvitationDetailsFn: OK - passwordEnabled=${passwordEnabled}, isExistingUser=${isExistingUser}`
+    log.debug(
+      {
+        invitation_id: invitationId,
+        password_enabled: passwordEnabled,
+        is_existing_user: isExistingUser,
+      },
+      'get invitation details: ok'
     )
 
     return {
@@ -117,10 +122,10 @@ const acceptInvitationSchema = z.object({
  * accessible to newly authenticated users who may not yet have a member record.
  */
 export const acceptInvitationFn = createServerFn({ method: 'POST' })
-  .inputValidator(acceptInvitationSchema)
+  .validator(acceptInvitationSchema)
   .handler(async ({ data }) => {
     const { invitationId, name } = data
-    console.log(`[fn:invitations] acceptInvitationFn: invitationId=${invitationId}`)
+    log.debug({ invitation_id: invitationId }, 'accept invitation: entry')
     // Track whether we successfully claimed the invitation so the catch
     // block only rolls back when we actually changed its status.
     let didClaim = false
@@ -128,13 +133,13 @@ export const acceptInvitationFn = createServerFn({ method: 'POST' })
       // Get current session
       const session = await getSession()
       if (!session?.user) {
-        console.warn(`[fn:invitations] acceptInvitationFn: no session`)
+        log.warn('accept invitation: no session')
         throw new Error('Your session has expired. Please sign in again using the invitation link.')
       }
 
       const userId = session.user.id as UserId
       const userEmail = session.user.email?.toLowerCase()
-      console.log(`[fn:invitations] acceptInvitationFn: session user=${userEmail} (${userId})`)
+      log.debug({ user_id: userId }, 'accept invitation: session resolved')
 
       if (!userEmail) {
         throw new Error(
@@ -162,8 +167,9 @@ export const acceptInvitationFn = createServerFn({ method: 'POST' })
         const inv = await db.query.invitation.findFirst({
           where: and(eq(invitation.id, invitationId as InviteId), eq(invitation.kind, 'team')),
         })
-        console.warn(
-          `[fn:invitations] acceptInvitationFn: claim failed - inv exists=${!!inv}, status=${inv?.status}`
+        log.warn(
+          { invitation_id: invitationId, exists: !!inv, status: inv?.status },
+          'accept invitation: claim failed'
         )
         if (!inv) throw new Error('This invitation could not be found. It may have been cancelled.')
         throw new Error(
@@ -174,9 +180,7 @@ export const acceptInvitationFn = createServerFn({ method: 'POST' })
       }
 
       didClaim = true
-      console.log(
-        `[fn:invitations] acceptInvitationFn: claimed invitation, email=${claimed.email}, role=${claimed.role}`
-      )
+      log.debug({ invitation_id: invitationId, role: claimed.role }, 'accept invitation: claimed')
 
       async function rollbackAndThrow(message: string): Promise<never> {
         await db
@@ -248,13 +252,13 @@ export const acceptInvitationFn = createServerFn({ method: 'POST' })
         const { revokeMagicLinkTokens } = await import('@/lib/server/auth/magic-link-mint')
         await revokeMagicLinkTokens(claimed.magicLinkTokens)
       } catch (revokeError) {
-        console.error(`[fn:invitations] ⚠️ acceptInvitationFn: token revoke failed:`, revokeError)
+        log.error({ err: revokeError }, 'token revoke failed')
       }
 
-      console.log(`[fn:invitations] acceptInvitationFn: accepted`)
+      log.info({ invitation_id: invitationId }, 'accept invitation: accepted')
       return { invitationId: invitationId as InviteId }
     } catch (error) {
-      console.error(`[fn:invitations] ❌ acceptInvitationFn failed:`, error)
+      log.error({ err: error }, 'accept invitation failed')
       // Only roll back if we actually claimed the invitation. If the error
       // came from the !claimed branch (already accepted / invalid), rolling
       // back would incorrectly reopen it to 'pending'.
@@ -265,7 +269,7 @@ export const acceptInvitationFn = createServerFn({ method: 'POST' })
             .set({ status: 'pending' })
             .where(eq(invitation.id, invitationId as InviteId))
         } catch (rollbackError) {
-          console.error(`[fn:invitations] ❌ rollback failed:`, rollbackError)
+          log.error({ err: rollbackError }, 'rollback failed')
         }
       }
       throw error
@@ -279,7 +283,7 @@ export const acceptInvitationFn = createServerFn({ method: 'POST' })
  * so we must call auth.api.setPassword() from a server function.
  */
 export const setPasswordFn = createServerFn({ method: 'POST' })
-  .inputValidator(z.object({ newPassword: z.string().min(8) }))
+  .validator(z.object({ newPassword: z.string().min(8) }))
   .handler(async ({ data }) => {
     const { auth } = await import('@/lib/server/auth')
     await auth.api.setPassword({
@@ -294,7 +298,7 @@ export const setPasswordFn = createServerFn({ method: 'POST' })
  * Public - no authentication required.
  */
 export const getInviteBrandingFn = createServerFn({ method: 'GET' })
-  .inputValidator((invitationId: string) => invitationId)
+  .validator((invitationId: string) => invitationId)
   .handler(async ({ data: invitationId }) => {
     const [settings, inv] = await Promise.all([
       db.query.settings.findFirst(),

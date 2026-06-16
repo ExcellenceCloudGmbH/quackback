@@ -54,6 +54,8 @@ import { z } from 'zod'
 import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils'
 import { getWidgetRequestContext, type WidgetRequestContext } from '@/lib/server/widget/context'
 
+import { logger } from '@/lib/server/logger'
+const log = logger.child({ component: 'help-center' })
 // ============================================================================
 // Helper: serialize article dates
 // ============================================================================
@@ -124,7 +126,7 @@ function articleAllowedByWidgetContext(
 // ============================================================================
 
 export const listCategoriesFn = createServerFn({ method: 'GET' })
-  .inputValidator(listCategoriesSchema)
+  .validator(listCategoriesSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin', 'member'] })
     const categories = await listCategories({ showDeleted: data.showDeleted })
@@ -132,7 +134,7 @@ export const listCategoriesFn = createServerFn({ method: 'GET' })
   })
 
 export const listPublicCategoriesFn = createServerFn({ method: 'GET' })
-  .inputValidator(z.object({}))
+  .validator(z.object({}))
   .handler(async () => {
     const categories = await listPublicCategories()
     const widgetContext = await getWidgetContextFromServerFnHeaders()
@@ -142,7 +144,7 @@ export const listPublicCategoriesFn = createServerFn({ method: 'GET' })
   })
 
 export const getCategoryFn = createServerFn({ method: 'GET' })
-  .inputValidator(getCategorySchema)
+  .validator(getCategorySchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin', 'member'] })
     const category = await getCategoryById(data.id as HelpCenterCategoryId)
@@ -150,7 +152,7 @@ export const getCategoryFn = createServerFn({ method: 'GET' })
   })
 
 export const getPublicCategoryBySlugFn = createServerFn({ method: 'GET' })
-  .inputValidator(getCategoryBySlugSchema)
+  .validator(getCategoryBySlugSchema)
   .handler(async ({ data }) => {
     // Use the public variant so categories an admin marked private aren't
     // reachable by direct-slug lookup. The route serves unauthenticated
@@ -162,7 +164,7 @@ export const getPublicCategoryBySlugFn = createServerFn({ method: 'GET' })
   })
 
 export const createCategoryFn = createServerFn({ method: 'POST' })
-  .inputValidator(createCategorySchema)
+  .validator(createCategorySchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin'] })
     const category = await createCategory(data)
@@ -170,7 +172,7 @@ export const createCategoryFn = createServerFn({ method: 'POST' })
   })
 
 export const updateCategoryFn = createServerFn({ method: 'POST' })
-  .inputValidator(updateCategorySchema)
+  .validator(updateCategorySchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin'] })
     const category = await updateCategory(data.id as HelpCenterCategoryId, data)
@@ -178,7 +180,7 @@ export const updateCategoryFn = createServerFn({ method: 'POST' })
   })
 
 export const deleteCategoryFn = createServerFn({ method: 'POST' })
-  .inputValidator(deleteCategorySchema)
+  .validator(deleteCategorySchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin'] })
     await deleteCategory(data.id as HelpCenterCategoryId)
@@ -190,7 +192,7 @@ export const deleteCategoryFn = createServerFn({ method: 'POST' })
 // ============================================================================
 
 export const listArticlesFn = createServerFn({ method: 'GET' })
-  .inputValidator(listArticlesSchema)
+  .validator(listArticlesSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin', 'member'] })
     const result = await listArticles(data)
@@ -201,37 +203,37 @@ export const listArticlesFn = createServerFn({ method: 'GET' })
   })
 
 export const restoreCategoryFn = createServerFn({ method: 'POST' })
-  .inputValidator(restoreCategorySchema)
+  .validator(restoreCategorySchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:help-center] restoreCategoryFn: id=${data.id}`)
+    log.debug({ category_id: data.id }, 'restore category')
     try {
       await requireAuth({ roles: ['admin', 'member'] })
       const category = await restoreCategory(data.id as HelpCenterCategoryId)
-      console.log(`[fn:help-center] restoreCategoryFn: restored id=${category.id}`)
+      log.info({ category_id: category.id }, 'category restored')
       return serializeCategory(category)
     } catch (error) {
-      console.error(`[fn:help-center] restoreCategoryFn failed:`, error)
+      log.error({ err: error }, 'restore category failed')
       throw error
     }
   })
 
 export const restoreArticleFn = createServerFn({ method: 'POST' })
-  .inputValidator(restoreArticleSchema)
+  .validator(restoreArticleSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:help-center] restoreArticleFn: id=${data.id}`)
+    log.debug({ article_id: data.id }, 'restore article')
     try {
       await requireAuth({ roles: ['admin', 'member'] })
       const article = await restoreArticle(data.id as HelpCenterArticleId)
-      console.log(`[fn:help-center] restoreArticleFn: restored id=${article.id}`)
+      log.info({ article_id: article.id }, 'article restored')
       return serializeArticle(article)
     } catch (error) {
-      console.error(`[fn:help-center] restoreArticleFn failed:`, error)
+      log.error({ err: error }, 'restore article failed')
       throw error
     }
   })
 
 export const listPublicArticlesFn = createServerFn({ method: 'GET' })
-  .inputValidator(listPublicArticlesSchema)
+  .validator(listPublicArticlesSchema)
   .handler(async ({ data }) => {
     const result = await listPublicArticles(data)
     const widgetContext = await getWidgetContextFromServerFnHeaders()
@@ -245,7 +247,7 @@ export const listPublicArticlesFn = createServerFn({ method: 'GET' })
   })
 
 export const listPublicArticlesForCategoryFn = createServerFn({ method: 'GET' })
-  .inputValidator(z.object({ categoryId: z.string() }))
+  .validator(z.object({ categoryId: z.string() }))
   .handler(async ({ data }) => {
     const widgetContext = await getWidgetContextFromServerFnHeaders()
     if (!categoryAllowedByWidgetContext({ id: data.categoryId }, widgetContext)) {
@@ -263,13 +265,13 @@ export const listPublicArticlesForCategoryFn = createServerFn({ method: 'GET' })
   })
 
 export const listPublicCategoryEditorsFn = createServerFn({ method: 'GET' })
-  .inputValidator(z.object({}))
+  .validator(z.object({}))
   .handler(async () => {
     return listPublicCategoryEditors()
   })
 
 export const getArticleFn = createServerFn({ method: 'GET' })
-  .inputValidator(getArticleSchema)
+  .validator(getArticleSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin', 'member'] })
     const article = await getArticleById(data.id as HelpCenterArticleId)
@@ -277,7 +279,7 @@ export const getArticleFn = createServerFn({ method: 'GET' })
   })
 
 export const getPublicArticleBySlugFn = createServerFn({ method: 'GET' })
-  .inputValidator(getArticleBySlugSchema)
+  .validator(getArticleBySlugSchema)
   .handler(async ({ data }) => {
     const article = await getPublicArticleBySlug(data.slug)
     const widgetContext = await getWidgetContextFromServerFnHeaders()
@@ -289,7 +291,7 @@ export const getPublicArticleBySlugFn = createServerFn({ method: 'GET' })
   })
 
 export const createArticleFn = createServerFn({ method: 'POST' })
-  .inputValidator(createArticleSchema)
+  .validator(createArticleSchema)
   .handler(async ({ data }) => {
     const auth = await requireAuth({ roles: ['admin', 'member'] })
     const article = await createArticle(
@@ -303,7 +305,7 @@ export const createArticleFn = createServerFn({ method: 'POST' })
   })
 
 export const updateArticleFn = createServerFn({ method: 'POST' })
-  .inputValidator(updateArticleSchema)
+  .validator(updateArticleSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin', 'member'] })
     const article = await updateArticle(data.id as HelpCenterArticleId, {
@@ -314,7 +316,7 @@ export const updateArticleFn = createServerFn({ method: 'POST' })
   })
 
 export const publishArticleFn = createServerFn({ method: 'POST' })
-  .inputValidator(publishArticleSchema)
+  .validator(publishArticleSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin', 'member'] })
     const article = await publishArticle(data.id as HelpCenterArticleId)
@@ -322,7 +324,7 @@ export const publishArticleFn = createServerFn({ method: 'POST' })
   })
 
 export const unpublishArticleFn = createServerFn({ method: 'POST' })
-  .inputValidator(unpublishArticleSchema)
+  .validator(unpublishArticleSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin', 'member'] })
     const article = await unpublishArticle(data.id as HelpCenterArticleId)
@@ -330,7 +332,7 @@ export const unpublishArticleFn = createServerFn({ method: 'POST' })
   })
 
 export const deleteArticleFn = createServerFn({ method: 'POST' })
-  .inputValidator(deleteArticleSchema)
+  .validator(deleteArticleSchema)
   .handler(async ({ data }) => {
     // Soft delete (deleteArticle sets deletedAt) — team OK.
     await requireAuth({ roles: ['admin', 'member'] })
@@ -339,7 +341,7 @@ export const deleteArticleFn = createServerFn({ method: 'POST' })
   })
 
 export const recordArticleFeedbackFn = createServerFn({ method: 'POST' })
-  .inputValidator(articleFeedbackSchema)
+  .validator(articleFeedbackSchema)
   .handler(async ({ data }) => {
     const auth = await getOptionalAuth()
     await recordArticleFeedback(
@@ -355,7 +357,7 @@ export const recordArticleFeedbackFn = createServerFn({ method: 'POST' })
 // ============================================================================
 
 export const searchPublicArticlesFn = createServerFn({ method: 'GET' })
-  .inputValidator(
+  .validator(
     z.object({ query: z.string().min(1), limit: z.number().int().min(1).max(20).optional() })
   )
   .handler(async ({ data }) => {

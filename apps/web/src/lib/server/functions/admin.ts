@@ -66,11 +66,14 @@ import {
   appendInviteMagicLinkToken,
   removeInviteMagicLinkToken,
 } from './invitation-magic-link'
+import { logger } from '@/lib/server/logger'
 
 /**
  * Server functions for admin data fetching.
  * All functions require authentication and team member role (admin or member).
  */
+
+const log = logger.child({ component: 'admin' })
 
 // Schemas for GET request parameters
 const inboxPostListSchema = z.object({
@@ -138,9 +141,9 @@ const listCustomerPeopleSchema = z.object({
  * Fetch inbox posts with filters for admin feedback view
  */
 export const fetchInboxPosts = createServerFn({ method: 'GET' })
-  .inputValidator(inboxPostListSchema)
+  .validator(inboxPostListSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] fetchInboxPosts: sort=${data.sort}, cursor=${data.cursor ?? 'none'}`)
+    log.debug({ sort: data.sort, cursor: data.cursor ?? 'none' }, 'fetch inbox posts')
     try {
       await requireAuth({ roles: ['admin', 'member'] })
 
@@ -162,7 +165,7 @@ export const fetchInboxPosts = createServerFn({ method: 'GET' })
         cursor: data.cursor,
         limit: data.limit,
       })
-      console.log(`[fn:admin] fetchInboxPosts: count=${result.items.length}`)
+      log.debug({ count: result.items.length }, 'fetch inbox posts')
       // Serialize contentJson field and Date fields
       return {
         ...result,
@@ -175,7 +178,7 @@ export const fetchInboxPosts = createServerFn({ method: 'GET' })
         })),
       }
     } catch (error) {
-      console.error(`[fn:admin] ❌ fetchInboxPosts failed:`, error)
+      log.error({ err: error }, 'fetch inbox posts failed')
       throw error
     }
   })
@@ -184,12 +187,12 @@ export const fetchInboxPosts = createServerFn({ method: 'GET' })
  * Fetch all boards for the organization
  */
 export const fetchBoardsList = createServerFn({ method: 'GET' }).handler(async () => {
-  console.log(`[fn:admin] fetchBoardsList`)
+  log.debug('fetch boards list')
   try {
     await requireAuth({ roles: ['admin', 'member'] })
 
     const result = await listBoards()
-    console.log(`[fn:admin] fetchBoardsList: count=${result.length}`)
+    log.debug({ count: result.length }, 'fetch boards list')
     return result.map((b) => ({
       ...b,
       settings: (b.settings ?? {}) as BoardSettings,
@@ -197,7 +200,7 @@ export const fetchBoardsList = createServerFn({ method: 'GET' }).handler(async (
       updatedAt: toIsoString(b.updatedAt),
     }))
   } catch (error) {
-    console.error(`[fn:admin] ❌ fetchBoardsList failed:`, error)
+    log.error({ err: error }, 'fetch boards list failed')
     throw error
   }
 })
@@ -206,19 +209,19 @@ export const fetchBoardsList = createServerFn({ method: 'GET' }).handler(async (
  * Fetch all tags for the organization
  */
 export const fetchTagsList = createServerFn({ method: 'GET' }).handler(async () => {
-  console.log(`[fn:admin] fetchTagsList`)
+  log.debug('fetch tags list')
   try {
     await requireAuth({ roles: ['admin', 'member'] })
 
     const result = await listTags()
-    console.log(`[fn:admin] fetchTagsList: count=${result.length}`)
+    log.debug(`[fn:admin] fetchTagsList: count=${result.length}`)
     return result.map((tag) => ({
       ...tag,
       createdAt: toIsoString(tag.createdAt),
       deletedAt: toIsoStringOrNull(tag.deletedAt),
     }))
   } catch (error) {
-    console.error(`[fn:admin] ❌ fetchTagsList failed:`, error)
+    log.error({ err: error }, 'fetch tags list failed')
     throw error
   }
 })
@@ -227,19 +230,19 @@ export const fetchTagsList = createServerFn({ method: 'GET' }).handler(async () 
  * Fetch all statuses for the organization
  */
 export const fetchStatusesList = createServerFn({ method: 'GET' }).handler(async () => {
-  console.log(`[fn:admin] fetchStatusesList`)
+  log.debug('fetch statuses list')
   try {
     await requireAuth({ roles: ['admin', 'member'] })
 
     const result = await listStatuses()
-    console.log(`[fn:admin] fetchStatusesList: count=${result.length}`)
+    log.debug(`[fn:admin] fetchStatusesList: count=${result.length}`)
     return result.map((status) => ({
       ...status,
       createdAt: toIsoString(status.createdAt),
       deletedAt: toIsoStringOrNull(status.deletedAt),
     }))
   } catch (error) {
-    console.error(`[fn:admin] ❌ fetchStatusesList failed:`, error)
+    log.error({ err: error }, 'fetch statuses list failed')
     throw error
   }
 })
@@ -248,19 +251,19 @@ export const fetchStatusesList = createServerFn({ method: 'GET' }).handler(async
  * Fetch team members (not portal users)
  */
 export const fetchTeamMembers = createServerFn({ method: 'GET' }).handler(async () => {
-  console.log(`[fn:admin] fetchTeamMembers`)
+  log.debug('fetch team members')
   try {
     await requireAuth({ roles: ['admin', 'member'] })
 
     const result = await listTeamMembers()
-    console.log(`[fn:admin] fetchTeamMembers: count=${result.length}`)
+    log.debug(`[fn:admin] fetchTeamMembers: count=${result.length}`)
     return result.map((member) => ({
       ...member,
       createdAt: toIsoString(member.createdAt),
       lastSignInAt: toIsoStringOrNull(member.lastSignInAt),
     }))
   } catch (error) {
-    console.error(`[fn:admin] ❌ fetchTeamMembers failed:`, error)
+    log.error({ err: error }, 'fetch team members failed')
     throw error
   }
 })
@@ -271,7 +274,7 @@ const searchMembersSchema = z.object({
 })
 
 export const searchMembersFn = createServerFn({ method: 'GET' })
-  .inputValidator(searchMembersSchema)
+  .validator(searchMembersSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin', 'member'] })
     return searchMembers(data)
@@ -291,9 +294,9 @@ const updatePrincipalRoleSchema = z.object({
  * Update a team member's role (admin only)
  */
 export const updateMemberRoleFn = createServerFn({ method: 'POST' })
-  .inputValidator(updatePrincipalRoleSchema)
+  .validator(updatePrincipalRoleSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] updateMemberRoleFn: principalId=${data.principalId}, role=${data.role}`)
+    log.info({ principal_id: data.principalId, role: data.role }, 'update member role')
     try {
       const auth = await requireAuth({ roles: ['admin'] })
       const { actorFromAuth } = await import('@/lib/server/audit/log')
@@ -306,10 +309,10 @@ export const updateMemberRoleFn = createServerFn({ method: 'POST' })
         getRequestHeaders()
       )
 
-      console.log(`[fn:admin] updateMemberRoleFn: success`)
+      log.info({ principal_id: data.principalId, role: data.role }, 'member role updated')
       return { principalId: data.principalId, role: data.role }
     } catch (error) {
-      console.error(`[fn:admin] ❌ updateMemberRoleFn failed:`, error)
+      log.error({ err: error }, 'update member role failed')
       throw error
     }
   })
@@ -331,7 +334,7 @@ const forceSignOutInput = z.object({
  * and the affected-row count. The actor is the calling admin.
  */
 export const forceSignOutUserFn = createServerFn({ method: 'POST' })
-  .inputValidator(forceSignOutInput)
+  .validator(forceSignOutInput)
   .handler(async ({ data }) => {
     const auth = await requireAuth({ roles: ['admin'] })
     const targetUserId = data.userId as UserId
@@ -361,9 +364,9 @@ export const forceSignOutUserFn = createServerFn({ method: 'POST' })
  * Remove a team member (converts to portal user, admin only)
  */
 export const removeTeamMemberFn = createServerFn({ method: 'POST' })
-  .inputValidator(principalIdSchema)
+  .validator(principalIdSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] removeTeamMemberFn: principalId=${data.principalId}`)
+    log.info({ principal_id: data.principalId }, 'remove team member')
     try {
       const auth = await requireAuth({ roles: ['admin'] })
       const { actorFromAuth } = await import('@/lib/server/audit/log')
@@ -375,10 +378,10 @@ export const removeTeamMemberFn = createServerFn({ method: 'POST' })
         getRequestHeaders()
       )
 
-      console.log(`[fn:admin] removeTeamMemberFn: success`)
+      log.info({ principal_id: data.principalId }, 'member removed')
       return { principalId: data.principalId }
     } catch (error) {
-      console.error(`[fn:admin] ❌ removeTeamMemberFn failed:`, error)
+      log.error({ err: error }, 'remove team member failed')
       throw error
     }
   })
@@ -387,7 +390,7 @@ export const removeTeamMemberFn = createServerFn({ method: 'POST' })
  * Check onboarding completion status
  */
 export const fetchOnboardingStatus = createServerFn({ method: 'GET' }).handler(async () => {
-  console.log(`[fn:admin] fetchOnboardingStatus`)
+  log.debug('fetch onboarding status')
   try {
     await requireAuth({ roles: ['admin', 'member'] })
 
@@ -398,15 +401,16 @@ export const fetchOnboardingStatus = createServerFn({ method: 'GET' }).handler(a
       db.select({ id: principal.id }).from(principal),
     ])
 
-    console.log(
-      `[fn:admin] fetchOnboardingStatus: hasBoards=${orgBoards.length > 0}, memberCount=${members.length}`
+    log.debug(
+      { has_boards: orgBoards.length > 0, member_count: members.length },
+      'fetch onboarding status'
     )
     return {
       hasBoards: orgBoards.length > 0,
       memberCount: members.length,
     }
   } catch (error) {
-    console.error(`[fn:admin] ❌ fetchOnboardingStatus failed:`, error)
+    log.error({ err: error }, 'fetch onboarding status failed')
     throw error
   }
 })
@@ -415,12 +419,12 @@ export const fetchOnboardingStatus = createServerFn({ method: 'GET' }).handler(a
  * Fetch boards list for settings page
  */
 export const fetchBoardsForSettings = createServerFn({ method: 'GET' }).handler(async () => {
-  console.log(`[fn:admin] fetchBoardsForSettings`)
+  log.debug('fetch boards for settings')
   try {
     await requireAuth({ roles: ['admin', 'member'] })
 
     const orgBoards = await listBoards()
-    console.log(`[fn:admin] fetchBoardsForSettings: count=${orgBoards.length}`)
+    log.debug({ count: orgBoards.length }, 'fetch boards for settings')
     return orgBoards.map((b) => ({
       ...b,
       settings: (b.settings ?? {}) as BoardSettings,
@@ -428,7 +432,7 @@ export const fetchBoardsForSettings = createServerFn({ method: 'GET' }).handler(
       updatedAt: toIsoString(b.updatedAt),
     }))
   } catch (error) {
-    console.error(`[fn:admin] ❌ fetchBoardsForSettings failed:`, error)
+    log.error({ err: error }, 'fetch boards for settings failed')
     throw error
   }
 })
@@ -437,12 +441,12 @@ export const fetchBoardsForSettings = createServerFn({ method: 'GET' }).handler(
  * Fetch integrations list
  */
 export const fetchIntegrationsList = createServerFn({ method: 'GET' }).handler(async () => {
-  console.log(`[fn:admin] fetchIntegrationsList`)
+  log.debug('fetch integrations list')
   try {
     await requireAuth({ roles: ['admin', 'member'] })
 
     const results = await db.query.integrations.findMany()
-    console.log(`[fn:admin] fetchIntegrationsList: count=${results.length}`)
+    log.debug({ count: results.length }, 'fetch integrations list')
     return results.map((i) => ({
       id: i.id,
       integrationType: i.integrationType,
@@ -451,7 +455,7 @@ export const fetchIntegrationsList = createServerFn({ method: 'GET' }).handler(a
       connectedAt: i.connectedAt,
     }))
   } catch (error) {
-    console.error(`[fn:admin] ❌ fetchIntegrationsList failed:`, error)
+    log.error({ err: error }, 'fetch integrations list failed')
     throw error
   }
 })
@@ -468,9 +472,9 @@ export const fetchIntegrationCatalog = createServerFn({ method: 'GET' }).handler
  * Fetch a single integration by type (e.g., 'slack') with event mappings
  */
 export const fetchIntegrationByType = createServerFn({ method: 'GET' })
-  .inputValidator(z.object({ type: z.string() }))
+  .validator(z.object({ type: z.string() }))
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] fetchIntegrationByType: type=${data.type}`)
+    log.debug({ type: data.type }, 'fetch integration by type')
     try {
       await requireAuth({ roles: ['admin'] })
 
@@ -493,7 +497,7 @@ export const fetchIntegrationByType = createServerFn({ method: 'GET' })
       })
 
       if (!integration) {
-        console.log(`[fn:admin] fetchIntegrationByType: not found`)
+        log.debug({ type: data.type }, 'fetch integration by type not found')
         return {
           integration: null,
           platformCredentialFields,
@@ -501,7 +505,7 @@ export const fetchIntegrationByType = createServerFn({ method: 'GET' })
         }
       }
 
-      console.log(`[fn:admin] fetchIntegrationByType: found id=${integration.id}`)
+      log.debug({ type: data.type, id: integration.id }, 'fetch integration by type found')
 
       // Group event mappings by targetKey into notification channels
       const channelMap = new Map<
@@ -567,7 +571,7 @@ export const fetchIntegrationByType = createServerFn({ method: 'GET' })
         platformCredentialsConfigured,
       }
     } catch (error) {
-      console.error(`[fn:admin] ❌ fetchIntegrationByType failed:`, error)
+      log.error({ err: error }, 'fetch integration by type failed')
       throw error
     }
   })
@@ -600,15 +604,15 @@ export const getPublicAuthConfig = createServerFn({ method: 'GET' }).handler(asy
  * Note: This function is called during onboarding and may create member records
  */
 export const checkOnboardingState = createServerFn({ method: 'GET' })
-  .inputValidator(z.string().optional())
+  .validator(z.string().optional())
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] checkOnboardingState`)
+    log.debug('check onboarding state')
     try {
       // Allow unauthenticated access for onboarding
       const userId = data
 
       if (!userId) {
-        console.log(`[fn:admin] checkOnboardingState: no userId`)
+        log.debug('check onboarding state no user id')
         return {
           principalRecord: null,
           hasSettings: false,
@@ -630,7 +634,7 @@ export const checkOnboardingState = createServerFn({ method: 'GET' })
 
         if (existingAdmin) {
           // Not first user - they need an invitation
-          console.log(`[fn:admin] checkOnboardingState: needsInvitation=true`)
+          log.debug({ needs_invitation: true }, 'check onboarding state')
           return {
             principalRecord: null,
             needsInvitation: true,
@@ -652,7 +656,7 @@ export const checkOnboardingState = createServerFn({ method: 'GET' })
           .returning()
 
         principalRecord = newPrincipal
-        console.log(`[fn:admin] checkOnboardingState: created admin principal`)
+        log.info({ principal_id: principalRecord.id }, 'created admin principal')
       }
 
       // Get settings to check setup state
@@ -660,8 +664,9 @@ export const checkOnboardingState = createServerFn({ method: 'GET' })
       const setupState = getSetupState(currentSettings?.setupState ?? null)
       const isOnboardingComplete = checkComplete(setupState)
 
-      console.log(
-        `[fn:admin] checkOnboardingState: setupState=${JSON.stringify(setupState)}, isComplete=${isOnboardingComplete}`
+      log.debug(
+        { setup_state: setupState, is_complete: isOnboardingComplete },
+        'check onboarding state'
       )
       return {
         principalRecord: principalRecord
@@ -677,7 +682,7 @@ export const checkOnboardingState = createServerFn({ method: 'GET' })
         isOnboardingComplete,
       }
     } catch (error) {
-      console.error(`[fn:admin] ❌ checkOnboardingState failed:`, error)
+      log.error({ err: error }, 'check onboarding state failed')
       throw error
     }
   })
@@ -690,9 +695,9 @@ export const checkOnboardingState = createServerFn({ method: 'GET' })
  * List portal users (users with role 'user').
  */
 export const listPortalUsersFn = createServerFn({ method: 'GET' })
-  .inputValidator(listPortalUsersSchema)
+  .validator(listPortalUsersSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] listPortalUsersFn`)
+    log.debug('list portal users')
     try {
       await requireAuth({ roles: ['admin', 'member'] })
 
@@ -713,7 +718,7 @@ export const listPortalUsersFn = createServerFn({ method: 'GET' })
         includeAnonymous: data.includeAnonymous,
       })
 
-      console.log(`[fn:admin] listPortalUsersFn: count=${result.items.length}`)
+      log.debug({ count: result.items.length }, 'list portal users')
       // Serialize Date fields for client
       return {
         ...result,
@@ -723,7 +728,7 @@ export const listPortalUsersFn = createServerFn({ method: 'GET' })
         })),
       }
     } catch (error) {
-      console.error(`[fn:admin] ❌ listPortalUsersFn failed:`, error)
+      log.error({ err: error }, 'list portal users failed')
       throw error
     }
   })
@@ -732,9 +737,9 @@ export const listPortalUsersFn = createServerFn({ method: 'GET' })
  * Get a portal user's details.
  */
 export const getPortalUserFn = createServerFn({ method: 'GET' })
-  .inputValidator(portalUserByIdSchema)
+  .validator(portalUserByIdSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] getPortalUserFn: principalId=${data.principalId}`)
+    log.debug({ principal_id: data.principalId }, 'get portal user')
     try {
       await requireAuth({ roles: ['admin', 'member'] })
 
@@ -742,11 +747,11 @@ export const getPortalUserFn = createServerFn({ method: 'GET' })
 
       // Serialize Date fields for client
       if (!result) {
-        console.log(`[fn:admin] getPortalUserFn: not found`)
+        log.debug({ principal_id: data.principalId }, 'get portal user not found')
         return null
       }
 
-      console.log(`[fn:admin] getPortalUserFn: found`)
+      log.debug({ principal_id: data.principalId }, 'get portal user found')
       return {
         ...result,
         joinedAt: toIsoString(result.joinedAt),
@@ -758,7 +763,7 @@ export const getPortalUserFn = createServerFn({ method: 'GET' })
         })),
       }
     } catch (error) {
-      console.error(`[fn:admin] ❌ getPortalUserFn failed:`, error)
+      log.error({ err: error }, 'get portal user failed')
       throw error
     }
   })
@@ -813,9 +818,9 @@ const updatePortalUserSchema = z.object({
 })
 
 export const updatePortalUserFn = createServerFn({ method: 'POST' })
-  .inputValidator(updatePortalUserSchema)
+  .validator(updatePortalUserSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] updatePortalUserFn: principalId=${data.principalId}`)
+    log.info({ principal_id: data.principalId }, 'update portal user')
     try {
       await requireAuth({ roles: ['admin'] })
 
@@ -861,10 +866,10 @@ export const updatePortalUserFn = createServerFn({ method: 'POST' })
           .where(eq(principal.id, data.principalId as PrincipalId))
       }
 
-      console.log(`[fn:admin] updatePortalUserFn: updated`)
+      log.info({ principal_id: data.principalId }, 'portal user updated')
       return { success: true }
     } catch (error) {
-      console.error(`[fn:admin] ❌ updatePortalUserFn failed:`, error)
+      log.error({ err: error }, 'update portal user failed')
       throw error
     }
   })
@@ -879,9 +884,9 @@ const createPortalUserSchema = z.object({
 })
 
 export const createPortalUserFn = createServerFn({ method: 'POST' })
-  .inputValidator(createPortalUserSchema)
+  .validator(createPortalUserSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] createPortalUserFn: name=${data.name}`)
+    log.info({ name: data.name }, 'create portal user')
     try {
       await requireAuth({ roles: ['admin'] })
 
@@ -919,14 +924,14 @@ export const createPortalUserFn = createServerFn({ method: 'POST' })
         createdAt: new Date(),
       })
 
-      console.log(`[fn:admin] createPortalUserFn: created principalId=${principalId}`)
+      log.info({ principal_id: principalId }, 'portal user created')
       return {
         principalId: principalId as string,
         name: trimmedName,
         email: data.email?.toLowerCase().trim() ?? null,
       }
     } catch (error) {
-      console.error(`[fn:admin] ❌ createPortalUserFn failed:`, error)
+      log.error({ err: error }, 'create portal user failed')
       throw error
     }
   })
@@ -935,18 +940,18 @@ export const createPortalUserFn = createServerFn({ method: 'POST' })
  * Delete (remove) a portal user.
  */
 export const deletePortalUserFn = createServerFn({ method: 'POST' })
-  .inputValidator(portalUserByIdSchema)
+  .validator(portalUserByIdSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] deletePortalUserFn: principalId=${data.principalId}`)
+    log.info({ principal_id: data.principalId }, 'delete portal user')
     try {
       await requireAuth({ roles: ['admin'] })
 
       await removePortalUser(data.principalId as PrincipalId)
 
-      console.log(`[fn:admin] deletePortalUserFn: deleted`)
+      log.info({ principal_id: data.principalId }, 'portal user deleted')
       return { principalId: data.principalId }
     } catch (error) {
-      console.error(`[fn:admin] ❌ deletePortalUserFn failed:`, error)
+      log.error({ err: error }, 'delete portal user failed')
       throw error
     }
   })
@@ -963,7 +968,7 @@ const sendInvitationSchema = z.object({
 
 const invitationByIdSchema = z.object({
   // Use plain z.string() for TanStack Start compatibility
-  // TypeID validation with .refine() creates ZodEffects which isn't supported in inputValidator
+  // TypeID validation with .refine() creates ZodEffects which isn't supported in validator
   invitationId: z.string(),
 })
 
@@ -974,9 +979,9 @@ export type InvitationByIdInput = z.infer<typeof invitationByIdSchema>
  * Send a team invitation
  */
 export const sendInvitationFn = createServerFn({ method: 'POST' })
-  .inputValidator(sendInvitationSchema)
+  .validator(sendInvitationSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] sendInvitationFn: role=${data.role}`)
+    log.info({ role: data.role }, 'send invitation')
     try {
       const auth = await requireAuth({ roles: ['admin'] })
 
@@ -1055,16 +1060,14 @@ export const sendInvitationFn = createServerFn({ method: 'POST' })
         logoUrl,
       })
 
-      console.log(
-        `[fn:admin] sendInvitationFn: ${result.sent ? 'sent' : 'created (email not configured)'} id=${invitationId}`
-      )
+      log.info({ invitation_id: invitationId, sent: result.sent }, 'invitation sent')
       return {
         invitationId,
         emailSent: result.sent,
         inviteLink: !result.sent ? inviteLink : undefined,
       }
     } catch (error) {
-      console.error(`[fn:admin] ❌ sendInvitationFn failed:`, error)
+      log.error({ err: error }, 'send invitation failed')
       throw error
     }
   })
@@ -1073,9 +1076,9 @@ export const sendInvitationFn = createServerFn({ method: 'POST' })
  * Cancel a pending invitation
  */
 export const cancelInvitationFn = createServerFn({ method: 'POST' })
-  .inputValidator(invitationByIdSchema)
+  .validator(invitationByIdSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] cancelInvitationFn: id=${data.invitationId}`)
+    log.info({ invitation_id: data.invitationId }, 'cancel invitation')
     try {
       await requireAuth({ roles: ['admin'] })
 
@@ -1122,10 +1125,10 @@ export const cancelInvitationFn = createServerFn({ method: 'POST' })
       const { revokeMagicLinkTokens } = await import('@/lib/server/auth/magic-link-mint')
       await revokeMagicLinkTokens(cancelled[0].magicLinkTokens)
 
-      console.log(`[fn:admin] cancelInvitationFn: canceled`)
+      log.info({ invitation_id: invitationId }, 'invitation canceled')
       return { invitationId }
     } catch (error) {
-      console.error(`[fn:admin] ❌ cancelInvitationFn failed:`, error)
+      log.error({ err: error }, 'cancel invitation failed')
       throw error
     }
   })
@@ -1134,9 +1137,9 @@ export const cancelInvitationFn = createServerFn({ method: 'POST' })
  * Resend an invitation email
  */
 export const resendInvitationFn = createServerFn({ method: 'POST' })
-  .inputValidator(invitationByIdSchema)
+  .validator(invitationByIdSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] resendInvitationFn: id=${data.invitationId}`)
+    log.info({ invitation_id: data.invitationId }, 'resend invitation')
     try {
       const auth = await requireAuth({ roles: ['admin'] })
 
@@ -1217,16 +1220,14 @@ export const resendInvitationFn = createServerFn({ method: 'POST' })
         throw sendError
       }
 
-      console.log(
-        `[fn:admin] resendInvitationFn: ${result.sent ? 'resent' : 'regenerated (email not configured)'}`
-      )
+      log.info({ invitation_id: invitationId, sent: result.sent }, 'invitation resent')
       return {
         invitationId,
         emailSent: result.sent,
         inviteLink: !result.sent ? inviteLink : undefined,
       }
     } catch (error) {
-      console.error(`[fn:admin] ❌ resendInvitationFn failed:`, error)
+      log.error({ err: error }, 'resend invitation failed')
       throw error
     }
   })
@@ -1357,7 +1358,7 @@ const fetchSegmentAttributeValuesSchema = z.object({
 })
 
 export const fetchSegmentAttributeValuesFn = createServerFn({ method: 'GET' })
-  .inputValidator(fetchSegmentAttributeValuesSchema)
+  .validator(fetchSegmentAttributeValuesSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin', 'member'] })
     const { getAttributeValueSuggestions } =
@@ -1369,18 +1370,18 @@ export const fetchSegmentAttributeValuesFn = createServerFn({ method: 'GET' })
  * List all segments with member counts.
  */
 export const listSegmentsFn = createServerFn({ method: 'GET' }).handler(async () => {
-  console.log(`[fn:admin] listSegmentsFn`)
+  log.debug('list segments')
   try {
     await requireAuth({ roles: ['admin', 'member'] })
     const result = await listSegments()
-    console.log(`[fn:admin] listSegmentsFn: count=${result.length}`)
+    log.debug({ count: result.length }, 'list segments')
     return result.map((seg) => ({
       ...seg,
       createdAt: toIsoString(seg.createdAt),
       updatedAt: toIsoString(seg.updatedAt),
     }))
   } catch (error) {
-    console.error(`[fn:admin] ❌ listSegmentsFn failed:`, error)
+    log.error({ err: error }, 'list segments failed')
     throw error
   }
 })
@@ -1389,9 +1390,9 @@ export const listSegmentsFn = createServerFn({ method: 'GET' }).handler(async ()
  * Create a new segment.
  */
 export const createSegmentFn = createServerFn({ method: 'POST' })
-  .inputValidator(createSegmentSchema)
+  .validator(createSegmentSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] createSegmentFn: name=${data.name}`)
+    log.info({ name: data.name }, 'create segment')
     try {
       await requireAuth({ roles: ['admin'] })
       const segment = await createSegment(data as CreateSegmentInput)
@@ -1401,17 +1402,17 @@ export const createSegmentFn = createServerFn({ method: 'POST' })
         await upsertSegmentEvaluationSchedule(
           segment.id as SegmentId,
           segment.evaluationSchedule
-        ).catch((err) => console.error(`[fn:admin] Failed to set up evaluation schedule:`, err))
+        ).catch((err) => log.error({ err }, 'failed to set up evaluation schedule'))
       }
 
-      console.log(`[fn:admin] createSegmentFn: created id=${segment.id}`)
+      log.info({ segment_id: segment.id }, 'segment created')
       return {
         ...segment,
         createdAt: toIsoString(segment.createdAt),
         updatedAt: toIsoString(segment.updatedAt),
       }
     } catch (error) {
-      console.error(`[fn:admin] ❌ createSegmentFn failed:`, error)
+      log.error({ err: error }, 'create segment failed')
       throw error
     }
   })
@@ -1420,9 +1421,9 @@ export const createSegmentFn = createServerFn({ method: 'POST' })
  * Update an existing segment.
  */
 export const updateSegmentFn = createServerFn({ method: 'POST' })
-  .inputValidator(updateSegmentSchema)
+  .validator(updateSegmentSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] updateSegmentFn: segmentId=${data.segmentId}`)
+    log.info({ segment_id: data.segmentId }, 'update segment')
     try {
       await requireAuth({ roles: ['admin'] })
       const { segmentId, ...updates } = data
@@ -1434,22 +1435,22 @@ export const updateSegmentFn = createServerFn({ method: 'POST' })
           await upsertSegmentEvaluationSchedule(
             segmentId as SegmentId,
             segment.evaluationSchedule
-          ).catch((err) => console.error(`[fn:admin] Failed to update evaluation schedule:`, err))
+          ).catch((err) => log.error({ err }, 'failed to update evaluation schedule'))
         } else {
           await removeSegmentEvaluationSchedule(segmentId as SegmentId).catch((err) =>
-            console.error(`[fn:admin] Failed to remove evaluation schedule:`, err)
+            log.error({ err }, 'failed to remove evaluation schedule')
           )
         }
       }
 
-      console.log(`[fn:admin] updateSegmentFn: updated`)
+      log.info({ segment_id: segment.id }, 'segment updated')
       return {
         ...segment,
         createdAt: toIsoString(segment.createdAt),
         updatedAt: toIsoString(segment.updatedAt),
       }
     } catch (error) {
-      console.error(`[fn:admin] ❌ updateSegmentFn failed:`, error)
+      log.error({ err: error }, 'update segment failed')
       throw error
     }
   })
@@ -1458,17 +1459,17 @@ export const updateSegmentFn = createServerFn({ method: 'POST' })
  * Delete a segment.
  */
 export const deleteSegmentFn = createServerFn({ method: 'POST' })
-  .inputValidator(segmentByIdSchema)
+  .validator(segmentByIdSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] deleteSegmentFn: segmentId=${data.segmentId}`)
+    log.info({ segment_id: data.segmentId }, 'delete segment')
     try {
       await requireAuth({ roles: ['admin'] })
 
       await deleteSegment(data.segmentId as SegmentId)
-      console.log(`[fn:admin] deleteSegmentFn: deleted`)
+      log.info({ segment_id: data.segmentId }, 'segment deleted')
       return { segmentId: data.segmentId }
     } catch (error) {
-      console.error(`[fn:admin] ❌ deleteSegmentFn failed:`, error)
+      log.error({ err: error }, 'delete segment failed')
       throw error
     }
   })
@@ -1477,10 +1478,11 @@ export const deleteSegmentFn = createServerFn({ method: 'POST' })
  * Assign users to a manual segment.
  */
 export const assignUsersToSegmentFn = createServerFn({ method: 'POST' })
-  .inputValidator(assignUsersSchema)
+  .validator(assignUsersSchema)
   .handler(async ({ data }) => {
-    console.log(
-      `[fn:admin] assignUsersToSegmentFn: segmentId=${data.segmentId}, count=${data.principalIds.length}`
+    log.info(
+      { segment_id: data.segmentId, count: data.principalIds.length },
+      'assign users to segment'
     )
     try {
       const auth = await requireAuth({ roles: ['admin', 'member'] })
@@ -1491,10 +1493,10 @@ export const assignUsersToSegmentFn = createServerFn({ method: 'POST' })
         actorFromAuth(auth),
         getRequestHeaders()
       )
-      console.log(`[fn:admin] assignUsersToSegmentFn: assigned=${assigned}`)
+      log.info({ segment_id: data.segmentId, assigned }, 'users assigned to segment')
       return { segmentId: data.segmentId, assigned }
     } catch (error) {
-      console.error(`[fn:admin] ❌ assignUsersToSegmentFn failed:`, error)
+      log.error({ err: error }, 'assign users to segment failed')
       throw error
     }
   })
@@ -1503,10 +1505,11 @@ export const assignUsersToSegmentFn = createServerFn({ method: 'POST' })
  * Remove users from a manual segment.
  */
 export const removeUsersFromSegmentFn = createServerFn({ method: 'POST' })
-  .inputValidator(assignUsersSchema)
+  .validator(assignUsersSchema)
   .handler(async ({ data }) => {
-    console.log(
-      `[fn:admin] removeUsersFromSegmentFn: segmentId=${data.segmentId}, count=${data.principalIds.length}`
+    log.info(
+      { segment_id: data.segmentId, count: data.principalIds.length },
+      'remove users from segment'
     )
     try {
       const auth = await requireAuth({ roles: ['admin', 'member'] })
@@ -1517,10 +1520,10 @@ export const removeUsersFromSegmentFn = createServerFn({ method: 'POST' })
         actorFromAuth(auth),
         getRequestHeaders()
       )
-      console.log(`[fn:admin] removeUsersFromSegmentFn: removed=${removed}`)
+      log.info({ segment_id: data.segmentId, removed }, 'users removed from segment')
       return { segmentId: data.segmentId, removed }
     } catch (error) {
-      console.error(`[fn:admin] ❌ removeUsersFromSegmentFn failed:`, error)
+      log.error({ err: error }, 'remove users from segment failed')
       throw error
     }
   })
@@ -1529,16 +1532,16 @@ export const removeUsersFromSegmentFn = createServerFn({ method: 'POST' })
  * Trigger re-evaluation of a dynamic segment.
  */
 export const evaluateSegmentFn = createServerFn({ method: 'POST' })
-  .inputValidator(segmentByIdSchema)
+  .validator(segmentByIdSchema)
   .handler(async ({ data }) => {
-    console.log(`[fn:admin] evaluateSegmentFn: segmentId=${data.segmentId}`)
+    log.info({ segment_id: data.segmentId }, 'evaluate segment')
     try {
       await requireAuth({ roles: ['admin'] })
       const result = await evaluateDynamicSegment(data.segmentId as SegmentId)
-      console.log(`[fn:admin] evaluateSegmentFn: added=${result.added}, removed=${result.removed}`)
+      log.info({ added: result.added, removed: result.removed }, 'segment evaluated')
       return result
     } catch (error) {
-      console.error(`[fn:admin] ❌ evaluateSegmentFn failed:`, error)
+      log.error({ err: error }, 'evaluate segment failed')
       throw error
     }
   })
@@ -1547,14 +1550,14 @@ export const evaluateSegmentFn = createServerFn({ method: 'POST' })
  * Trigger re-evaluation of all dynamic segments.
  */
 export const evaluateAllSegmentsFn = createServerFn({ method: 'POST' }).handler(async () => {
-  console.log(`[fn:admin] evaluateAllSegmentsFn`)
+  log.info('evaluate all segments')
   try {
     await requireAuth({ roles: ['admin'] })
     const results = await evaluateAllDynamicSegments()
-    console.log(`[fn:admin] evaluateAllSegmentsFn: evaluated ${results.length} segments`)
+    log.info({ count: results.length }, 'all segments evaluated')
     return results
   } catch (error) {
-    console.error(`[fn:admin] ❌ evaluateAllSegmentsFn failed:`, error)
+    log.error({ err: error }, 'evaluate all segments failed')
     throw error
   }
 })
@@ -1598,7 +1601,7 @@ export const listUserAttributesFn = createServerFn({ method: 'GET' }).handler(as
     await requireAuth({ roles: ['admin', 'member'] })
     return listUserAttributes()
   } catch (error) {
-    console.error('[fn:admin] ❌ listUserAttributesFn failed:', error)
+    log.error({ err: error }, 'list user attributes failed')
     throw error
   }
 })
@@ -1607,7 +1610,7 @@ export const listUserAttributesFn = createServerFn({ method: 'GET' }).handler(as
  * Create a new user attribute definition.
  */
 export const createUserAttributeFn = createServerFn({ method: 'POST' })
-  .inputValidator(createUserAttributeSchema)
+  .validator(createUserAttributeSchema)
   .handler(async ({ data }) => {
     try {
       await requireAuth({ roles: ['admin'] })
@@ -1620,7 +1623,7 @@ export const createUserAttributeFn = createServerFn({ method: 'POST' })
         externalKey: data.externalKey,
       })
     } catch (error) {
-      console.error('[fn:admin] ❌ createUserAttributeFn failed:', error)
+      log.error({ err: error }, 'create user attribute failed')
       throw error
     }
   })
@@ -1629,7 +1632,7 @@ export const createUserAttributeFn = createServerFn({ method: 'POST' })
  * Update an existing user attribute definition.
  */
 export const updateUserAttributeFn = createServerFn({ method: 'POST' })
-  .inputValidator(updateUserAttributeSchema)
+  .validator(updateUserAttributeSchema)
   .handler(async ({ data }) => {
     try {
       await requireAuth({ roles: ['admin'] })
@@ -1641,7 +1644,7 @@ export const updateUserAttributeFn = createServerFn({ method: 'POST' })
         externalKey: data.externalKey,
       })
     } catch (error) {
-      console.error('[fn:admin] ❌ updateUserAttributeFn failed:', error)
+      log.error({ err: error }, 'update user attribute failed')
       throw error
     }
   })
@@ -1650,14 +1653,14 @@ export const updateUserAttributeFn = createServerFn({ method: 'POST' })
  * Delete a user attribute definition.
  */
 export const deleteUserAttributeFn = createServerFn({ method: 'POST' })
-  .inputValidator(userAttributeIdSchema)
+  .validator(userAttributeIdSchema)
   .handler(async ({ data }) => {
     try {
       await requireAuth({ roles: ['admin'] })
       await deleteUserAttribute(data.id as UserAttributeId)
       return { deleted: true }
     } catch (error) {
-      console.error('[fn:admin] ❌ deleteUserAttributeFn failed:', error)
+      log.error({ err: error }, 'delete user attribute failed')
       throw error
     }
   })

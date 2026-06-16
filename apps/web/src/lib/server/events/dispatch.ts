@@ -23,8 +23,12 @@ import type {
   EventOrganizationRef,
 } from './types.js'
 
+import { logger } from '@/lib/server/logger'
+
 // Re-export EventActor for API routes that need to construct actor objects
 export type { EventActor } from './types.js'
+
+const log = logger.child({ component: 'dispatch' })
 
 /**
  * Build an EventActor from a principal with optional user details.
@@ -93,12 +97,12 @@ function eventEnvelope(actor: EventActor) {
  * Hook execution runs in the background via BullMQ.
  */
 async function dispatchEvent(event: EventData): Promise<void> {
-  console.log(`[Event] Dispatching ${event.type} event ${event.id}`)
+  log.debug({ event_type: event.type, event_id: event.id }, 'dispatching event')
   try {
     const { processEvent } = await import('./process')
     await processEvent(event)
   } catch (error) {
-    console.error(`[Event] Failed to process ${event.type} event ${event.id}:`, error)
+    log.error({ err: error, event_type: event.type, event_id: event.id }, 'failed to process event')
   }
 }
 

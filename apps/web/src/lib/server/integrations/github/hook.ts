@@ -27,6 +27,8 @@ import {
 import type { TicketStatusCategory } from '@/lib/server/db'
 import type { InboxId, IntegrationId, TicketId } from '@quackback/ids'
 
+import { logger } from '@/lib/server/logger'
+const log = logger.child({ component: 'github' })
 const GITHUB_API = 'https://api.github.com'
 
 // ============================================================================
@@ -364,7 +366,7 @@ async function handlePostCreated(
 ): Promise<HookResult> {
   if (event.type !== 'post.created') return { success: true }
 
-  console.log(`[GitHub] Creating issue for ${event.type} -> repo ${ownerRepo}`)
+  log.debug(`Creating issue for ${event.type} -> repo ${ownerRepo}`)
   const { title, body } = buildGitHubIssueBody(event, config.rootUrl)
 
   try {
@@ -381,7 +383,7 @@ async function handlePostCreated(
     }
 
     const issue = (await response.json()) as { number: number; html_url: string }
-    console.log(`[GitHub] Created issue #${issue.number} in ${ownerRepo}`)
+    log.debug(`Created issue #${issue.number} in ${ownerRepo}`)
     return { success: true, externalId: String(issue.number), externalUrl: issue.html_url }
   } catch (error) {
     return {
@@ -403,7 +405,7 @@ async function handleTicketCreated(
 ): Promise<HookResult> {
   if (event.type !== 'ticket.created') return { success: true }
 
-  console.log(`[GitHub] Creating issue for ticket -> repo ${ownerRepo}`)
+  log.debug(`Creating issue for ticket -> repo ${ownerRepo}`)
   const { title, body, labels } = buildTicketIssueBody(event)
   const configuredInboxSlug = await findConfiguredInboxSlug(config, event.data.ticket)
   const issueLabels = configuredInboxSlug
@@ -424,7 +426,7 @@ async function handleTicketCreated(
     }
 
     const issue = (await response.json()) as { number: number; html_url: string }
-    console.log(`[GitHub] Created issue #${issue.number} for ticket in ${ownerRepo}`)
+    log.debug(`Created issue #${issue.number} for ticket in ${ownerRepo}`)
     return {
       success: true,
       externalId: String(issue.number),
@@ -457,7 +459,7 @@ async function handleTicketStatusChanged(
   const mapping = mappings[newStatusCategory as TicketStatusCategory]
   if (!mapping) return { success: true }
 
-  console.log(`[GitHub] Updating issue #${issueNumber} state -> ${mapping.state} in ${ownerRepo}`)
+  log.debug(`Updating issue #${issueNumber} state -> ${mapping.state} in ${ownerRepo}`)
 
   try {
     const patchBody: Record<string, unknown> = { state: mapping.state }
@@ -480,7 +482,7 @@ async function handleTicketStatusChanged(
     // If the mapping includes a label, add it (best-effort)
     if (mapping.label) {
       await addLabel(ownerRepo, issueNumber, mapping.label, config.accessToken).catch((err) =>
-        console.warn(`[GitHub] Failed to add label "${mapping.label}":`, err)
+        log.warn({ err: err }, `Failed to add label "${mapping.label}":`)
       )
     }
 
@@ -563,7 +565,7 @@ async function handleTicketUpdated(
   try {
     // Sync subject/description if changed
     if (hasContentChange) {
-      console.log(`[GitHub] Updating issue #${issueNumber} content in ${ownerRepo}`)
+      log.debug(`Updating issue #${issueNumber} content in ${ownerRepo}`)
       const update = buildTicketUpdateBody(ticket)
       const patchBody: Record<string, unknown> = {}
       if (update.title) patchBody.title = update.title
@@ -597,13 +599,13 @@ async function handleTicketUpdated(
           `priority:${oldPriority}`,
           config.accessToken
         ).catch((err) =>
-          console.warn(`[GitHub] Failed to remove label "priority:${oldPriority}":`, err)
+          log.warn({ err: err }, `Failed to remove label "priority:${oldPriority}":`)
         )
       }
 
       if (newPriority) {
         await addLabel(ownerRepo, issueNumber, `priority:${newPriority}`, config.accessToken).catch(
-          (err) => console.warn(`[GitHub] Failed to add label "priority:${newPriority}":`, err)
+          (err) => log.warn({ err: err }, `Failed to add label "priority:${newPriority}":`)
         )
       }
     }

@@ -19,6 +19,9 @@ import { decryptSecrets } from './encryption'
 import { resolveStatusMapping, type StatusMappings } from './status-mapping'
 import { changeStatus } from '@/lib/server/domains/posts/post.status'
 import type { PostId, StatusId, PrincipalId } from '@quackback/ids'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'inbound-webhook' })
 
 /**
  * Handle an inbound webhook from an external platform.
@@ -188,7 +191,7 @@ async function handleSingleIntegrationWebhook(
   const config = (integration.config ?? {}) as Record<string, unknown>
   const webhookSecret = config.webhookSecret as string | undefined
   if (!webhookSecret) {
-    console.error(`[Inbound] No webhook secret for ${integrationType}`)
+    log.error({ integration_type: integrationType }, 'inbound webhook secret not configured')
     return new Response('Webhook not configured', { status: 404 })
   }
 
@@ -219,8 +222,14 @@ async function handlePostStatusUpdate(
   integration: { id: string; principalId: string | null; integrationType: string },
   config: Record<string, unknown>
 ): Promise<Response> {
-  console.log(
-    `[Inbound] ${integration.integrationType} ${result.eventType}: externalId=${result.externalId} → status="${result.externalStatus}"`
+  log.info(
+    {
+      integration_type: integration.integrationType,
+      event_type: result.eventType,
+      external_id: result.externalId,
+      external_status: result.externalStatus,
+    },
+    'inbound status change received'
   )
 
   // Reverse lookup: find the post linked to this external ID
@@ -264,7 +273,10 @@ async function handlePostStatusUpdate(
       `[Inbound] Updated post ${link.postId} status to ${statusId} via ${integration.integrationType}`
     )
   } catch (error) {
-    console.error(`[Inbound] Failed to update post status:`, error)
+    log.error(
+      { err: error, integration_type: integration.integrationType },
+      'inbound status update failed'
+    )
     // Still return 200 to prevent the platform from retrying
   }
 

@@ -25,6 +25,7 @@ import { authClient } from '@/lib/client/auth-client'
 import { resolveIdentifyAction, type SessionSource } from './identify-precedence'
 import type { WidgetMetadata, WidgetEventName, WidgetEventMap } from '@/lib/shared/widget/types'
 import { normalizeLocale, DEFAULT_LOCALE, type SupportedLocale } from '@/lib/shared/i18n'
+import { htmlLangDir } from '@/lib/shared/document-locale'
 import { useIntlSetup } from '@/lib/client/hooks/use-intl-setup'
 import { onIntlError } from '@/lib/client/intl-error'
 
@@ -103,6 +104,16 @@ export function WidgetAuthProvider({
   useEffect(() => {
     setWidgetContextToken(widgetContextToken)
   }, [widgetContextToken])
+
+  // The widget is its own iframe document, and its locale can change at runtime
+  // (the `quackback:locale` postMessage below). Unlike the portal, the root
+  // document can't track that, so the widget owns its own `<html lang>`/`dir`,
+  // formatted the same way the root document does.
+  useEffect(() => {
+    const { lang, dir } = htmlLangDir(locale)
+    document.documentElement.lang = lang
+    document.documentElement.dir = dir
+  }, [locale])
 
   const sessionVersionRef = useRef(0)
   const storeToken = useCallback((token: string) => {

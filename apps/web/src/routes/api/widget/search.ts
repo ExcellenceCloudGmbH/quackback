@@ -6,6 +6,8 @@ import { segmentIdsForPrincipal } from '@/lib/server/domains/segments/segment-me
 import { getWidgetRequestContext } from '@/lib/server/widget/context'
 import { mapDomainErrorToResponse, widgetCorsHeaders } from '@/lib/server/widget/cors'
 
+import { logger } from '@/lib/server/logger'
+const log = logger.child({ component: 'widget-search' })
 export const Route = createFileRoute('/api/widget/search')({
   server: {
     handlers: {
@@ -84,7 +86,7 @@ export const Route = createFileRoute('/api/widget/search')({
         } catch (error) {
           const mapped = mapDomainErrorToResponse(error)
           if (mapped) return mapped
-          console.error('[widget:search] Error:', error)
+          log.error({ err: error }, 'Search failed')
           return Response.json(
             { error: { code: 'SERVER_ERROR', message: 'Search failed' } },
             { status: 500, headers: corsHeaders() }

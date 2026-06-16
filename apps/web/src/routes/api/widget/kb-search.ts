@@ -5,6 +5,8 @@ import { getWidgetRequestContext } from '@/lib/server/widget/context'
 import { mapDomainErrorToResponse, widgetCorsHeaders } from '@/lib/server/widget/cors'
 import type { HelpCenterArticleId, HelpCenterCategoryId } from '@quackback/ids'
 
+import { logger } from '@/lib/server/logger'
+const log = logger.child({ component: 'widget-kb-search' })
 export const Route = createFileRoute('/api/widget/kb-search')({
   server: {
     handlers: {
@@ -59,7 +61,7 @@ export const Route = createFileRoute('/api/widget/kb-search')({
         } catch (error) {
           const mapped = mapDomainErrorToResponse(error)
           if (mapped) return mapped
-          console.error('[widget:kb-search] Error:', error)
+          log.error({ err: error }, 'Search failed')
           return Response.json(
             { error: { code: 'SERVER_ERROR', message: 'Search failed' } },
             { status: 500, headers: corsHeaders() }

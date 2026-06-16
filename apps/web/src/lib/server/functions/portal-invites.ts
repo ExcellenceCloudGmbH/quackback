@@ -24,6 +24,8 @@ import { getSession } from '@/lib/server/auth/session'
 import { safeEmail } from '@/lib/shared/utils/string'
 import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils'
 
+import { logger } from '@/lib/server/logger'
+const log = logger.child({ component: 'portal-invites' })
 /** Portal invite lifetime — 30 days. */
 const PORTAL_INVITE_EXPIRY_MS = 30 * 24 * 60 * 60 * 1000
 
@@ -184,9 +186,7 @@ async function sendOnePortalInvite({
     },
   })
 
-  console.log(
-    `[fn:portal-invites] sendOnePortalInvite: sent id=${inviteId} email=${safeEmail(email)}`
-  )
+  log.info({ invite_id: inviteId, email_masked: safeEmail(email) }, 'portal invite sent')
   return inviteId
 }
 
@@ -209,7 +209,7 @@ type SendPortalInviteResult = {
  * forwarded to the email template.
  */
 export const sendPortalInviteFn = createServerFn({ method: 'POST' })
-  .inputValidator(sendPortalInviteSchema)
+  .validator(sendPortalInviteSchema)
   .handler(async ({ data }): Promise<SendPortalInviteResult> => {
     const auth = await requireAuth({ roles: ['admin'] })
     const headers = getRequestHeaders()
@@ -237,7 +237,7 @@ export const sendPortalInviteFn = createServerFn({ method: 'POST' })
         results.push({ email, ok: true, inviteId })
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Unknown error'
-        console.warn(`[fn:portal-invites] bulk send failed for ${safeEmail(email)}:`, errorMsg)
+        log.warn({ email_masked: safeEmail(email), error: errorMsg }, 'bulk send failed')
         results.push({ email, ok: false, error: errorMsg })
       }
     }
@@ -255,14 +255,14 @@ export const sendPortalInviteFn = createServerFn({ method: 'POST' })
  * (accepted | canceled). Records a `portal.invite.revoked` audit event.
  */
 export const cancelPortalInviteFn = createServerFn({ method: 'POST' })
-  .inputValidator(portalInviteByIdSchema)
+  .validator(portalInviteByIdSchema)
   .handler(async ({ data }) => {
     const auth = await requireAuth({ roles: ['admin'] })
     const inviteId = data.inviteId as InviteId
     const headers = getRequestHeaders()
     const actor = actorFromAuth(auth)
 
-    console.log(`[fn:portal-invites] cancelPortalInviteFn: id=${inviteId}`)
+    log.debug({ invite_id: inviteId }, 'cancel portal invite')
 
     const inv = await db.query.invitation.findFirst({
       where: and(eq(invitation.id, inviteId), eq(invitation.kind, 'portal')),
@@ -292,7 +292,7 @@ export const cancelPortalInviteFn = createServerFn({ method: 'POST' })
       .returning({ id: invitation.id, magicLinkTokens: invitation.magicLinkTokens })
 
     if (updated.length === 0) {
-      console.log(`[fn:portal-invites] cancelPortalInviteFn: no-op (row concurrently mutated)`)
+      log.debug({ invite_id: inviteId }, 'cancel portal invite no-op, row concurrently mutated')
       return { inviteId, status: 'no_op_already_accepted' as const }
     }
 
@@ -312,7 +312,7 @@ export const cancelPortalInviteFn = createServerFn({ method: 'POST' })
       after: { email: inv.email, status: 'canceled' },
     })
 
-    console.log(`[fn:portal-invites] cancelPortalInviteFn: canceled`)
+    log.info({ invite_id: inviteId }, 'portal invite canceled')
     return { inviteId, status: 'canceled' as const }
   })
 
@@ -328,14 +328,14 @@ export const cancelPortalInviteFn = createServerFn({ method: 'POST' })
  * Records a `portal.invite.resent` audit event.
  */
 export const resendPortalInviteFn = createServerFn({ method: 'POST' })
-  .inputValidator(portalInviteByIdSchema)
+  .validator(portalInviteByIdSchema)
   .handler(async ({ data }) => {
     const auth = await requireAuth({ roles: ['admin'] })
     const inviteId = data.inviteId as InviteId
     const headers = getRequestHeaders()
     const actor = actorFromAuth(auth)
 
-    console.log(`[fn:portal-invites] resendPortalInviteFn: id=${inviteId}`)
+    log.debug({ invite_id: inviteId }, 'resend portal invite')
 
     const inv = await db.query.invitation.findFirst({
       where: and(
@@ -385,9 +385,7 @@ export const resendPortalInviteFn = createServerFn({ method: 'POST' })
       // Concurrent state change — invite is no longer pending. Abort
       // before minting a magic link or sending an email — those side
       // effects would otherwise leak a live link for a terminal row.
-      console.warn(
-        `[fn:portal-invites] resendPortalInviteFn: TOCTOU lost — invite ${inviteId} no longer pending`
-      )
+      log.warn({ invite_id: inviteId }, 'resend toctou, invite no longer pending')
       throw new Error('Portal invitation is no longer pending.')
     }
 
@@ -432,8 +430,9 @@ export const resendPortalInviteFn = createServerFn({ method: 'POST' })
       metadata: { email: inv.email },
     })
 
-    console.log(
-      `[fn:portal-invites] resendPortalInviteFn: ${result.sent ? 'resent' : 'regenerated (email not configured)'}`
+    log.info(
+      { invite_id: inviteId, email_sent: result.sent },
+      result.sent ? 'portal invite resent' : 'portal invite regenerated, email not configured'
     )
     return { inviteId, emailSent: result.sent, inviteLink: !result.sent ? inviteLink : undefined }
   })
@@ -451,7 +450,7 @@ export const resendPortalInviteFn = createServerFn({ method: 'POST' })
 export const fetchPortalInvitesFn = createServerFn({ method: 'GET' }).handler(async () => {
   await requireAuth({ roles: ['admin'] })
 
-  console.log(`[fn:portal-invites] fetchPortalInvitesFn`)
+  log.debug('fetching portal invites')
 
   const rows = await db.query.invitation.findMany({
     where: and(
@@ -495,7 +494,7 @@ export const fetchPortalInvitesFn = createServerFn({ method: 'GET' }).handler(as
  * Records a `portal.invite.link_minted` audit event on success.
  */
 export const getPortalInviteLinkFn = createServerFn({ method: 'POST' })
-  .inputValidator(portalInviteByIdSchema)
+  .validator(portalInviteByIdSchema)
   .handler(async ({ data }) => {
     const auth = await requireAuth({ roles: ['admin'] })
     const headers = getRequestHeaders()
@@ -573,12 +572,12 @@ export type AcceptPortalInviteResult =
  * Throws on missing session (unauthenticated) or invite not found.
  */
 export const acceptPortalInviteFn = createServerFn({ method: 'POST' })
-  .inputValidator(portalInviteByIdSchema)
+  .validator(portalInviteByIdSchema)
   .handler(async ({ data }): Promise<AcceptPortalInviteResult> => {
     const inviteId = data.inviteId as InviteId
     const headers = getRequestHeaders()
 
-    console.log(`[fn:portal-invites] acceptPortalInviteFn: id=${inviteId}`)
+    log.debug({ invite_id: inviteId }, 'accept portal invite')
 
     // Portal invitees may not have a principal record yet — use getSession()
     // directly instead of requireAuth() to avoid the principal existence check.
@@ -604,9 +603,7 @@ export const acceptPortalInviteFn = createServerFn({ method: 'POST' })
     // caller signed in as the wrong account always gets `mismatch` regardless
     // of whether the invite has already been accepted.
     if (inv.email.toLowerCase() !== sessionEmail) {
-      console.warn(
-        `[fn:portal-invites] acceptPortalInviteFn: email mismatch invite=${safeEmail(inv.email)} session=${safeEmail(sessionEmail)}`
-      )
+      log.warn({ invite_id: inviteId }, 'accept portal invite email mismatch')
       return { status: 'mismatch' }
     }
 
@@ -618,7 +615,7 @@ export const acceptPortalInviteFn = createServerFn({ method: 'POST' })
     // whose emailVerified flag was cleared (OAuth reconnection, etc.) still
     // sees the accepted state instead of being bounced to "verify email".
     if (inv.status === 'accepted') {
-      console.log(`[fn:portal-invites] acceptPortalInviteFn: already accepted`)
+      log.debug({ invite_id: inviteId }, 'portal invite already accepted')
       return { status: 'accepted', alreadyAccepted: true }
     }
 
@@ -631,19 +628,17 @@ export const acceptPortalInviteFn = createServerFn({ method: 'POST' })
     //       the audit log and marking the invite consumed before the real
     //       owner clicks the link.
     if (!session.user.emailVerified) {
-      console.warn(
-        `[fn:portal-invites] acceptPortalInviteFn: email not verified session=${safeEmail(sessionEmail)}`
-      )
+      log.warn({ invite_id: inviteId }, 'accept portal invite, email not verified')
       return { status: 'email_not_verified' }
     }
 
     if (inv.status === 'canceled') {
-      console.log(`[fn:portal-invites] acceptPortalInviteFn: invite is canceled`)
+      log.debug({ invite_id: inviteId }, 'portal invite is canceled')
       return { status: 'canceled' }
     }
 
     if (new Date(inv.expiresAt) < new Date()) {
-      console.log(`[fn:portal-invites] acceptPortalInviteFn: invite is expired`)
+      log.debug({ invite_id: inviteId }, 'portal invite is expired')
       return { status: 'expired' }
     }
 
@@ -680,8 +675,13 @@ export const acceptPortalInviteFn = createServerFn({ method: 'POST' })
         // Vanishingly rare (would require a hard delete) — treat as not-found.
         throw new Error('PORTAL_INVITE_NOT_FOUND')
       }
-      console.log(
-        `[fn:portal-invites] acceptPortalInviteFn: TOCTOU lost — terminal state status=${fresh.status} expired=${new Date(fresh.expiresAt) < new Date()}`
+      log.debug(
+        {
+          invite_id: inviteId,
+          status: fresh.status,
+          expired: new Date(fresh.expiresAt) < new Date(),
+        },
+        'accept portal invite toctou, terminal state'
       )
       if (fresh.status === 'accepted') {
         return { status: 'accepted', alreadyAccepted: true }
@@ -722,12 +722,9 @@ export const acceptPortalInviteFn = createServerFn({ method: 'POST' })
       const { revokeMagicLinkTokens } = await import('@/lib/server/auth/magic-link-mint')
       await revokeMagicLinkTokens(updated[0].magicLinkTokens)
     } catch (revokeError) {
-      console.error(
-        `[fn:portal-invites] ⚠️ acceptPortalInviteFn: token revoke failed:`,
-        revokeError
-      )
+      log.error({ err: revokeError }, 'portal invite token revoke failed')
     }
 
-    console.log(`[fn:portal-invites] acceptPortalInviteFn: accepted id=${inviteId}`)
+    log.info({ invite_id: inviteId }, 'portal invite accepted')
     return { status: 'accepted', alreadyAccepted: false }
   })

@@ -14,8 +14,11 @@ import type { WebhookTarget, WebhookConfig } from '../integrations/webhook/const
 import type { WebhookId } from '@quackback/ids'
 import { isRetryableError } from '../hook-utils'
 import { claimHookDelivery } from '../hook-idempotency'
+import { logger } from '@/lib/server/logger'
 
 export type { WebhookTarget, WebhookConfig }
+
+const log = logger.child({ component: 'webhook' })
 
 const TIMEOUT_MS = 5_000 // 5s timeout for single attempt
 const USER_AGENT = 'Quackback-Webhook/1.0 (+https://quackback.io)'
@@ -102,11 +105,11 @@ export const webhookHook: HookHandler = {
     // deliveries on every rolling restart that interrupts a worker.
     const claimed = await claimHookDelivery(ctx?.jobId, 'webhook')
     if (!claimed) {
-      console.log(`[Webhook] Skipping duplicate delivery for job ${ctx?.jobId} → ${url}`)
+      log.debug({ job_id: ctx?.jobId, url }, 'skipping duplicate delivery')
       return { success: true }
     }
 
-    console.log(`[Webhook] Processing ${event.type} → ${url}`)
+    log.debug({ event_type: event.type, url }, 'processing webhook')
 
     const eventId = `evt_${crypto.randomUUID().replace(/-/g, '')}`
     const timestamp = Math.floor(Date.now() / 1000)
@@ -117,7 +120,7 @@ export const webhookHook: HookHandler = {
     const parsedUrl = new URL(url)
     const ipCheck = await resolveAndValidateIP(parsedUrl.hostname)
     if (!ipCheck.valid) {
-      console.error(`[Webhook] ❌ SSRF blocked: ${ipCheck.error}`)
+      log.error(`[Webhook] ❌ SSRF blocked: ${ipCheck.error}`)
       void recordAttempt({
         webhookId,
         eventId,
@@ -186,7 +189,7 @@ export const webhookHook: HookHandler = {
       }
 
       if (response.ok) {
-        console.log(`[Webhook] ✅ Delivered to ${url}`)
+        log.info({ event_type: event.type, url }, 'webhook delivered')
         await updateWebhookSuccess(webhookId)
         void recordAttempt({
           webhookId,
@@ -208,7 +211,7 @@ export const webhookHook: HookHandler = {
 
       // Non-2xx response
       const error = `HTTP ${response.status}`
-      console.log(`[Webhook] ❌ Failed: ${error}`)
+      log.warn({ url, status: response.status }, 'webhook delivery failed')
       const retryable = response.status >= 500 || response.status === 429
       void recordAttempt({
         webhookId,
@@ -234,7 +237,7 @@ export const webhookHook: HookHandler = {
         errorMsg = error.name === 'AbortError' ? 'Request timeout' : error.message
       }
 
-      console.error(`[Webhook] ❌ Failed: ${errorMsg}`)
+      log.error({ err: error, url }, 'webhook delivery failed')
       const retryable = isRetryableError(error)
       void recordAttempt({
         webhookId,
@@ -295,6 +298,6 @@ async function updateWebhookSuccess(webhookId: WebhookId): Promise<void> {
       })
       .where(eq(webhooks.id, webhookId))
   } catch (error) {
-    console.error('[Webhook] Failed to update success status:', error)
+    log.error({ err: error, webhook_id: webhookId }, 'failed to update webhook success status')
   }
 }
