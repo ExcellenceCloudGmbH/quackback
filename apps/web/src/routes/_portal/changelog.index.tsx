@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, redirect } from '@tanstack/react-router'
 import { useIntl } from 'react-intl'
 import { RssIcon } from '@heroicons/react/24/outline'
 import { Button } from '@/components/ui/button'
@@ -6,6 +6,14 @@ import { PageHeader } from '@/components/shared/page-header'
 import { ChangelogListPublic } from '@/components/portal/changelog'
 
 export const Route = createFileRoute('/_portal/changelog/')({
+  beforeLoad: async ({ context }) => {
+    // Check if changelog tab is enabled for the user
+    const parentData = context as any
+    const enabledTabs = parentData.enabledTabs || {}
+    if (enabledTabs.changelog === false) {
+      throw redirect({ to: '/' })
+    }
+  },
   loader: async ({ context }) => {
     return {
       workspaceName: context.settings?.name ?? 'Quackback',

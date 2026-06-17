@@ -22,6 +22,14 @@ function statusToCategory(s: StatusFilterValue): PortalStatusCategory | undefine
 export const Route = createFileRoute('/_portal/tickets/')({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => ({ status: search.status }),
+  beforeLoad: async ({ context }) => {
+    // Check if myTickets tab is enabled for the user
+    const parentData = context as any
+    const enabledTabs = parentData.enabledTabs || {}
+    if (enabledTabs.myTickets === false) {
+      throw redirect({ to: '/' })
+    }
+  },
   loader: async ({ context, deps }) => {
     if (!context.session?.user) {
       throw redirect({ to: '/auth/login', search: { next: '/tickets' } as never })

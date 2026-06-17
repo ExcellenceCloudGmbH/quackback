@@ -848,6 +848,13 @@
       "when": 1783036800000,
       "tag": "0120_widget_ticket_requester_owned_scope",
       "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1783123200000,
+      "tag": "0121_portal_tab_config",
+      "breakpoints": true
     }
   ]
 }

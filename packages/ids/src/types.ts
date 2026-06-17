@@ -327,6 +327,9 @@ export type TicketSubscriptionId = TypeId<'tkt_sub'>
 /** Webhook delivery attempt ID - e.g., wh_deliv_01h455vb4pex5vsknk084sn02q */
 export type WebhookDeliveryId = TypeId<'wh_deliv'>
 
+/** Portal tab segment override ID - e.g., portal_tab_override_01h455vb4pex5vsknk084sn02q */
+export type PortalTabOverrideId = TypeId<'portal_tab_override'>
+
 // ============================================
 // Billing Entity IDs
 // ============================================
@@ -455,6 +458,9 @@ export interface EntityIdMap {
   // Ticketing — Phase 7
   ticket_subscription: TicketSubscriptionId
   webhook_delivery: WebhookDeliveryId
+
+  // Portal tab configuration
+  portal_tab_override: PortalTabOverrideId
 }
 
 /**

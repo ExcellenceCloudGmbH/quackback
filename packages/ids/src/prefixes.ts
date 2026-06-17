@@ -66,6 +66,7 @@ export const ID_PREFIXES = {
 
   // Users
   segment: 'segment',
+  portal_tab_override: 'portal_tab_override',
   user_attr: 'user_attr',
 
   // AI

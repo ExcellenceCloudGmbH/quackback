@@ -227,6 +227,8 @@ export {
   segmentsRelations,
   userSegments,
   userSegmentsRelations,
+  portalTabSegmentOverrides,
+  portalTabSegmentOverridesRelations,
   type SegmentRules,
   type SegmentCondition,
   type SegmentRuleOperator,

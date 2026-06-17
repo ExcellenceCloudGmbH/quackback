@@ -49,6 +49,15 @@ interface PortalHeaderProps {
   showThemeToggle?: boolean
   /** Server-evaluated feature access for the current visitor. */
   supportAccessGranted?: boolean
+  /** Portal tab visibility configuration */
+  enabledTabs?: {
+    feedback?: boolean
+    roadmap?: boolean
+    changelog?: boolean
+    myTickets?: boolean
+    helpCenter?: boolean
+    support?: boolean
+  }
 }
 
 export function PortalHeader({
@@ -58,6 +67,7 @@ export function PortalHeader({
   initialUserData,
   showThemeToggle = true,
   supportAccessGranted = false,
+  enabledTabs = {},
 }: PortalHeaderProps) {
   const intl = useIntl()
   const router = useRouter()
@@ -72,7 +82,12 @@ export function PortalHeader({
     !!settings?.portalConfig?.support?.enabled &&
     supportAccessGranted
   const onHelpPages = pathname === '/hc' || pathname.startsWith('/hc/')
-  const navItems = buildNavItems({ helpCenterEnabled, isSignedIn: !!session?.user, supportEnabled })
+  const navItems = buildNavItems({
+    helpCenterEnabled,
+    isSignedIn: !!session?.user,
+    supportEnabled,
+    enabledTabs,
+  })
 
   // Hide Log in / Sign up when no portal sign-in surface is usable.
   // Team members can still reach /admin/login directly.

@@ -46,8 +46,8 @@ const DEFAULT_JOB_OPTS = {
 }
 
 let initPromise: Promise<{
-  queue: Queue<HookJobData>
-  worker: Worker<HookJobData>
+  queue: Queue
+  worker: Worker
 }> | null = null
 
 /**
@@ -55,14 +55,16 @@ let initPromise: Promise<{
  * Uses a Promise to guard against concurrent first-call race conditions.
  * Resets on failure so transient errors don't permanently break the queue.
  */
-function ensureQueue(): Promise<Queue<HookJobData>> {
+function ensureQueue(): Promise<Queue> {
   if (!initPromise) {
     initPromise = initializeQueue().catch((err) => {
       initPromise = null
       throw err
     })
   }
-  return initPromise.then(({ queue }) => queue)
+  const promise = initPromise
+  if (!promise) throw new Error('Event queue failed to initialize')
+  return promise.then(({ queue }) => queue)
 }
 
 async function initializeQueue() {
@@ -71,15 +73,15 @@ async function initializeQueue() {
   // BullMQ duplicates this client internally for the Worker's blocking
   // commands (BLMOVE), so a single shared connection is safe and avoids
   // opening N TCP sockets per queue.
-  const queue = new Queue<HookJobData>(QUEUE_NAME, {
+  const queue = new Queue(QUEUE_NAME, {
     connection,
     defaultJobOptions: DEFAULT_JOB_OPTS,
   })
 
-  const worker = new Worker<HookJobData>(
+  const worker = new Worker(
     QUEUE_NAME,
     async (job) => {
-      const { hookType, event, target, config: hookConfig } = job.data
+      const { hookType, event, target, config: hookConfig } = job.data as HookJobData
 
       // Handle delayed changelog publish sentinel
       if (hookType === '__changelog_publish__') {

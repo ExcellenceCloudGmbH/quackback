@@ -53,6 +53,11 @@ export interface WidgetEventMap {
     /** True when the ticket was already in an open category; no transition occurred. */
     alreadyOpen: boolean
   }
+  /** Fires when the widget ticket description is updated in-place. */
+  'ticket:description_updated': {
+    ticketId: string
+    updatedAt: string
+  }
 }
 
 export type WidgetEventName = keyof WidgetEventMap

@@ -1016,3 +1016,78 @@ export const updateModerationDefaultFn = createServerFn({ method: 'POST' })
     })
     return { moderationDefault: updated.moderationDefault }
   })
+
+// ============================================
+// Portal Tab Configuration
+// ============================================
+
+export const getPortalTabConfigFn = createServerFn({ method: 'GET' }).handler(async () => {
+  log.debug('fetch portal tab config')
+  try {
+    await requireAuth({ roles: ['admin'] })
+    const { getOrgPortalTabConfig } = await import('@/lib/server/domains/portal')
+    return await getOrgPortalTabConfig()
+  } catch (error) {
+    log.error({ error }, 'fetch portal tab config failed')
+    throw error
+  }
+})
+
+export const updatePortalTabConfigFn = createServerFn({ method: 'POST' })
+  .validator((data: unknown) => {
+    const schema = z.object({
+      config: z.record(z.string(), z.boolean().optional()),
+    })
+    return schema.parse(data)
+  })
+  .handler(async ({ data }) => {
+    log.info('update portal tab config')
+    try {
+      const auth = await requireAuth({ roles: ['admin'] })
+      if (!isAdmin(auth.principal.role)) {
+        throw new ForbiddenError('FORBIDDEN', 'Admin only')
+      }
+      const { setOrgPortalTabConfig } = await import('@/lib/server/domains/portal')
+      await setOrgPortalTabConfig(data.config)
+      await recordAuditEvent({
+        event: 'portal_tabs.config_changed',
+        actor: actorFromAuth(auth),
+        target: { type: 'settings', id: 'portal-tab-config' },
+        metadata: { portalTabConfig: data.config },
+      })
+      return data.config
+    } catch (error) {
+      log.error({ error }, 'update portal tab config failed')
+      throw error
+    }
+  })
+
+export const updateSegmentTabOverridesFn = createServerFn({ method: 'POST' })
+  .validator((data: unknown) => {
+    const schema = z.object({
+      segmentId: z.string(),
+      overrides: z.record(z.string(), z.boolean().optional()),
+    })
+    return schema.parse(data)
+  })
+  .handler(async ({ data }) => {
+    log.info({ segmentId: data.segmentId }, 'update segment tab overrides')
+    try {
+      const auth = await requireAuth({ roles: ['admin'] })
+      if (!isAdmin(auth.principal.role)) {
+        throw new ForbiddenError('FORBIDDEN', 'Admin only')
+      }
+      const { setSegmentTabOverrides } = await import('@/lib/server/domains/portal')
+      await setSegmentTabOverrides(data.segmentId as SegmentId, data.overrides)
+      await recordAuditEvent({
+        event: 'portal_tabs.segment_override_changed',
+        actor: actorFromAuth(auth),
+        target: { type: 'segment', id: data.segmentId },
+        metadata: { tabOverrides: data.overrides },
+      })
+      return data.overrides
+    } catch (error) {
+      log.error({ error }, 'update segment tab overrides failed')
+      throw error
+    }
+  })

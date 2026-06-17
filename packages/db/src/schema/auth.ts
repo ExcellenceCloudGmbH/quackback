@@ -326,6 +326,13 @@ export const settings = pgTable('settings', {
    * lost-update on concurrent writes.
    */
   authConfigVersion: integer('auth_config_version').notNull().default(0),
+  /**
+   * Portal tab visibility configuration (JSON)
+   * Structure: { feedback, roadmap, changelog, myTickets, helpCenter, support }
+   * Each field is a boolean indicating if the tab is visible.
+   * Null means all tabs are enabled (default).
+   */
+  portalTabConfig: text('portal_tab_config'),
 })
 
 /**

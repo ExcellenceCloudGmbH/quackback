@@ -16,6 +16,8 @@ import {
 } from '@/lib/server/functions/portal-access'
 import { getSupportSurfaceAccessFn } from '@/lib/server/functions/chat'
 import { redactSettingsForClient } from '@/lib/shared/redact-portal-config'
+import { getEffectiveTabConfigForUser } from '@/lib/server/domains/portal'
+import type { PortalTabConfig } from '@/lib/server/domains/portal'
 
 export const Route = createFileRoute('/_portal')({
   loader: async ({ context }) => {
@@ -120,6 +122,11 @@ export const Route = createFileRoute('/_portal')({
     const { locale, messages } = await loadPortalIntl()
     const supportAccess = await getSupportSurfaceAccessFn({ data: { surface: 'portal' } })
 
+    // Fetch effective portal tab configuration for the current user
+    const enabledTabs: PortalTabConfig = session?.user
+      ? await getEffectiveTabConfigForUser(session.user.id as any)
+      : {}
+
     return {
       org: redactSettingsForClient(org),
       baseUrl: baseUrl ?? '',
@@ -136,6 +143,7 @@ export const Route = createFileRoute('/_portal')({
       locale,
       messages,
       supportAccessGranted: supportAccess.granted,
+      enabledTabs,
     }
   },
   head: ({ loaderData }) => {
@@ -210,6 +218,7 @@ function PortalLayout() {
     locale,
     messages,
     supportAccessGranted,
+    enabledTabs,
   } = loaderData
 
   return (
@@ -227,6 +236,7 @@ function PortalLayout() {
             initialUserData={initialUserData}
             showThemeToggle={themeMode === 'user'}
             supportAccessGranted={supportAccessGranted}
+            enabledTabs={enabledTabs}
           />
           <main className="flex-1 w-full flex flex-col">
             <Outlet />

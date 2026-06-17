@@ -61,6 +61,8 @@ export type AuditEventType =
   | 'moderation.default.changed'
   | 'portal.visibility.changed'
   | 'portal.allowed_domains.changed'
+  | 'portal_tabs.config_changed'
+  | 'portal_tabs.segment_override_changed'
   | 'post.moderation.approved'
   | 'post.moderation.rejected'
   | 'post.moderation.held'

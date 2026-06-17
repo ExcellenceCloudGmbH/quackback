@@ -642,11 +642,6 @@ function formatDiffValue(field: string, value: unknown): string {
   return clipWithNotice(JSON.stringify(value), 300)
 }
 
-function formatQuote(value: string, truncated?: boolean): string {
-  const clipped = clip(value.replace(/\s+/g, ' ').trim(), 500)
-  return truncated && !clipped.endsWith('...') ? `${clipped}...` : clipped
-}
-
 function formatThreadBody(thread: {
   bodyText?: string | null
   bodyTextPreview?: string | null
@@ -677,11 +672,6 @@ function formatBytes(bytes: number): string {
     unitIndex += 1
   }
   return `${size >= 10 || unitIndex === 0 ? Math.round(size) : size.toFixed(1)} ${units[unitIndex]}`
-}
-
-function clip(value: string, maxLength: number): string {
-  if (value.length <= maxLength) return value
-  return `${value.slice(0, maxLength - 3).trimEnd()}...`
 }
 
 function clipWithNotice(value: string, maxLength: number): string {

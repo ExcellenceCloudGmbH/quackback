@@ -568,6 +568,33 @@ export const adminQueries = {
       // that the next interaction reflects fresh writes.
       staleTime: 30 * 1000,
     }),
+
+  /**
+   * Portal tab visibility configuration (org-level defaults)
+   */
+  portalTabConfig: () =>
+    queryOptions({
+      queryKey: ['admin', 'portalTabConfig'],
+      queryFn: async () => {
+        const { getPortalTabConfigFn } = await import('@/lib/server/functions/settings')
+        return ensureData(await getPortalTabConfigFn(), 'portalTabConfig')
+      },
+      staleTime: 5 * 60 * 1000, // 5min - reference data, rarely changes
+    }),
+
+  /**
+   * List all segments for override configuration
+   */
+  segmentList: () =>
+    queryOptions({
+      queryKey: ['admin', 'segments', 'list'],
+      queryFn: async () => {
+        const { listSegmentsFn } = await import('@/lib/server/functions/segments')
+        const data = ensureData(await listSegmentsFn(), 'segments')
+        return data
+      },
+      staleTime: 5 * 60 * 1000, // 5min - reference data
+    }),
 }
 
 // Export filter types for external use

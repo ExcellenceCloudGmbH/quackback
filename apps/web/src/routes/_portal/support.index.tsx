@@ -11,7 +11,14 @@ import { getMyConversationsFn, getSupportSurfaceAccessFn } from '@/lib/server/fu
 import { PORTAL_MY_CONVERSATIONS_QUERY_KEY } from '@/lib/client/queries/portal-support'
 
 export const Route = createFileRoute('/_portal/support/')({
-  beforeLoad: async () => {
+  beforeLoad: async ({ context }) => {
+    // Check if support tab is enabled for the user
+    const parentData = context as any
+    const enabledTabs = parentData.enabledTabs || {}
+    if (enabledTabs.support === false) {
+      throw redirect({ to: '/' })
+    }
+
     const access = await getSupportSurfaceAccessFn({ data: { surface: 'portal' } })
     if (!access.granted) throw redirect({ to: '/' })
   },

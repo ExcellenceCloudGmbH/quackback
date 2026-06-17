@@ -1028,6 +1028,7 @@ export const sendInvitationFn = createServerFn({ method: 'POST' })
       // Mint the magic link before the insert so the row records its token in
       // its token set (cancel revokes every token in the set). invitationId is
       // fixed above, so the callback path is already known.
+      const headers = getRequestHeaders()
       const portalUrl = resolvePublicBaseUrl(headers)
       const callbackURL = `/complete-signup/${invitationId}`
       const { url: inviteLink, token: magicLinkToken } = await generateInvitationMagicLink(
@@ -1188,6 +1189,7 @@ export const resendInvitationFn = createServerFn({ method: 'POST' })
       // old and new links work until the invite is accepted, cancelled, or
       // expires. The token is recorded the moment it's minted, so even if the
       // send below fails or the worker restarts, cancellation still revokes it.
+      const headers = getRequestHeaders()
       const portalUrl = resolvePublicBaseUrl(headers)
       const callbackURL = `/complete-signup/${invitationId}`
       const { url: inviteLink, token: magicLinkToken } = await generateInvitationMagicLink(
