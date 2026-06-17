@@ -201,6 +201,7 @@ export async function addThread(input: AddThreadInput): Promise<TicketThread> {
       input.sharedWithTeamId ?? null,
       {
         ...threadPreview(bodyText),
+        bodyText,
         authorPrincipalId: input.principalId,
         isFromRequester,
         createdAt: created.createdAt ?? now,
@@ -276,6 +277,7 @@ export async function editThread(input: EditThreadInput): Promise<TicketThread> 
         (updated.sharedWithTeamId as TeamId | null) ?? null,
         {
           ...threadPreview(bodyText),
+          bodyText,
           authorPrincipalId: (updated.principalId as PrincipalId | null) ?? null,
           isFromRequester,
           createdAt: updated.createdAt,
@@ -327,6 +329,14 @@ export async function softDeleteThread(
         updated.audience,
         (updated.sharedWithTeamId as TeamId | null) ?? null,
         actorPrincipalId,
+        {
+          ...threadPreview(existing.bodyText ?? ''),
+          bodyText: existing.bodyText ?? '',
+          authorPrincipalId: (existing.principalId as PrincipalId | null) ?? null,
+          isFromRequester:
+            existing.principalId !== null && existing.principalId === ticket.requesterPrincipalId,
+          createdAt: existing.createdAt,
+        },
         { syncSourceIntegrationId }
       )
     }

@@ -370,6 +370,7 @@ export async function dispatchTicketThreadAdded(
   sharedWithTeamId: string | null,
   thread?: {
     bodyTextPreview: string
+    bodyText?: string
     bodyTextTruncated: boolean
     authorPrincipalId: string | null
     isFromRequester: boolean
@@ -382,6 +383,7 @@ export async function dispatchTicketThreadAdded(
         id: threadId,
         audience,
         bodyTextPreview: thread.bodyTextPreview,
+        bodyText: thread.bodyText,
         bodyTextTruncated: thread.bodyTextTruncated,
         authorPrincipalId: thread.authorPrincipalId,
         isFromRequester: thread.isFromRequester,
@@ -412,6 +414,7 @@ export async function dispatchTicketThreadUpdated(
   sharedWithTeamId: string | null,
   thread: {
     bodyTextPreview: string
+    bodyText?: string
     bodyTextTruncated: boolean
     authorPrincipalId: string | null
     isFromRequester: boolean
@@ -433,6 +436,7 @@ export async function dispatchTicketThreadUpdated(
         id: threadId,
         audience,
         bodyTextPreview: thread.bodyTextPreview,
+        bodyText: thread.bodyText,
         bodyTextTruncated: thread.bodyTextTruncated,
         authorPrincipalId: thread.authorPrincipalId,
         isFromRequester: thread.isFromRequester,
@@ -457,8 +461,30 @@ export async function dispatchTicketThreadDeleted(
   audience: 'public' | 'internal' | 'shared_team',
   sharedWithTeamId: string | null,
   deletedByPrincipalId: string | null,
+  thread?: {
+    bodyTextPreview: string
+    bodyText?: string
+    bodyTextTruncated: boolean
+    authorPrincipalId: string | null
+    isFromRequester: boolean
+    createdAt: Date | string
+  },
   options?: TicketDispatchOptions
 ): Promise<void> {
+  const threadSnapshot = thread
+    ? {
+        id: threadId,
+        audience,
+        bodyTextPreview: thread.bodyTextPreview,
+        bodyText: thread.bodyText,
+        bodyTextTruncated: thread.bodyTextTruncated,
+        authorPrincipalId: thread.authorPrincipalId,
+        isFromRequester: thread.isFromRequester,
+        sharedWithTeamId,
+        createdAt:
+          typeof thread.createdAt === 'string' ? thread.createdAt : thread.createdAt.toISOString(),
+      }
+    : undefined
   await dispatchEvent({
     ...eventEnvelope(actor),
     ...sourceFields(options),
@@ -469,6 +495,7 @@ export async function dispatchTicketThreadDeleted(
       audience,
       sharedWithTeamId,
       deletedByPrincipalId,
+      thread: threadSnapshot,
     },
   })
 }

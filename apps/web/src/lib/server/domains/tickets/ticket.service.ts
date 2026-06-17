@@ -380,15 +380,15 @@ export interface UpdateTicketInput {
   inboxId?: InboxId | null
   /** Set by integration inbound handlers to prevent echo loops. */
   syncSourceIntegrationId?: string | null
-  /** Allow single-field description edits to merge over unrelated freshness drift. */
-  allowStaleDescriptionUpdate?: boolean
+  /** Allow field-level ticket edits to merge over unrelated freshness drift. */
+  allowStaleFieldUpdate?: boolean
 }
 
 export async function updateTicket(ticketId: TicketId, input: UpdateTicketInput): Promise<Ticket> {
   let existing = await getTicket(ticketId)
   if (!existing) throw new NotFoundError('TICKET_NOT_FOUND', `ticket ${ticketId} not found`)
   const stale = existing.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()
-  if (stale && !canMergeStaleDescriptionUpdate(input)) {
+  if (stale && !canMergeStaleFieldUpdate(input)) {
     ensureFresh(existing.updatedAt, input.expectedUpdatedAt)
   }
 
@@ -453,12 +453,12 @@ export async function updateTicket(ticketId: TicketId, input: UpdateTicketInput)
   if (Object.keys(patch).length === 0) return existing
 
   patch.lastActivityAt = new Date()
-  const mergeStaleDescription = canMergeStaleDescriptionUpdate(input)
+  const mergeStaleFieldUpdate = canMergeStaleFieldUpdate(input)
   const [updated] = await db
     .update(tickets)
     .set(patch)
     .where(
-      mergeStaleDescription
+      mergeStaleFieldUpdate
         ? and(eq(tickets.id, ticketId), isNull(tickets.deletedAt))
         : and(eq(tickets.id, ticketId), eq(tickets.updatedAt, existing.updatedAt))
     )
@@ -821,18 +821,19 @@ function ensureFresh(actualUpdatedAt: Date, expectedUpdatedAt: Date): void {
   }
 }
 
-function canMergeStaleDescriptionUpdate(input: UpdateTicketInput): boolean {
-  if (!input.allowStaleDescriptionUpdate) return false
-  return (
-    input.subject === undefined &&
-    input.priority === undefined &&
-    input.visibilityScope === undefined &&
-    input.primaryTeamId === undefined &&
-    input.organizationId === undefined &&
-    input.requesterContactId === undefined &&
-    input.inboxId === undefined &&
-    (input.descriptionJson !== undefined || input.descriptionText !== undefined)
-  )
+function canMergeStaleFieldUpdate(input: UpdateTicketInput): boolean {
+  if (!input.allowStaleFieldUpdate) return false
+  return [
+    input.subject,
+    input.descriptionJson,
+    input.descriptionText,
+    input.priority,
+    input.visibilityScope,
+    input.primaryTeamId,
+    input.organizationId,
+    input.requesterContactId,
+    input.inboxId,
+  ].some((value) => value !== undefined)
 }
 
 /** Convert a `{ field: { from, to } }` shaped diff to the AuditDiff shape. */

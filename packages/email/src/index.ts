@@ -781,6 +781,18 @@ interface SendTicketEventParams {
   to: string
   title: string
   body?: string
+  summary?: string
+  eventLabel?: string
+  actorName?: string
+  occurredAt?: string
+  details?: Array<{ label: string; value: string }>
+  contentSections?: Array<{
+    title: string
+    body?: string
+    rows?: Array<{ label: string; value: string }>
+    tone?: 'default' | 'quote' | 'warning'
+  }>
+  quote?: string
   ticketSubject: string
   ticketUrl: string
   workspaceName: string
@@ -801,6 +813,13 @@ export async function sendTicketEventEmail(params: SendTicketEventParams): Promi
     to,
     title,
     body,
+    summary,
+    eventLabel,
+    actorName,
+    occurredAt,
+    details,
+    contentSections,
+    quote,
     ticketSubject,
     ticketUrl,
     workspaceName,
@@ -816,7 +835,21 @@ export async function sendTicketEventEmail(params: SendTicketEventParams): Promi
     console.log('├────────────────────────────────────────────────────────────')
     console.log(`│ To: ${to}`)
     console.log(`│ Title: ${title}`)
-    if (body) console.log(`│ Body: ${body}`)
+    if (eventLabel) console.log(`│ Event: ${eventLabel}`)
+    if (actorName) console.log(`│ Actor: ${actorName}`)
+    if (occurredAt) console.log(`│ Occurred: ${occurredAt}`)
+    if (summary ?? body) console.log(`│ Summary: ${summary ?? body}`)
+    if (details?.length) {
+      for (const detail of details) console.log(`│ ${detail.label}: ${detail.value}`)
+    }
+    if (contentSections?.length) {
+      for (const section of contentSections) {
+        console.log(`│ ${section.title}`)
+        if (section.body) console.log(`│   ${section.body}`)
+        for (const row of section.rows ?? []) console.log(`│   ${row.label}: ${row.value}`)
+      }
+    }
+    if (quote) console.log(`│ Quote: ${quote}`)
     console.log(`│ Ticket: ${ticketSubject}`)
     console.log(`│ URL: ${ticketUrl}`)
     console.log(`│ Unsubscribe: ${unsubscribeUrl}`)
@@ -830,6 +863,13 @@ export async function sendTicketEventEmail(params: SendTicketEventParams): Promi
     react: TicketEventEmail({
       title,
       body,
+      summary,
+      eventLabel,
+      actorName,
+      occurredAt,
+      details,
+      contentSections,
+      quote,
       ticketSubject,
       ticketUrl,
       organizationName: workspaceName,

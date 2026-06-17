@@ -742,7 +742,7 @@ function WidgetApplicationsSection({
                 : undefined,
           },
           supportConfig: {
-            ticketListScope: 'same_profile_allowed_inboxes',
+            ticketListScope: 'requester_owned',
             categories,
           },
         },

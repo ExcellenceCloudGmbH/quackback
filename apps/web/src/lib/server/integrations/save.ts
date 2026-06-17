@@ -8,6 +8,7 @@ import { getIntegration } from './index'
 import type { IntegrationId, PrincipalId } from '@quackback/ids'
 import { createServicePrincipal } from '@/lib/server/domains/principals/principal.service'
 import { toIsoString } from '@/lib/shared/utils'
+import { cacheDel, CACHE_KEYS } from '@/lib/server/redis'
 
 export interface SaveIntegrationParams {
   principalId: PrincipalId
@@ -137,6 +138,8 @@ export async function saveIntegration(
       .returning({ id: integrations.id })
     integrationId = row.id as IntegrationId
   }
+
+  await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
 
   // Run integration-specific post-connect hook (e.g. provision feedback source)
   const definition = getIntegration(integrationType)

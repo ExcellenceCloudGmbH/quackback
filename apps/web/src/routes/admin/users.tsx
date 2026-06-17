@@ -34,7 +34,7 @@ const searchSchema = z.object({
 
 type SearchParams = z.infer<typeof searchSchema>
 
-function parseSearchToQueryParams(deps: SearchParams) {
+export function parseSearchToQueryParams(deps: SearchParams) {
   let verified: boolean | undefined
   if (deps.verified === 'true') verified = true
   else if (deps.verified === 'false') verified = false

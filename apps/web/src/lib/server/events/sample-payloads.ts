@@ -61,7 +61,7 @@ const SAMPLE_TICKET_REF = {
   resolvedAt: null,
   reopenedAt: null,
   closedAt: null,
-  ticketUrl: 'https://app.example.test/admin/tickets/ticket_sample',
+  ticketUrl: 'https://app.example.test/tickets/ticket_sample',
 }
 
 const SAMPLE_INBOX_REF = {

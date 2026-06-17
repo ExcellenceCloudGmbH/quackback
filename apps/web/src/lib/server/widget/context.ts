@@ -380,7 +380,7 @@ export async function resolveWidgetContext(
     applicationKey,
     environment: profile.environment,
     allowedInboxIds: allowedInboxIds(supportConfig),
-    ticketListScope: supportConfig.ticketListScope ?? 'same_profile_allowed_inboxes',
+    ticketListScope: supportConfig.ticketListScope ?? 'requester_owned',
   })
 
   return {

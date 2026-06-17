@@ -15,6 +15,7 @@ import { tanstackStartCookies } from 'better-auth/tanstack-start'
 import { generateId } from '@quackback/ids'
 import { config } from '@/lib/server/config'
 import { logger } from '@/lib/server/logger'
+import { rewriteUrlToPublicBaseUrl } from '@/lib/server/public-url'
 
 const log = logger.child({ component: 'auth-config' })
 
@@ -382,7 +383,11 @@ async function createAuth() {
         const { getEmailSafeUrl } = await import('@/lib/server/storage/s3')
         const settings = await db.query.settings.findFirst({ columns: { logoKey: true } })
         const logoUrl = getEmailSafeUrl(settings?.logoKey) ?? undefined
-        await sendPasswordResetEmail({ to: user.email, resetLink: url, logoUrl })
+        await sendPasswordResetEmail({
+          to: user.email,
+          resetLink: rewriteUrlToPublicBaseUrl(url),
+          logoUrl,
+        })
       },
       resetPasswordTokenExpiresIn: 60 * 60 * 24, // 24 hours
     },

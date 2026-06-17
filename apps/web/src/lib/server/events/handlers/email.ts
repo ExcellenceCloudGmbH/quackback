@@ -84,6 +84,14 @@ export const emailHook: HookHandler = {
           unsubscribeUrl,
           logoUrl: cfg.logoUrl,
           priorityLabel: cfg.priorityLabel as string | undefined,
+          statusLabel: cfg.statusLabel as string | undefined,
+          summary: cfg.summary,
+          eventLabel: cfg.eventLabel,
+          actorName: cfg.actorName,
+          occurredAt: cfg.occurredAt,
+          details: cfg.details,
+          contentSections: cfg.contentSections,
+          quote: cfg.quote,
         })
       } else {
         return { success: false, error: `Unsupported event type: ${event.type}` }

@@ -18,7 +18,7 @@ import { db, invitation, principal, user, eq, and, gt, or, sql } from '@/lib/ser
 import { requireAuth } from './auth-helpers'
 import { appendInviteMagicLinkToken, removeInviteMagicLinkToken } from './invitation-magic-link'
 import { actorFromAuth, recordAuditEvent } from '@/lib/server/audit/log'
-import { getBaseUrl } from '@/lib/server/config'
+import { resolvePublicBaseUrl } from '@/lib/server/public-url'
 import { sendPortalInviteEmail } from '@quackback/email'
 import { getSession } from '@/lib/server/auth/session'
 import { safeEmail } from '@/lib/shared/utils/string'
@@ -141,7 +141,7 @@ async function sendOnePortalInvite({
   // Mint before the insert so the row records its token in its token set
   // (cancel revokes every token in the set). inviteId is fixed above, so the
   // callback path is known.
-  const portalUrl = getBaseUrl()
+  const portalUrl = resolvePublicBaseUrl(headers)
   const { url: inviteLink, token: magicLinkToken } = await mintPortalInviteMagicLink(
     email,
     inviteId,
@@ -389,7 +389,7 @@ export const resendPortalInviteFn = createServerFn({ method: 'POST' })
       throw new Error('Portal invitation is no longer pending.')
     }
 
-    const portalUrl = getBaseUrl()
+    const portalUrl = resolvePublicBaseUrl(headers)
     const { url: inviteLink, token: magicLinkToken } = await mintPortalInviteMagicLink(
       inv.email,
       inviteId,
@@ -507,7 +507,7 @@ export const getPortalInviteLinkFn = createServerFn({ method: 'POST' })
     if (inv.status !== 'pending') throw new Error(`Invite is ${inv.status}, cannot mint a link`)
     if (inv.expiresAt && inv.expiresAt < new Date()) throw new Error('Invite has expired')
 
-    const portalUrl = getBaseUrl()
+    const portalUrl = resolvePublicBaseUrl(headers)
     const { revokeMagicLinkToken } = await import('@/lib/server/auth/magic-link-mint')
 
     // Mint a fresh link and add it to the set. Minting is additive — it never

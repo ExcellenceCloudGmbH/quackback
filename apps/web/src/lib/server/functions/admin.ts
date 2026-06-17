@@ -58,7 +58,7 @@ import { PERMISSIONS } from '@/lib/server/domains/authz'
 import { hasPermission } from '@/lib/server/domains/authz/authz.service'
 import type { UserAttributeId } from '@quackback/ids'
 import { sendInvitationEmail } from '@quackback/email'
-import { getBaseUrl } from '@/lib/server/config'
+import { resolvePublicBaseUrl } from '@/lib/server/public-url'
 import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils/date'
 import {
   INVITATION_EXPIRY_MS,
@@ -1028,7 +1028,7 @@ export const sendInvitationFn = createServerFn({ method: 'POST' })
       // Mint the magic link before the insert so the row records its token in
       // its token set (cancel revokes every token in the set). invitationId is
       // fixed above, so the callback path is already known.
-      const portalUrl = getBaseUrl()
+      const portalUrl = resolvePublicBaseUrl(headers)
       const callbackURL = `/complete-signup/${invitationId}`
       const { url: inviteLink, token: magicLinkToken } = await generateInvitationMagicLink(
         email,
@@ -1188,7 +1188,7 @@ export const resendInvitationFn = createServerFn({ method: 'POST' })
       // old and new links work until the invite is accepted, cancelled, or
       // expires. The token is recorded the moment it's minted, so even if the
       // send below fails or the worker restarts, cancellation still revokes it.
-      const portalUrl = getBaseUrl()
+      const portalUrl = resolvePublicBaseUrl(headers)
       const callbackURL = `/complete-signup/${invitationId}`
       const { url: inviteLink, token: magicLinkToken } = await generateInvitationMagicLink(
         invitationRecord.email,

@@ -127,4 +127,22 @@ export interface EmailConfig {
   commentPreview?: string
   isTeamMember?: boolean
   logoUrl?: string
+  title?: string
+  body?: string
+  summary?: string
+  eventLabel?: string
+  actorName?: string
+  occurredAt?: string
+  details?: Array<{ label: string; value: string }>
+  contentSections?: Array<{
+    title: string
+    body?: string
+    rows?: Array<{ label: string; value: string }>
+    tone?: 'default' | 'quote' | 'warning'
+  }>
+  quote?: string
+  ticketSubject?: string
+  ticketUrl?: string
+  statusLabel?: string
+  priorityLabel?: string
 }

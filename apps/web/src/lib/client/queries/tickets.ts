@@ -51,7 +51,7 @@ export const ticketQueries = {
     queryOptions({
       queryKey: ['tickets', 'detail', ticketId] as const,
       queryFn: () => getTicketFn({ data: { ticketId } }),
-      staleTime: 5_000,
+      staleTime: 1_000,
     }),
   threads: (ticketId: TicketId) =>
     queryOptions({

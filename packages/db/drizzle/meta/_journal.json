@@ -841,6 +841,13 @@
       "when": 1782950400000,
       "tag": "0119_github_sync_mapping_repair",
       "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1783036800000,
+      "tag": "0120_widget_ticket_requester_owned_scope",
+      "breakpoints": true
     }
   ]
 }

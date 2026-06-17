@@ -16,22 +16,25 @@ export function allowedWidgetSupportInboxIds(context: WidgetRequestContext): Inb
 }
 
 export function widgetTicketListScope(context: WidgetRequestContext) {
-  return context.supportConfig.ticketListScope ?? 'same_profile_allowed_inboxes'
+  return context.supportConfig.ticketListScope ?? 'requester_owned'
 }
 
 export function widgetTicketListFilters(context: WidgetRequestContext): {
-  sourceWidgetProfileId: WidgetProfileId | null
-  allowedInboxIds: InboxId[] | null
+  sourceWidgetProfileId?: WidgetProfileId
+  allowedInboxIds?: InboxId[]
 } {
   if (!context.profileId) {
-    return { sourceWidgetProfileId: null, allowedInboxIds: null }
+    return {}
   }
 
   const scope = widgetTicketListScope(context)
+  if (scope === 'requester_owned') {
+    return {}
+  }
+
   return {
-    sourceWidgetProfileId:
-      scope === 'same_profile_allowed_inboxes' ? (context.profileId as WidgetProfileId) : null,
-    allowedInboxIds: scope === 'requester_owned' ? null : allowedWidgetSupportInboxIds(context),
+    sourceWidgetProfileId: context.profileId as WidgetProfileId,
+    allowedInboxIds: allowedWidgetSupportInboxIds(context),
   }
 }
 

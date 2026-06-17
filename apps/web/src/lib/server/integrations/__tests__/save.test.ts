@@ -12,6 +12,7 @@ const insertValuesMock = vi.fn((_values: Record<string, unknown>) => ({
 const insertMock = vi.fn((_table: unknown) => ({ values: insertValuesMock }))
 const createServicePrincipalMock = vi.fn(async (_input: unknown) => ({ id: 'principal_service' }))
 const encryptSecretsMock = vi.fn((secrets: Record<string, unknown>) => JSON.stringify(secrets))
+const cacheDelMock = vi.fn()
 
 vi.mock('@/lib/server/db', () => ({
   db: {
@@ -41,6 +42,13 @@ vi.mock('@/lib/server/domains/principals/principal.service', () => ({
 
 vi.mock('@/lib/server/integrations/index', () => ({
   getIntegration: vi.fn(() => undefined),
+}))
+
+vi.mock('@/lib/server/redis', () => ({
+  cacheDel: (...args: unknown[]) => cacheDelMock(...args),
+  CACHE_KEYS: {
+    INTEGRATION_MAPPINGS: 'hooks:integration-mappings',
+  },
 }))
 
 const { saveIntegration } = await import('../save')
@@ -91,6 +99,7 @@ describe('saveIntegration reconnect behavior', () => {
     })
     expect(update.lastError).toBeNull()
     expect(update.errorCount).toBe(0)
+    expect(cacheDelMock).toHaveBeenCalledWith('hooks:integration-mappings')
   })
 
   it('does not create a new integration when a targeted reconnect cannot find the row', async () => {

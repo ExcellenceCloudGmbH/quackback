@@ -233,6 +233,16 @@ describe('GET /api/widget/tickets', () => {
     expect(json.data.rows[0].statusCategory).toBe('open')
   })
 
+  it('uses requester-owned scope so non-widget requester tickets are included by default', async () => {
+    vi.mocked(getWidgetSession).mockResolvedValueOnce(makeWidgetSession())
+    listTicketsForPortalUserMock.mockResolvedValueOnce({ rows: [], total: 0 })
+
+    const res = await handleListWidgetTickets({ request: makeRequest(URL_BASE) })
+
+    expect(res.status).toBe(200)
+    expect(listTicketsForPortalUserMock).toHaveBeenCalledWith({ userId: 'user_test1' })
+  })
+
   it('returns 400 on invalid statusCategory', async () => {
     vi.mocked(getWidgetSession).mockResolvedValueOnce(makeWidgetSession())
     const res = await handleListWidgetTickets({

@@ -476,7 +476,7 @@ export interface EventTicketRef {
   resolvedAt?: string | null
   reopenedAt?: string | null
   closedAt?: string | null
-  /** Admin permalink — `${baseUrl}/admin/tickets/{id}`. */
+  /** Portal permalink — `${baseUrl}/tickets/{id}`. */
   ticketUrl?: string | null
 }
 
@@ -546,6 +546,8 @@ export interface TicketThreadAddedPayload {
     audience: 'public' | 'internal' | 'shared_team'
     /** First N chars of the plain-text body (capped, see `bodyTextTruncated`). */
     bodyTextPreview: string
+    /** Plain-text body snapshot for notification/email consumers. */
+    bodyText?: string
     bodyTextTruncated: boolean
     authorPrincipalId: string | null
     /** True when the thread author is the ticket's requester. */
@@ -565,6 +567,7 @@ export interface TicketThreadUpdatedPayload {
     id: string
     audience: 'public' | 'internal' | 'shared_team'
     bodyTextPreview: string
+    bodyText?: string
     bodyTextTruncated: boolean
     authorPrincipalId: string | null
     isFromRequester: boolean
@@ -580,6 +583,17 @@ export interface TicketThreadDeletedPayload {
   audience: 'public' | 'internal' | 'shared_team'
   sharedWithTeamId: string | null
   deletedByPrincipalId: string | null
+  thread?: {
+    id: string
+    audience: 'public' | 'internal' | 'shared_team'
+    bodyTextPreview: string
+    bodyText?: string
+    bodyTextTruncated: boolean
+    authorPrincipalId: string | null
+    isFromRequester: boolean
+    sharedWithTeamId: string | null
+    createdAt: string
+  }
 }
 
 export interface TicketParticipantAddedPayload {
