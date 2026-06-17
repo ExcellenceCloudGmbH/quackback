@@ -23,9 +23,16 @@ import type {
   UpdateArticleInput,
 } from './help-center.types'
 import { generateArticleEmbedding } from './help-center-embedding.service'
+import { canActorViewCategory, type HelpCenterVisibilityActor } from './help-center.visibility'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'help-center-articles' })
+
+function normalizeIdArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
+}
 
 // ============================================================================
 // Articles
@@ -84,14 +91,26 @@ export async function getArticleBySlug(slug: string): Promise<HelpCenterArticleW
   return resolveArticleWithCategory(article)
 }
 
-export async function getPublicArticleBySlug(slug: string): Promise<HelpCenterArticleWithCategory> {
+export async function getPublicArticleBySlug(
+  slug: string,
+  actor: HelpCenterVisibilityActor | null = null
+): Promise<HelpCenterArticleWithCategory> {
   const now = new Date()
   // Join the parent category so the public lookup also enforces
   // category.isPublic. Without that check, an article under a category
   // an admin had flagged private was still reachable by slug — the
   // category's intent was respected only in the list/nav UI.
   const rows = await db
-    .select({ article: helpCenterArticles })
+    .select({
+      article: helpCenterArticles,
+      category: {
+        id: helpCenterCategories.id,
+        isPublic: helpCenterCategories.isPublic,
+        visibility: helpCenterCategories.visibility,
+        allowedSegmentIds: helpCenterCategories.allowedSegmentIds,
+        allowedPrincipalIds: helpCenterCategories.allowedPrincipalIds,
+      },
+    })
     .from(helpCenterArticles)
     .innerJoin(helpCenterCategories, eq(helpCenterArticles.categoryId, helpCenterCategories.id))
     .where(
@@ -105,8 +124,22 @@ export async function getPublicArticleBySlug(slug: string): Promise<HelpCenterAr
       )
     )
     .limit(1)
-  const article = rows[0]?.article
-  if (!article) {
+  const row = rows[0]
+  const article = row?.article
+  if (!article || !row?.category) {
+    throw new NotFoundError('ARTICLE_NOT_FOUND', `Article not found`)
+  }
+
+  const canView = canActorViewCategory(
+    {
+      ...row.category,
+      allowedSegmentIds: normalizeIdArray(row.category.allowedSegmentIds),
+      allowedPrincipalIds: normalizeIdArray(row.category.allowedPrincipalIds),
+    },
+    actor
+  )
+
+  if (!canView) {
     throw new NotFoundError('ARTICLE_NOT_FOUND', `Article not found`)
   }
 

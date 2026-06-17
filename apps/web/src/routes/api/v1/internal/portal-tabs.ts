@@ -1,8 +1,9 @@
 import { createFileRoute } from '@tanstack/react-router'
+import type { UserId } from '@quackback/ids'
 import { ValidationError } from '@/lib/shared/errors'
 import { getSession } from '@/lib/server/auth/session'
 import { logger } from '@/lib/server/logger'
-import { setOrgPortalTabConfig } from '@/lib/server/domains/portal'
+import { setOrgPortalTabConfig } from '@/lib/server/domains/portal/index.server'
 import { z } from 'zod'
 
 const log = logger.child({ component: 'api-portal-tabs' })
@@ -26,8 +27,9 @@ export const Route = createFileRoute('/api/v1/internal/portal-tabs')({
             return Response.json({ error: 'Unauthorized' }, { status: 401 })
           }
 
-          const { getEffectiveTabConfigForUser } = await import('@/lib/server/domains/portal')
-          const config = await getEffectiveTabConfigForUser(session.user.id as any)
+          const { getEffectiveTabConfigForUser } =
+            await import('@/lib/server/domains/portal/index.server')
+          const config = await getEffectiveTabConfigForUser(session.user.id as UserId)
 
           return Response.json({ config })
         } catch (error) {
@@ -49,7 +51,7 @@ export const Route = createFileRoute('/api/v1/internal/portal-tabs')({
           const { db } = await import('@/lib/server/db')
 
           const principalRow = await db.query.principal.findFirst({
-            where: eq(principal.userId, session.user.id as any),
+            where: eq(principal.userId, session.user.id as UserId),
             columns: { role: true },
           })
 

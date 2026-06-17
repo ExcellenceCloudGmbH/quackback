@@ -14,7 +14,7 @@ import { Spinner } from '@/components/shared/spinner'
 import { toast } from 'sonner'
 import { adminQueries } from '@/lib/client/queries/admin'
 import { useRouteContext } from '@tanstack/react-router'
-import type { PortalTabConfig } from '@/lib/server/domains/portal'
+import type { PortalTabConfig } from '@/lib/server/domains/portal/types'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
 
 export const Route = createFileRoute('/admin/settings/portal-tabs')({
@@ -111,6 +111,11 @@ function PortalTabsSettingsPage() {
   const [orgConfig, setOrgConfig] = useState<PortalTabConfig>(configQuery.data || {})
   const [segmentOverrides, setSegmentOverrides] = useState<Map<string, PortalTabConfig>>(new Map())
   const [saving, setSaving] = useState(false)
+  const segments = (segmentsQuery.data ?? []) as Array<{
+    id: string
+    name: string
+    description?: string | null
+  }>
 
   async function handleOrgConfigSave() {
     setSaving(true)
@@ -154,17 +159,17 @@ function PortalTabsSettingsPage() {
   const toggleOrgTab = (tab: keyof PortalTabConfig) => {
     setOrgConfig((prev) => ({
       ...prev,
-      [tab]: prev[tab] !== false,
+      [tab]: prev[tab] === false, // flip: false→true, true/undefined→false
     }))
   }
 
   const toggleSegmentTab = (segmentId: string, tab: keyof PortalTabConfig) => {
-    const current = segmentOverrides.get(segmentId) || {}
     setSegmentOverrides((prev) => {
+      const current = prev.get(segmentId) ?? { ...orgConfig }
       const updated = new Map(prev)
       updated.set(segmentId, {
         ...current,
-        [tab]: current[tab] !== false,
+        [tab]: current[tab] === false, // flip: false→true, true/undefined→false
       })
       return updated
     })
@@ -219,13 +224,13 @@ function PortalTabsSettingsPage() {
       </SettingsCard>
 
       {/* Segment-Level Overrides */}
-      {segmentsQuery.data && segmentsQuery.data.length > 0 && (
+      {segments.length > 0 && (
         <SettingsCard
           title="Segment Overrides"
           description="Configure different tab visibility for specific user segments. These settings override the defaults above."
         >
           <div className="space-y-6">
-            {segmentsQuery.data.map((segment) => (
+            {segments.map((segment: { id: string; name: string; description?: string | null }) => (
               <div key={segment.id} className="border border-border/50 rounded-lg p-4">
                 <div className="mb-4">
                   <h4 className="font-medium text-sm">{segment.name}</h4>

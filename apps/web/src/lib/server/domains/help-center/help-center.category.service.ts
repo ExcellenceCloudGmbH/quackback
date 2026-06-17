@@ -13,6 +13,7 @@ import {
 import type { HelpCenterCategoryId } from '@quackback/ids'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { slugify } from '@/lib/shared/utils'
+import { canActorViewCategory, type HelpCenterVisibilityActor } from './help-center.visibility'
 import type {
   HelpCenterCategory,
   HelpCenterCategoryWithCount,
@@ -29,6 +30,40 @@ import {
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'help-center-categories' })
+
+function normalizeIdArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string')
+    : []
+}
+
+function normalizeCategoryAudience<
+  T extends { allowedSegmentIds?: unknown; allowedPrincipalIds?: unknown },
+>(category: T): T & { allowedSegmentIds: string[]; allowedPrincipalIds: string[] } {
+  return {
+    ...category,
+    allowedSegmentIds: normalizeIdArray(category.allowedSegmentIds),
+    allowedPrincipalIds: normalizeIdArray(category.allowedPrincipalIds),
+  }
+}
+
+function validateTargetedAudience(input: {
+  isPublic?: boolean
+  visibility?: 'public' | 'targeted'
+  allowedSegmentIds?: string[]
+  allowedPrincipalIds?: string[]
+}): void {
+  if (input.isPublic === false) return
+  if ((input.visibility ?? 'public') !== 'targeted') return
+  const segmentCount = input.allowedSegmentIds?.length ?? 0
+  const principalCount = input.allowedPrincipalIds?.length ?? 0
+  if (segmentCount === 0 && principalCount === 0) {
+    throw new ValidationError(
+      'VALIDATION_ERROR',
+      'Targeted visibility requires at least one allowed segment or user'
+    )
+  }
+}
 
 // ============================================================================
 // Categories
@@ -167,10 +202,16 @@ export async function listCategories(
   })
 }
 
-export async function listPublicCategories(): Promise<HelpCenterCategoryWithCount[]> {
+export async function listPublicCategories(
+  actor: HelpCenterVisibilityActor | null = null
+): Promise<HelpCenterCategoryWithCount[]> {
   const all = await listCategories()
   return all
-    .filter((cat) => cat.isPublic && cat.recursivePublishedArticleCount > 0)
+    .filter(
+      (cat) =>
+        cat.recursivePublishedArticleCount > 0 &&
+        canActorViewCategory(normalizeCategoryAudience(cat), actor)
+    )
     .map((cat) => ({ ...cat, articleCount: cat.recursivePublishedArticleCount }))
 }
 
@@ -181,7 +222,7 @@ export async function getCategoryById(id: HelpCenterCategoryId): Promise<HelpCen
   if (!category) {
     throw new NotFoundError('CATEGORY_NOT_FOUND', `Category ${id} not found`)
   }
-  return category
+  return normalizeCategoryAudience(category)
 }
 
 export async function getCategoryBySlug(slug: string): Promise<HelpCenterCategory> {
@@ -191,7 +232,7 @@ export async function getCategoryBySlug(slug: string): Promise<HelpCenterCategor
   if (!category) {
     throw new NotFoundError('CATEGORY_NOT_FOUND', `Category with slug "${slug}" not found`)
   }
-  return category
+  return normalizeCategoryAudience(category)
 }
 
 /**
@@ -200,18 +241,17 @@ export async function getCategoryBySlug(slug: string): Promise<HelpCenterCategor
  * must use this — otherwise an admin marking a category private hides
  * it from the nav but not from a direct-slug lookup.
  */
-export async function getPublicCategoryBySlug(slug: string): Promise<HelpCenterCategory> {
+export async function getPublicCategoryBySlug(
+  slug: string,
+  actor: HelpCenterVisibilityActor | null = null
+): Promise<HelpCenterCategory> {
   const category = await db.query.helpCenterCategories.findFirst({
-    where: and(
-      eq(helpCenterCategories.slug, slug),
-      isNull(helpCenterCategories.deletedAt),
-      eq(helpCenterCategories.isPublic, true)
-    ),
+    where: and(eq(helpCenterCategories.slug, slug), isNull(helpCenterCategories.deletedAt)),
   })
-  if (!category) {
+  if (!category || !canActorViewCategory(normalizeCategoryAudience(category), actor)) {
     throw new NotFoundError('CATEGORY_NOT_FOUND', `Category with slug "${slug}" not found`)
   }
-  return category
+  return normalizeCategoryAudience(category)
 }
 
 export async function createCategory(input: CreateCategoryInput): Promise<HelpCenterCategory> {
@@ -219,6 +259,13 @@ export async function createCategory(input: CreateCategoryInput): Promise<HelpCe
   if (!name) throw new ValidationError('VALIDATION_ERROR', 'Name is required')
 
   const slug = input.slug?.trim() || slugify(name)
+
+  validateTargetedAudience({
+    isPublic: input.isPublic,
+    visibility: input.visibility,
+    allowedSegmentIds: input.allowedSegmentIds,
+    allowedPrincipalIds: input.allowedPrincipalIds,
+  })
 
   if (input.parentId !== undefined && input.parentId !== null) {
     const flat = await db.query.helpCenterCategories.findMany({
@@ -239,24 +286,44 @@ export async function createCategory(input: CreateCategoryInput): Promise<HelpCe
       slug,
       description: input.description?.trim() || null,
       isPublic: input.isPublic ?? true,
+      visibility: input.visibility ?? 'public',
+      allowedSegmentIds: input.allowedSegmentIds ?? [],
+      allowedPrincipalIds: input.allowedPrincipalIds ?? [],
       position: input.position ?? 0,
       parentId: (input.parentId as HelpCenterCategoryId) ?? null,
       icon: input.icon ?? null,
     })
     .returning()
 
-  return category
+  return normalizeCategoryAudience(category)
 }
 
 export async function updateCategory(
   id: HelpCenterCategoryId,
   input: UpdateCategoryInput
 ): Promise<HelpCenterCategory> {
+  const current = await getCategoryById(id)
+  const nextIsPublic = input.isPublic ?? current.isPublic
+  const nextVisibility = input.visibility ?? current.visibility
+  const nextAllowedSegmentIds = input.allowedSegmentIds ?? current.allowedSegmentIds
+  const nextAllowedPrincipalIds = input.allowedPrincipalIds ?? current.allowedPrincipalIds
+
+  validateTargetedAudience({
+    isPublic: nextIsPublic,
+    visibility: nextVisibility,
+    allowedSegmentIds: nextAllowedSegmentIds,
+    allowedPrincipalIds: nextAllowedPrincipalIds,
+  })
+
   const updateData: Partial<typeof helpCenterCategories.$inferInsert> = { updatedAt: new Date() }
   if (input.name !== undefined) updateData.name = input.name.trim()
   if (input.slug !== undefined) updateData.slug = input.slug.trim()
   if (input.description !== undefined) updateData.description = input.description?.trim() || null
   if (input.isPublic !== undefined) updateData.isPublic = input.isPublic
+  if (input.visibility !== undefined) updateData.visibility = input.visibility
+  if (input.allowedSegmentIds !== undefined) updateData.allowedSegmentIds = input.allowedSegmentIds
+  if (input.allowedPrincipalIds !== undefined)
+    updateData.allowedPrincipalIds = input.allowedPrincipalIds
   if (input.position !== undefined) updateData.position = input.position
   if (input.icon !== undefined) updateData.icon = input.icon ?? null
 
@@ -280,7 +347,7 @@ export async function updateCategory(
     .returning()
 
   if (!updated) throw new NotFoundError('CATEGORY_NOT_FOUND', `Category ${id} not found`)
-  return updated
+  return normalizeCategoryAudience(updated)
 }
 
 export async function deleteCategory(id: HelpCenterCategoryId): Promise<void> {
@@ -360,5 +427,5 @@ export async function restoreCategory(id: HelpCenterCategoryId): Promise<HelpCen
     throw new NotFoundError('CATEGORY_NOT_FOUND', `Category ${id} not found`)
   }
 
-  return restored
+  return normalizeCategoryAudience(restored)
 }

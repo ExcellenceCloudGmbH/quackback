@@ -1,9 +1,36 @@
-import { pgTable, text, timestamp, integer, index, uniqueIndex, jsonb } from 'drizzle-orm/pg-core'
+import {
+  pgTable,
+  text,
+  timestamp,
+  integer,
+  index,
+  uniqueIndex,
+  jsonb,
+  boolean,
+} from 'drizzle-orm/pg-core'
 import { relations } from 'drizzle-orm'
 import { typeIdWithDefault, typeIdColumn, typeIdColumnNullable } from '@quackback/ids/drizzle'
 import { principal } from './auth'
 import { posts } from './posts'
+import { segments } from './segments'
 import type { TiptapContent } from '../types'
+
+// ============================================
+// Changelog Visibility Configuration Types
+// ============================================
+
+/**
+ * Per-segment (or org-level) changelog category/product visibility config.
+ * When restrictCategories is false, all categories are visible.
+ * When true, only entries whose categoryId is in allowedCategoryIds are visible
+ * (entries with no category are always visible regardless).
+ */
+export interface ChangelogVisibilityConfig {
+  restrictCategories?: boolean
+  allowedCategoryIds?: string[]
+  restrictProducts?: boolean
+  allowedProductIds?: string[]
+}
 
 export const changelogCategories = pgTable(
   'changelog_categories',
@@ -123,3 +150,53 @@ export const changelogEntryPostsRelations = relations(changelogEntryPosts, ({ on
     references: [posts.id],
   }),
 }))
+
+// ============================================
+// Changelog Visibility (category/product access control)
+// ============================================
+
+/**
+ * Per-segment changelog category/product visibility overrides.
+ *
+ * When restrictCategories is true, portal users in this segment only see
+ * changelog entries whose categoryId is in allowedCategoryIds (or has no
+ * category). When restrictCategories is false (default) all categories are
+ * visible for users in this segment.
+ *
+ * Effective config for a user is the UNION across their segments + org
+ * defaults: if any config is unrestricted the user sees everything.
+ */
+export const changelogSegmentVisibility = pgTable(
+  'changelog_segment_visibility',
+  {
+    id: typeIdWithDefault('clseg_vis')('id').primaryKey(),
+    segmentId: typeIdColumn('segment')('segment_id')
+      .notNull()
+      .references(() => segments.id, { onDelete: 'cascade' })
+      .unique(),
+    /** When true, limit visible entries to allowedCategoryIds (+ null category) */
+    restrictCategories: boolean('restrict_categories').notNull().default(false),
+    /** Category IDs allowed when restrictCategories=true */
+    allowedCategoryIds: jsonb('allowed_category_ids').$type<string[]>().notNull().default([]),
+    /** When true, limit visible entries to allowedProductIds (+ null product) */
+    restrictProducts: boolean('restrict_products').notNull().default(false),
+    /** Product IDs allowed when restrictProducts=true */
+    allowedProductIds: jsonb('allowed_product_ids').$type<string[]>().notNull().default([]),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [index('changelog_segment_visibility_segment_id_idx').on(table.segmentId)]
+)
+
+export const changelogSegmentVisibilityRelations = relations(
+  changelogSegmentVisibility,
+  ({ one }) => ({
+    segment: one(segments, {
+      fields: [changelogSegmentVisibility.segmentId],
+      references: [segments.id],
+    }),
+  })
+)

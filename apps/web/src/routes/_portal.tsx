@@ -1,5 +1,8 @@
 import { createFileRoute, redirect, Outlet } from '@tanstack/react-router'
-import { fetchUserAvatar } from '@/lib/server/functions/portal'
+import {
+  fetchUserAvatar,
+  getEffectivePortalTabConfigForCurrentUserFn,
+} from '@/lib/server/functions/portal'
 import { PortalHeader } from '@/components/public/portal-header'
 import { AuthPopoverProvider } from '@/components/auth/auth-popover-context'
 import { AuthDialog } from '@/components/auth/auth-dialog'
@@ -16,8 +19,7 @@ import {
 } from '@/lib/server/functions/portal-access'
 import { getSupportSurfaceAccessFn } from '@/lib/server/functions/chat'
 import { redactSettingsForClient } from '@/lib/shared/redact-portal-config'
-import { getEffectiveTabConfigForUser } from '@/lib/server/domains/portal'
-import type { PortalTabConfig } from '@/lib/server/domains/portal'
+import type { PortalTabConfig } from '@/lib/server/domains/portal/types'
 
 export const Route = createFileRoute('/_portal')({
   loader: async ({ context }) => {
@@ -124,7 +126,7 @@ export const Route = createFileRoute('/_portal')({
 
     // Fetch effective portal tab configuration for the current user
     const enabledTabs: PortalTabConfig = session?.user
-      ? await getEffectiveTabConfigForUser(session.user.id as any)
+      ? await getEffectivePortalTabConfigForCurrentUserFn()
       : {}
 
     return {

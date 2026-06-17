@@ -4,7 +4,12 @@
 
 import { createServerFn } from '@tanstack/react-start'
 import { getRequestHeaders } from '@tanstack/react-start/server'
-import type { HelpCenterCategoryId, HelpCenterArticleId, PrincipalId } from '@quackback/ids'
+import type {
+  HelpCenterCategoryId,
+  HelpCenterArticleId,
+  PrincipalId,
+  SegmentId,
+} from '@quackback/ids'
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import { requireAuth, getOptionalAuth } from './auth-helpers'
 import { NotFoundError } from '@/lib/shared/errors'
@@ -53,6 +58,7 @@ import {
 import { z } from 'zod'
 import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils'
 import { getWidgetRequestContext, type WidgetRequestContext } from '@/lib/server/widget/context'
+import type { HelpCenterVisibilityActor } from '@/lib/server/domains/help-center/help-center.visibility'
 
 import { logger } from '@/lib/server/logger'
 const log = logger.child({ component: 'help-center' })
@@ -121,6 +127,20 @@ function articleAllowedByWidgetContext(
   return true
 }
 
+async function resolveHelpCenterActor(): Promise<HelpCenterVisibilityActor | null> {
+  const auth = await getOptionalAuth()
+  const principalId = auth?.principal?.id as PrincipalId | undefined
+  if (!principalId) return null
+
+  const { segmentIdsForPrincipal } =
+    await import('@/lib/server/domains/segments/segment-membership.service')
+  const segmentIds = await segmentIdsForPrincipal(principalId)
+  return {
+    principalId,
+    segmentIds: segmentIds as ReadonlySet<SegmentId>,
+  }
+}
+
 // ============================================================================
 // Category Server Functions
 // ============================================================================
@@ -136,7 +156,8 @@ export const listCategoriesFn = createServerFn({ method: 'GET' })
 export const listPublicCategoriesFn = createServerFn({ method: 'GET' })
   .validator(z.object({}))
   .handler(async () => {
-    const categories = await listPublicCategories()
+    const actor = await resolveHelpCenterActor()
+    const categories = await listPublicCategories(actor)
     const widgetContext = await getWidgetContextFromServerFnHeaders()
     return categories
       .filter((category) => categoryAllowedByWidgetContext(category, widgetContext))
@@ -159,7 +180,8 @@ export const getPublicCategoryBySlugFn = createServerFn({ method: 'GET' })
     // help-center traffic.
     const { getPublicCategoryBySlug } =
       await import('@/lib/server/domains/help-center/help-center.category.service')
-    const category = await getPublicCategoryBySlug(data.slug)
+    const actor = await resolveHelpCenterActor()
+    const category = await getPublicCategoryBySlug(data.slug, actor)
     return serializeCategory(category)
   })
 
@@ -235,7 +257,8 @@ export const restoreArticleFn = createServerFn({ method: 'POST' })
 export const listPublicArticlesFn = createServerFn({ method: 'GET' })
   .validator(listPublicArticlesSchema)
   .handler(async ({ data }) => {
-    const result = await listPublicArticles(data)
+    const actor = await resolveHelpCenterActor()
+    const result = await listPublicArticles(data, actor)
     const widgetContext = await getWidgetContextFromServerFnHeaders()
     const filteredItems = result.items.filter((article) =>
       articleAllowedByWidgetContext(article, widgetContext)
@@ -249,11 +272,12 @@ export const listPublicArticlesFn = createServerFn({ method: 'GET' })
 export const listPublicArticlesForCategoryFn = createServerFn({ method: 'GET' })
   .validator(z.object({ categoryId: z.string() }))
   .handler(async ({ data }) => {
+    const actor = await resolveHelpCenterActor()
     const widgetContext = await getWidgetContextFromServerFnHeaders()
     if (!categoryAllowedByWidgetContext({ id: data.categoryId }, widgetContext)) {
       return []
     }
-    const articles = await listPublicArticlesForCategory(data.categoryId)
+    const articles = await listPublicArticlesForCategory(data.categoryId, actor)
     return articles
       .filter((article) =>
         articleAllowedByWidgetContext({ ...article, categoryId: data.categoryId }, widgetContext)
@@ -281,7 +305,8 @@ export const getArticleFn = createServerFn({ method: 'GET' })
 export const getPublicArticleBySlugFn = createServerFn({ method: 'GET' })
   .validator(getArticleBySlugSchema)
   .handler(async ({ data }) => {
-    const article = await getPublicArticleBySlug(data.slug)
+    const actor = await resolveHelpCenterActor()
+    const article = await getPublicArticleBySlug(data.slug, actor)
     const widgetContext = await getWidgetContextFromServerFnHeaders()
     if (!articleAllowedByWidgetContext(article, widgetContext)) {
       throw new NotFoundError('ARTICLE_NOT_FOUND', `Article not found`)

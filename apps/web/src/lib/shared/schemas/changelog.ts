@@ -76,6 +76,14 @@ export const deleteChangelogSchema = z.object({
 export const listPublicChangelogsSchema = z.object({
   cursor: z.string().optional(),
   limit: z.number().int().positive().max(100).optional(),
+  /** Portal user-selected category filter (category ID) */
+  selectedCategoryId: z.string().optional(),
+  /** Portal user-selected product filter (product ID) */
+  selectedProductId: z.string().optional(),
+  /** Visibility restriction: only show entries in these categories (null = unrestricted) */
+  visibilityCategoryIds: z.array(z.string()).nullable().optional(),
+  /** Visibility restriction: only show entries in these products (null = unrestricted) */
+  visibilityProductIds: z.array(z.string()).nullable().optional(),
 })
 
 // Export types inferred from schemas

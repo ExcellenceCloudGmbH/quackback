@@ -12,6 +12,7 @@ import {
   listChangelogTaxonomyFn,
   listPublicChangelogsFn,
   getPublicChangelogFn,
+  listPublicChangelogTaxonomyFn,
 } from '@/lib/server/functions/changelog'
 
 const STALE_TIME_SHORT = 30 * 1000
@@ -71,16 +72,31 @@ export const changelogQueries = {
  * Public changelog queries
  */
 export const publicChangelogQueries = {
-  list: (headers?: Record<string, string>) =>
+  list: (params?: {
+    headers?: Record<string, string>
+    selectedCategoryId?: string
+    selectedProductId?: string
+    visibilityCategoryIds?: string[] | null
+    visibilityProductIds?: string[] | null
+  }) =>
     infiniteQueryOptions({
-      queryKey: [...changelogKeys.publicList(), headers?.['X-Quackback-Widget-Context']] as const,
+      queryKey: [
+        ...changelogKeys.publicList(),
+        params?.headers?.['X-Quackback-Widget-Context'],
+        params?.selectedCategoryId,
+        params?.selectedProductId,
+      ] as const,
       queryFn: ({ pageParam }) =>
         listPublicChangelogsFn({
           data: {
             cursor: pageParam,
             limit: 10,
+            selectedCategoryId: params?.selectedCategoryId,
+            selectedProductId: params?.selectedProductId,
+            visibilityCategoryIds: params?.visibilityCategoryIds,
+            visibilityProductIds: params?.visibilityProductIds,
           },
-          headers,
+          headers: params?.headers,
         }),
       initialPageParam: undefined as string | undefined,
       getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
@@ -97,3 +113,18 @@ export const publicChangelogQueries = {
       staleTime: STALE_TIME_MEDIUM,
     }),
 }
+
+/** Key factory for public changelog filter taxonomy */
+export const publicChangelogFilterKeys = {
+  taxonomy: () => ['changelogs', 'public', 'taxonomy'] as const,
+}
+
+/**
+ * Public taxonomy query (categories + products) for the portal filter bar.
+ */
+export const publicChangelogTaxonomyQuery = () =>
+  queryOptions({
+    queryKey: publicChangelogFilterKeys.taxonomy(),
+    queryFn: () => listPublicChangelogTaxonomyFn(),
+    staleTime: 5 * 60 * 1000, // 5 min
+  })

@@ -179,8 +179,20 @@ export async function listPublicChangelogs(params: {
   entryIds?: ChangelogId[]
   categoryIds?: ChangelogCategoryId[]
   productIds?: ChangelogProductId[]
+  /** Visibility restriction: only show entries with categoryId in this list (or no category). null = no restriction. */
+  visibilityCategoryIds?: ChangelogCategoryId[] | null
+  /** Visibility restriction: only show entries with productId in this list (or no product). null = no restriction. */
+  visibilityProductIds?: ChangelogProductId[] | null
 }): Promise<PublicChangelogListResult> {
-  const { cursor, limit = 20, entryIds, categoryIds, productIds } = params
+  const {
+    cursor,
+    limit = 20,
+    entryIds,
+    categoryIds,
+    productIds,
+    visibilityCategoryIds,
+    visibilityProductIds,
+  } = params
   const now = new Date()
 
   const conditions = publicChangelogConditions(now)
@@ -196,6 +208,24 @@ export async function listPublicChangelogs(params: {
   if (productIds !== undefined) {
     if (productIds.length === 0) return { items: [], nextCursor: null, hasMore: false }
     conditions.push(inArray(changelogEntries.productId, productIds))
+  }
+
+  // Visibility restrictions: always allow entries with no category/product through (null = uncategorized is always visible)
+  if (visibilityCategoryIds !== null && visibilityCategoryIds !== undefined) {
+    conditions.push(
+      or(
+        isNull(changelogEntries.categoryId),
+        inArray(changelogEntries.categoryId, visibilityCategoryIds)
+      )!
+    )
+  }
+  if (visibilityProductIds !== null && visibilityProductIds !== undefined) {
+    conditions.push(
+      or(
+        isNull(changelogEntries.productId),
+        inArray(changelogEntries.productId, visibilityProductIds)
+      )!
+    )
   }
 
   // Cursor-based pagination. The lookup does NOT filter on deletedAt:

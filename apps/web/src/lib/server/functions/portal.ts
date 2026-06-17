@@ -505,6 +505,18 @@ export const fetchUserAvatar = createServerFn({ method: 'GET' })
     }
   })
 
+export const getEffectivePortalTabConfigForCurrentUserFn = createServerFn({
+  method: 'GET',
+}).handler(async () => {
+  const auth = await getOptionalAuth()
+  if (!auth?.user?.id) {
+    return {}
+  }
+
+  const { getEffectiveTabConfigForUser } = await import('@/lib/server/domains/portal/index.server')
+  return await getEffectiveTabConfigForUser(auth.user.id as UserId)
+})
+
 export const fetchAvatars = createServerFn({ method: 'GET' })
   .validator(z.array(z.string()))
   .handler(async ({ data }) => {

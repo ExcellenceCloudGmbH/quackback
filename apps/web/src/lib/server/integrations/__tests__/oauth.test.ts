@@ -22,11 +22,11 @@ describe('OAuth public origin resolution', () => {
     const headers = new Headers({
       host: 'localhost:3000',
       referer:
-        'https://realm-trip-arbitration-crm.trycloudflare.com/admin/settings/integrations/github',
+        'https://waterproof-reader-tower-fraction.trycloudflare.com/admin/settings/integrations/github',
     })
 
     expect(getPublicOriginFromHeaders(headers, 'http://localhost:3000/oauth/github/connect')).toBe(
-      'https://realm-trip-arbitration-crm.trycloudflare.com'
+      'https://waterproof-reader-tower-fraction.trycloudflare.com'
     )
   })
 
@@ -43,12 +43,12 @@ describe('OAuth public origin resolution', () => {
       headers: {
         host: 'localhost:3000',
         referer:
-          'https://realm-trip-arbitration-crm.trycloudflare.com/admin/settings/integrations/github',
+          'https://waterproof-reader-tower-fraction.trycloudflare.com/admin/settings/integrations/github',
       },
     })
 
     expect(buildCallbackUri('github', request)).toBe(
-      'https://realm-trip-arbitration-crm.trycloudflare.com/oauth/github/callback'
+      'https://waterproof-reader-tower-fraction.trycloudflare.com/oauth/github/callback'
     )
   })
 })

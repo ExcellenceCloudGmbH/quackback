@@ -1025,7 +1025,7 @@ export const getPortalTabConfigFn = createServerFn({ method: 'GET' }).handler(as
   log.debug('fetch portal tab config')
   try {
     await requireAuth({ roles: ['admin'] })
-    const { getOrgPortalTabConfig } = await import('@/lib/server/domains/portal')
+    const { getOrgPortalTabConfig } = await import('@/lib/server/domains/portal/index.server')
     return await getOrgPortalTabConfig()
   } catch (error) {
     log.error({ error }, 'fetch portal tab config failed')
@@ -1047,7 +1047,7 @@ export const updatePortalTabConfigFn = createServerFn({ method: 'POST' })
       if (!isAdmin(auth.principal.role)) {
         throw new ForbiddenError('FORBIDDEN', 'Admin only')
       }
-      const { setOrgPortalTabConfig } = await import('@/lib/server/domains/portal')
+      const { setOrgPortalTabConfig } = await import('@/lib/server/domains/portal/index.server')
       await setOrgPortalTabConfig(data.config)
       await recordAuditEvent({
         event: 'portal_tabs.config_changed',
@@ -1077,7 +1077,7 @@ export const updateSegmentTabOverridesFn = createServerFn({ method: 'POST' })
       if (!isAdmin(auth.principal.role)) {
         throw new ForbiddenError('FORBIDDEN', 'Admin only')
       }
-      const { setSegmentTabOverrides } = await import('@/lib/server/domains/portal')
+      const { setSegmentTabOverrides } = await import('@/lib/server/domains/portal/index.server')
       await setSegmentTabOverrides(data.segmentId as SegmentId, data.overrides)
       await recordAuditEvent({
         event: 'portal_tabs.segment_override_changed',

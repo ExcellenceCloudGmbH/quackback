@@ -91,6 +91,12 @@ export function buildNavSections(flags?: {
       items: [
         { label: 'Branding', to: '/admin/settings/branding', icon: PaintBrushIcon },
         { label: 'Portal', to: '/admin/settings/portal', icon: MegaphoneIcon },
+        { label: 'Portal Tabs', to: '/admin/settings/portal-tabs', icon: Squares2X2Icon },
+        {
+          label: 'Changelog Visibility',
+          to: '/admin/settings/changelog-visibility',
+          icon: DocumentTextIcon,
+        },
         { label: 'Widget', to: '/admin/settings/widget', icon: ChatBubbleLeftRightIcon },
       ],
     },

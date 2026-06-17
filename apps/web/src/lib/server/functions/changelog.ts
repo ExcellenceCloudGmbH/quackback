@@ -16,7 +16,7 @@ import type {
 // Note: BoardId is only used for searchShippedPosts filtering
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import { NotFoundError } from '@/lib/shared/errors'
-import { requireAuth } from './auth-helpers'
+import { requireAuth, getOptionalAuth } from './auth-helpers'
 import { resolvePortalAccessForRequest } from './portal-access'
 import {
   createChangelog,
@@ -353,13 +353,28 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
         (changelogFilter?.productIds?.length ?? 0) > 0
           ? (changelogFilter?.productIds as ChangelogProductId[])
           : undefined
+
+      // Portal user-selected filters (from filter bar — single category/product)
+      // Only applied when there's no widget-level category/product filter overriding
+      const portalCategoryId =
+        !categoryIds && data.selectedCategoryId
+          ? [data.selectedCategoryId as ChangelogCategoryId]
+          : categoryIds
+      const portalProductId =
+        !productIds && data.selectedProductId
+          ? [data.selectedProductId as ChangelogProductId]
+          : productIds
+
       const result = await listPublicChangelogs({
         cursor: data.cursor,
         limit: data.limit,
         entryIds,
-        categoryIds,
-        productIds,
+        categoryIds: portalCategoryId,
+        productIds: portalProductId,
+        visibilityCategoryIds: data.visibilityCategoryIds ?? null,
+        visibilityProductIds: data.visibilityProductIds ?? null,
       })
+
       const filteredItems = result.items
         .map((entry) => applyWidgetChangelogFilters(entry, widgetContext))
         .filter((entry): entry is PublicChangelogEntry => entry !== null)
@@ -381,6 +396,110 @@ export const listChangelogTaxonomyFn = createServerFn({ method: 'GET' }).handler
   await requireAuth({ roles: ['admin', 'member'] })
   return listChangelogTaxonomy()
 })
+
+/**
+ * List changelog categories and products for public portal view.
+ * Used by the portal filter bar. Respects portal access gate.
+ */
+export const listPublicChangelogTaxonomyFn = createServerFn({ method: 'GET' }).handler(async () => {
+  const access = await resolvePortalAccessForRequest()
+  if (!access.granted) {
+    return { categories: [], products: [] }
+  }
+  return listChangelogTaxonomy()
+})
+
+// ============================================================================
+// Changelog Visibility Configuration (Category/Product Access Control)
+// ============================================================================
+
+const changelogVisibilityConfigSchema = z.object({
+  restrictCategories: z.boolean().optional(),
+  allowedCategoryIds: z.array(z.string()).optional(),
+  restrictProducts: z.boolean().optional(),
+  allowedProductIds: z.array(z.string()).optional(),
+})
+
+const segmentChangelogVisibilitySchema = z.object({
+  segmentId: z.string(),
+  restrictCategories: z.boolean().optional(),
+  allowedCategoryIds: z.array(z.string()).optional(),
+  restrictProducts: z.boolean().optional(),
+  allowedProductIds: z.array(z.string()).optional(),
+})
+
+/**
+ * Get the effective changelog visibility for the current portal user.
+ * Returns allowedCategoryIds / allowedProductIds (null = unrestricted).
+ */
+export const getChangelogVisibilityForCurrentUserFn = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const auth = await getOptionalAuth()
+    if (!auth?.user?.id) {
+      // Unauthenticated users see everything (visibility is additive for logged-in users only)
+      return { allowedCategoryIds: null, allowedProductIds: null }
+    }
+    const { getEffectiveChangelogVisibilityForUser } =
+      await import('@/lib/server/domains/changelog/changelog-visibility.service')
+    return getEffectiveChangelogVisibilityForUser(auth.user.id as any)
+  }
+)
+
+/**
+ * Admin: get org-level changelog visibility config + all segment overrides + taxonomy.
+ */
+export const getChangelogVisibilityAdminFn = createServerFn({ method: 'GET' }).handler(async () => {
+  await requireAuth({ roles: ['admin'] })
+  const { getOrgChangelogVisibility, getAllSegmentChangelogVisibilities } =
+    await import('@/lib/server/domains/changelog/changelog-visibility.service')
+  const { listChangelogTaxonomy } = await import('@/lib/server/domains/changelog/changelog.query')
+  const [orgConfig, segmentVisibilities, taxonomy] = await Promise.all([
+    getOrgChangelogVisibility(),
+    getAllSegmentChangelogVisibilities(),
+    listChangelogTaxonomy(),
+  ])
+  return { orgConfig, segmentVisibilities, taxonomy }
+})
+
+/**
+ * Admin: update org-level changelog visibility defaults.
+ */
+export const updateOrgChangelogVisibilityFn = createServerFn({ method: 'POST' })
+  .validator(changelogVisibilityConfigSchema)
+  .handler(async ({ data }) => {
+    await requireAuth({ roles: ['admin'] })
+    const { setOrgChangelogVisibility } =
+      await import('@/lib/server/domains/changelog/changelog-visibility.service')
+    await setOrgChangelogVisibility(data)
+    return { success: true }
+  })
+
+/**
+ * Admin: update per-segment changelog visibility overrides.
+ */
+export const updateSegmentChangelogVisibilityFn = createServerFn({ method: 'POST' })
+  .validator(segmentChangelogVisibilitySchema)
+  .handler(async ({ data }) => {
+    await requireAuth({ roles: ['admin'] })
+    const { setSegmentChangelogVisibility } =
+      await import('@/lib/server/domains/changelog/changelog-visibility.service')
+    const { segmentId, ...config } = data
+    await setSegmentChangelogVisibility(segmentId as any, config)
+    return { success: true }
+  })
+
+/**
+ * Admin: delete per-segment changelog visibility override (revert to org defaults).
+ */
+export const deleteSegmentChangelogVisibilityFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ segmentId: z.string() }))
+  .handler(async ({ data }) => {
+    await requireAuth({ roles: ['admin'] })
+    const { deleteSegmentChangelogVisibility } =
+      await import('@/lib/server/domains/changelog/changelog-visibility.service')
+    await deleteSegmentChangelogVisibility(data.segmentId as any)
+    return { success: true }
+  })
 
 // ============================================================================
 // Shipped Posts Search (for linking)

@@ -597,5 +597,20 @@ export const adminQueries = {
     }),
 }
 
+/**
+ * Changelog visibility admin queries
+ */
+export const changelogVisibilityQueries = {
+  adminData: () =>
+    queryOptions({
+      queryKey: ['admin', 'changelogVisibility'],
+      queryFn: async () => {
+        const { getChangelogVisibilityAdminFn } = await import('@/lib/server/functions/changelog')
+        return getChangelogVisibilityAdminFn()
+      },
+      staleTime: 5 * 60 * 1000,
+    }),
+}
+
 // Export filter types for external use
 export type { PortalUserListParams as PortalUserFilters }

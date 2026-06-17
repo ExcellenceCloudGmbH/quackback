@@ -183,7 +183,10 @@ export {
   changelogEntryPostsRelations,
   changelogProducts,
   changelogProductsRelations,
+  changelogSegmentVisibility,
+  changelogSegmentVisibilityRelations,
   // Schema tables - live chat
+  type ChangelogVisibilityConfig,
   conversations,
   conversationsRelations,
   chatMessages,
