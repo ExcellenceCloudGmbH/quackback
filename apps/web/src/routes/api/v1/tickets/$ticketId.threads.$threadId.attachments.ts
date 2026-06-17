@@ -2,15 +2,17 @@
  * GET  /api/v1/tickets/:ticketId/threads/:threadId/attachments
  * POST /api/v1/tickets/:ticketId/threads/:threadId/attachments
  *
- * Image attachments only — same constraints as the widget upload path
- * (`/api/widget/upload`): allowed image MIME types, 5MB cap. The S3 key
- * prefix is shared (`widget-images`) so we have one storage codepath.
+ * File attachments with flexible auth:
+ * - Session-based: web users with browser cookies
+ * - API key: programmatic access with Authorization: Bearer header
  *
  * POST is multipart/form-data with a `file` field. Returns the created
  * `ticket_attachment` row.
  */
 import { createFileRoute } from '@tanstack/react-router'
+import { auth } from '@/lib/server/auth'
 import { withApiKeyAuth } from '@/lib/server/domains/api/auth'
+import { db, eq, principal } from '@/lib/server/db'
 import {
   successResponse,
   createdResponse,
@@ -22,6 +24,7 @@ import {
 } from '@/lib/server/domains/api/responses'
 import { parseTypeId } from '@/lib/server/domains/api/validation'
 import { loadPermissionSet } from '@/lib/server/domains/authz/authz.service'
+import { getTicketForPortalUser } from '@/lib/server/domains/tickets/ticket.portal-query'
 import {
   getTicket,
   getThread,
@@ -36,14 +39,15 @@ import {
 } from '@/lib/server/domains/tickets'
 import {
   isS3Configured,
-  isAllowedImageType,
-  MAX_FILE_SIZE,
+  isAllowedAttachmentType,
+  MAX_ATTACHMENT_FILE_SIZE,
   generateStorageKey,
   uploadObject,
 } from '@/lib/server/storage/s3'
-import type { TicketId, TicketThreadId, TeamId, PrincipalId } from '@quackback/ids'
+import { getPublicOriginFromRequest } from '@/lib/server/integrations/oauth'
+import type { TicketId, TicketThreadId, TeamId, PrincipalId, UserId } from '@quackback/ids'
 
-const STORAGE_PREFIX = 'widget-images'
+const STORAGE_PREFIX = 'ticket-attachments'
 
 async function loadTicketScope(ticketId: TicketId) {
   const ticket = await getTicket(ticketId)
@@ -58,6 +62,74 @@ async function loadTicketScope(ticketId: TicketId) {
       shares: shares.map((s) => ({ teamId: s.teamId as TeamId, revokedAt: s.revokedAt })),
     }),
   }
+}
+
+/**
+ * Try to authenticate via session (for web users) or API key (for programmatic access).
+ * Returns { principalId, isSession: true } for web auth, { principalId, isSession: false } for API key.
+ * Throws on auth failure.
+ */
+async function getAuthPrincipal(
+  request: Request
+): Promise<{ principalId: PrincipalId; isSession: boolean; userId: UserId | null }> {
+  // Try session auth first (web users)
+  const session = await auth.api.getSession({ headers: request.headers })
+  if (session?.user) {
+    const principalRow = await db.query.principal.findFirst({
+      where: eq(principal.userId, session.user.id as UserId),
+    })
+    if (principalRow) {
+      return {
+        principalId: principalRow.id as PrincipalId,
+        isSession: true,
+        userId: session.user.id as UserId,
+      }
+    }
+  }
+
+  // Fall back to API key auth (programmatic access)
+  const apiAuth = await withApiKeyAuth(request, { role: 'team' })
+  return { principalId: apiAuth.principalId, isSession: false, userId: null }
+}
+
+async function canPortalUserAccessPublicThread(
+  auth: { principalId: PrincipalId; isSession: boolean; userId: UserId | null },
+  ticketId: TicketId,
+  thread: Awaited<ReturnType<typeof getThread>>
+): Promise<boolean> {
+  if (!auth.isSession || !auth.userId || !thread) return false
+  try {
+    await getTicketForPortalUser({
+      userId: auth.userId,
+      ticketId,
+    })
+    return thread.audience === 'public'
+  } catch {
+    return false
+  }
+}
+
+async function resolveSessionPrincipalForTicket(
+  userId: UserId,
+  scope: ReturnType<typeof toResourceScope>
+): Promise<{ principalId: PrincipalId; canView: boolean }> {
+  const principalRows = await db.query.principal.findMany({
+    where: eq(principal.userId, userId),
+    columns: { id: true },
+  })
+
+  if (principalRows.length === 0) {
+    throw new Error('No principal found for session user')
+  }
+
+  for (const row of principalRows) {
+    const set = await loadPermissionSet(row.id as PrincipalId)
+    if (canViewTicket(set, scope)) {
+      return { principalId: row.id as PrincipalId, canView: true }
+    }
+  }
+
+  return { principalId: principalRows[0].id as PrincipalId, canView: false }
 }
 
 function serialize(row: {
@@ -89,8 +161,7 @@ export const Route = createFileRoute('/api/v1/tickets/$ticketId/threads/$threadI
     handlers: {
       GET: async ({ request, params }) => {
         try {
-          const auth = await withApiKeyAuth(request, { role: 'team' })
-          const set = await loadPermissionSet(auth.principalId)
+          const auth = await getAuthPrincipal(request)
           const ticketId = parseTypeId<TicketId>(params.ticketId, 'ticket', 'ticket ID')
           const threadId = parseTypeId<TicketThreadId>(
             params.threadId,
@@ -100,11 +171,22 @@ export const Route = createFileRoute('/api/v1/tickets/$ticketId/threads/$threadI
 
           const loaded = await loadTicketScope(ticketId)
           if (!loaded) return notFoundResponse('Ticket')
-          if (!canViewTicket(set, loaded.scope)) {
-            return forbiddenResponse('Cannot view this ticket')
-          }
           const thread = await getThread(threadId)
           if (!thread || thread.ticketId !== ticketId) return notFoundResponse('Thread')
+
+          const effectivePrincipal =
+            auth.isSession && auth.userId
+              ? await resolveSessionPrincipalForTicket(auth.userId, loaded.scope)
+              : {
+                  principalId: auth.principalId,
+                  canView: canViewTicket(await loadPermissionSet(auth.principalId), loaded.scope),
+                }
+
+          const canViewViaPermissions = effectivePrincipal.canView
+          const canViewViaPortal = await canPortalUserAccessPublicThread(auth, ticketId, thread)
+          if (!canViewViaPermissions && !canViewViaPortal) {
+            return forbiddenResponse('Cannot view this ticket')
+          }
 
           const rows = await listForThread(threadId)
           return successResponse(rows.map(serialize))
@@ -114,8 +196,7 @@ export const Route = createFileRoute('/api/v1/tickets/$ticketId/threads/$threadI
       },
       POST: async ({ request, params }) => {
         try {
-          const auth = await withApiKeyAuth(request, { role: 'team' })
-          const set = await loadPermissionSet(auth.principalId)
+          const auth = await getAuthPrincipal(request)
           const ticketId = parseTypeId<TicketId>(params.ticketId, 'ticket', 'ticket ID')
           const threadId = parseTypeId<TicketThreadId>(
             params.threadId,
@@ -125,23 +206,53 @@ export const Route = createFileRoute('/api/v1/tickets/$ticketId/threads/$threadI
 
           const loaded = await loadTicketScope(ticketId)
           if (!loaded) return notFoundResponse('Ticket')
-          if (!canViewTicket(set, loaded.scope)) {
-            return forbiddenResponse('Cannot view this ticket')
-          }
           const thread = await getThread(threadId)
           if (!thread || thread.deletedAt || thread.ticketId !== ticketId) {
             return notFoundResponse('Thread')
           }
 
+          const effectivePrincipal =
+            auth.isSession && auth.userId
+              ? await resolveSessionPrincipalForTicket(auth.userId, loaded.scope)
+              : {
+                  principalId: auth.principalId,
+                  canView: canViewTicket(await loadPermissionSet(auth.principalId), loaded.scope),
+                }
+
+          const set = await loadPermissionSet(effectivePrincipal.principalId)
+          const canViewViaPermissions = effectivePrincipal.canView
+
+          if (!canViewViaPermissions) {
+            const canAttachViaPortal = await canPortalUserAccessPublicThread(auth, ticketId, thread)
+            if (!canAttachViaPortal) {
+              return forbiddenResponse('Cannot view this ticket')
+            }
+            if (thread.principalId !== effectivePrincipal.principalId) {
+              return forbiddenResponse("Cannot attach to another author's thread")
+            }
+          }
+
           // Audience-aware reply permission gate matches the create-thread
           // route at $ticketId.threads.ts.
-          if (thread.audience === 'public' && !canReplyPublic(set, loaded.scope)) {
+          if (
+            canViewViaPermissions &&
+            thread.audience === 'public' &&
+            !canReplyPublic(set, loaded.scope)
+          ) {
             return forbiddenResponse('ticket.reply_public required')
           }
-          if (thread.audience === 'internal' && !canCommentInternal(set, loaded.scope)) {
+          if (
+            canViewViaPermissions &&
+            thread.audience === 'internal' &&
+            !canCommentInternal(set, loaded.scope)
+          ) {
             return forbiddenResponse('ticket.comment_internal required')
           }
-          if (thread.audience === 'shared_team' && !canShareCrossTeam(set, loaded.scope)) {
+          if (
+            canViewViaPermissions &&
+            thread.audience === 'shared_team' &&
+            !canShareCrossTeam(set, loaded.scope)
+          ) {
             return forbiddenResponse('ticket.share_cross_team required')
           }
 
@@ -159,25 +270,26 @@ export const Route = createFileRoute('/api/v1/tickets/$ticketId/threads/$threadI
           if (!(file instanceof File)) {
             return badRequestResponse('missing "file" field')
           }
-          if (!isAllowedImageType(file.type)) {
-            return badRequestResponse(`unsupported mime type: ${file.type}`)
+          if (!isAllowedAttachmentType(file.type)) {
+            return badRequestResponse(`unsupported file type: ${file.type}`)
           }
           if (file.size === 0) {
             return badRequestResponse('file is empty')
           }
-          if (file.size > MAX_FILE_SIZE) {
-            return badRequestResponse(`file exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB`)
+          if (file.size > MAX_ATTACHMENT_FILE_SIZE) {
+            return badRequestResponse(`file exceeds ${MAX_ATTACHMENT_FILE_SIZE / 1024 / 1024}MB`)
           }
 
-          const ext = file.type.split('/')[1] || 'bin'
+          const ext = file.name.split('.').pop() || 'bin'
           const filename = file.name || `upload-${Date.now()}.${ext}`
           const key = generateStorageKey(STORAGE_PREFIX, filename)
           const buffer = Buffer.from(await file.arrayBuffer())
-          const publicUrl = await uploadObject(key, buffer, file.type)
+          const requestOrigin = getPublicOriginFromRequest(request)
+          const publicUrl = await uploadObject(key, buffer, file.type, requestOrigin)
 
           const created = await attachToThread({
             threadId,
-            uploadedByPrincipalId: auth.principalId,
+            uploadedByPrincipalId: effectivePrincipal.principalId,
             filename,
             mimeType: file.type,
             sizeBytes: file.size,

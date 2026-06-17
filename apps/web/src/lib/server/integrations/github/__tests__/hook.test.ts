@@ -15,17 +15,29 @@ const findFirstThreadLinkMock = vi.fn()
 const findFirstThreadMock = vi.fn()
 const findFirstPrincipalMock = vi.fn()
 const findFirstInboxMock = vi.fn()
+const findFirstTicketMock = vi.fn()
+const selectWhereMock = vi.fn()
+const selectInnerJoinMock = vi.fn(() => ({
+  where: (...args: unknown[]) => selectWhereMock(...args),
+}))
+const selectFromMock = vi.fn(() => ({
+  innerJoin: (...args: unknown[]) => selectInnerJoinMock(...args),
+  where: (...args: unknown[]) => selectWhereMock(...args),
+}))
+const selectMock = vi.fn(() => ({ from: (...args: unknown[]) => selectFromMock(...args) }))
 
 vi.mock('@/lib/server/db', () => ({
   db: {
     insert: (table: unknown) => insertMock(table),
     update: (table: unknown) => updateMock(table),
+    select: (...args: unknown[]) => selectMock(...args),
     query: {
       ticketExternalLinks: { findFirst: (...args: unknown[]) => findFirstTicketLinkMock(...args) },
       ticketThreadExternalLinks: {
         findFirst: (...args: unknown[]) => findFirstThreadLinkMock(...args),
       },
       ticketThreads: { findFirst: (...args: unknown[]) => findFirstThreadMock(...args) },
+      tickets: { findFirst: (...args: unknown[]) => findFirstTicketMock(...args) },
       principal: { findFirst: (...args: unknown[]) => findFirstPrincipalMock(...args) },
       inboxes: { findFirst: (...args: unknown[]) => findFirstInboxMock(...args) },
     },
@@ -49,7 +61,17 @@ vi.mock('@/lib/server/db', () => ({
     lastSyncedAt: 'lastSyncedAt',
     updatedAt: 'updatedAt',
   },
-  ticketThreads: { id: 'id' },
+  ticketThreads: { id: 'id', ticketId: 'ticketId', audience: 'audience' },
+  ticketAttachments: {
+    id: 'id',
+    threadId: 'threadId',
+    filename: 'filename',
+    mimeType: 'mimeType',
+    sizeBytes: 'sizeBytes',
+    publicUrl: 'publicUrl',
+  },
+  tickets: { id: 'id' },
+  ticketStatuses: { category: 'category', deletedAt: 'deletedAt' },
   principal: { id: 'id' },
   inboxes: { id: 'id' },
   integrationUserMappings: {
@@ -58,6 +80,7 @@ vi.mock('@/lib/server/db', () => ({
   },
   eq: vi.fn(),
   and: vi.fn(),
+  isNull: vi.fn(),
   sql: vi.fn(),
 }))
 
@@ -226,6 +249,70 @@ function makeTicketUpdatedEvent(
   } as EventData
 }
 
+function makeTicketAttachmentEvent(
+  type: 'ticket.attachment_added' | 'ticket.attachment_removed'
+): EventData {
+  return {
+    id: `evt-${type}`,
+    type,
+    timestamp: '2026-06-12T00:00:00Z',
+    actor: { type: 'user', principalId: 'principal_agent1' },
+    data:
+      type === 'ticket.attachment_added'
+        ? {
+            ticket: {
+              id: 'ticket_1',
+              subject: 'Login issue',
+              descriptionText: null,
+              statusId: null,
+              statusCategory: 'open',
+              priority: 'normal',
+              channel: 'portal',
+              visibility: 'team',
+              inboxId: 'inbox_support',
+              primaryTeamId: null,
+              assigneePrincipalId: null,
+              assigneeTeamId: null,
+              requesterPrincipalId: 'principal_customer1',
+              requesterContactId: null,
+            },
+            attachment: {
+              id: 'att_1',
+              threadId: 'ticket_thread_1',
+              filename: 'screenshot.png',
+              mimeType: 'image/png',
+              sizeBytes: 2048,
+              uploadedByPrincipalId: 'principal_agent1',
+              publicUrl: 'https://cdn.example.test/screenshot.png',
+            },
+          }
+        : {
+            ticket: {
+              id: 'ticket_1',
+              subject: 'Login issue',
+              descriptionText: null,
+              statusId: null,
+              statusCategory: 'open',
+              priority: 'normal',
+              channel: 'portal',
+              visibility: 'team',
+              inboxId: 'inbox_support',
+              primaryTeamId: null,
+              assigneePrincipalId: null,
+              assigneeTeamId: null,
+              requesterPrincipalId: 'principal_customer1',
+              requesterContactId: null,
+            },
+            attachment: {
+              id: 'att_1',
+              threadId: 'ticket_thread_1',
+              filename: 'screenshot.png',
+            },
+            removedByPrincipalId: 'principal_agent1',
+          },
+  } as EventData
+}
+
 describe('githubHook sync logging', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -247,6 +334,8 @@ describe('githubHook sync logging', () => {
       displayName: 'Ada Agent',
       user: { name: 'Ada Agent', email: 'ada@example.com' },
     })
+    findFirstTicketMock.mockResolvedValue({ descriptionJson: null, descriptionText: null })
+    selectWhereMock.mockResolvedValue([])
   })
 
   it('logs successful post issue syncs', async () => {
@@ -347,6 +436,9 @@ describe('githubHook ticket issue creation', () => {
       title: 'Login issue',
       labels: ['priority:normal', 'channel:portal', 'support'],
     })
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body as string).body).toContain(
+      '<!-- quackback:ticket-issue ticketId=ticket_1 integrationId=integration_gh1 -->'
+    )
   })
 })
 
@@ -554,5 +646,68 @@ describe('githubHook ticket comment sync', () => {
 
     expect(result).toEqual({ success: true, skipped: true })
     expect(fetchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('githubHook ticket attachment sync', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    globalThis.fetch = originalFetch
+    findFirstTicketLinkMock.mockResolvedValue({ externalId: '42' })
+  })
+
+  it('posts an attachment-added comment to the linked GitHub issue', async () => {
+    const fetchMock = mockFetch(201, {
+      id: 2024,
+      html_url: 'https://github.com/org/repo/issues/42#issuecomment-2024',
+    })
+    setFetch(fetchMock)
+
+    const result = await githubHook.run(
+      makeTicketAttachmentEvent('ticket.attachment_added'),
+      target,
+      config
+    )
+
+    expect(result).toEqual({
+      success: true,
+      externalId: '2024',
+      externalUrl: 'https://github.com/org/repo/issues/42#issuecomment-2024',
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/org/repo/issues/42/comments',
+      expect.objectContaining({ method: 'POST', body: expect.any(String) })
+    )
+    const body = fetchMock.mock.calls[0][1].body as string
+    expect(body).toContain('screenshot.png')
+    expect(body).toContain('![screenshot.png](https://cdn.example.test/screenshot.png)')
+    expect(body).toContain(
+      '<!-- quackback:ticket-system integrationId=integration_gh1 event=ticket.attachment_added:att_1 -->'
+    )
+  })
+
+  it('posts an attachment-removed comment to the linked GitHub issue', async () => {
+    const fetchMock = mockFetch(201, {
+      id: 2025,
+      html_url: 'https://github.com/org/repo/issues/42#issuecomment-2025',
+    })
+    setFetch(fetchMock)
+
+    const result = await githubHook.run(
+      makeTicketAttachmentEvent('ticket.attachment_removed'),
+      target,
+      config
+    )
+
+    expect(result).toEqual({
+      success: true,
+      externalId: '2025',
+      externalUrl: 'https://github.com/org/repo/issues/42#issuecomment-2025',
+    })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/repos/org/repo/issues/42/comments',
+      expect.objectContaining({ method: 'POST', body: expect.any(String) })
+    )
+    expect(fetchMock.mock.calls[0][1].body as string).toContain('Removed file: **screenshot.png**')
   })
 })

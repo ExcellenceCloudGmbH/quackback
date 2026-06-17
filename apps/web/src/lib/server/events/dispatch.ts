@@ -103,6 +103,39 @@ async function dispatchEvent(event: EventData): Promise<void> {
     await processEvent(event)
   } catch (error) {
     log.error({ err: error, event_type: event.type, event_id: event.id }, 'failed to process event')
+    await fallbackSendEmails(event)
+  }
+}
+
+/**
+ * Best-effort fallback for when BullMQ/event processing is unavailable.
+ * Sends email targets synchronously so critical notifications are not dropped.
+ */
+async function fallbackSendEmails(event: EventData): Promise<void> {
+  try {
+    const [{ getHookTargets }, { emailHook }] = await Promise.all([
+      import('./targets'),
+      import('./handlers/email'),
+    ])
+    const targets = await getHookTargets(event)
+    const emailTargets = targets.filter((t) => t.type === 'email')
+    if (emailTargets.length === 0) return
+
+    for (const target of emailTargets) {
+      try {
+        await emailHook.run(event, target.target, target.config)
+      } catch (err) {
+        log.error(
+          { err, event_type: event.type, event_id: event.id },
+          'fallback email delivery failed'
+        )
+      }
+    }
+  } catch (err) {
+    log.error(
+      { err, event_type: event.type, event_id: event.id },
+      'fallback email resolution failed'
+    )
   }
 }
 

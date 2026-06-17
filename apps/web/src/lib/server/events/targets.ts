@@ -29,7 +29,7 @@ import {
   type Subscriber,
   type NotificationEventType,
 } from '@/lib/server/domains/subscriptions/subscription.service'
-import { cacheGet, cacheSet, CACHE_KEYS } from '@/lib/server/redis'
+import { cacheGet, cacheSet, cacheDel, CACHE_KEYS } from '@/lib/server/redis'
 import type { HookTarget } from './hook-types'
 import { stripHtml, truncate } from './hook-utils'
 import { buildHookContext, type HookContext } from './hook-context'
@@ -257,12 +257,44 @@ type CachedIntegrationMapping = {
   filters: unknown
 }
 
+async function reconcileGitHubMappingsBestEffort(): Promise<void> {
+  try {
+    const githubIntegrations = await db
+      .select({
+        id: integrations.id,
+        config: integrations.config,
+      })
+      .from(integrations)
+      .where(and(eq(integrations.integrationType, 'github'), eq(integrations.status, 'active')))
+
+    if (githubIntegrations.length === 0) return
+
+    const { ensureGitHubEventMappings } =
+      await import('@/lib/server/integrations/github/event-mappings')
+    await Promise.allSettled(
+      githubIntegrations.map((integration) =>
+        ensureGitHubEventMappings({
+          integrationId: integration.id,
+          config: (integration.config as Record<string, unknown> | null) ?? undefined,
+        })
+      )
+    )
+  } catch (error) {
+    log.warn(
+      { err: error },
+      'failed to reconcile GitHub event mappings during target cache refresh'
+    )
+  }
+}
+
 async function getCachedIntegrationMappings(): Promise<CachedIntegrationMapping[]> {
   const cached = await cacheGet<CachedIntegrationMapping[]>(CACHE_KEYS.INTEGRATION_MAPPINGS)
   if (cached) {
     log.debug({ count: cached.length }, 'integration mappings cache hit')
     return cached
   }
+
+  await reconcileGitHubMappingsBestEffort()
 
   const mappings = await db
     .select({
@@ -308,8 +340,18 @@ async function getIntegrationTargets(
   }
 
   // Get all active mappings from cache or DB, then filter by event type
-  const allMappings = await getCachedIntegrationMappings()
-  const mappings = allMappings.filter((m) => m.eventType === event.type)
+  let allMappings = await getCachedIntegrationMappings()
+  let mappings = allMappings.filter((m) => m.eventType === event.type)
+
+  if (
+    mappings.length === 0 &&
+    (event.type === 'ticket.attachment_added' || event.type === 'ticket.attachment_removed')
+  ) {
+    await reconcileGitHubMappingsBestEffort()
+    await cacheDel(CACHE_KEYS.INTEGRATION_MAPPINGS)
+    allMappings = await getCachedIntegrationMappings()
+    mappings = allMappings.filter((m) => m.eventType === event.type)
+  }
 
   if (mappings.length === 0) {
     return []

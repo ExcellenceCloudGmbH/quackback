@@ -4,8 +4,10 @@ import {
   listMyTicketsFn,
   getMyTicketFn,
   replyToMyTicketFn,
+  createMyTicketFn,
 } from '@/lib/server/functions/portal-tickets'
 import type { TicketId } from '@quackback/ids'
+import type { JSONContent } from '@tiptap/react'
 
 export type PortalStatusCategory = 'open' | 'pending' | 'on_hold' | 'solved' | 'closed'
 
@@ -64,6 +66,7 @@ export const portalTicketQueries = {
           },
           threads: data.threads.map((t) => ({
             ...t,
+            ticketId,
             createdAt: new Date(t.createdAt),
             editedAt: t.editedAt ? new Date(t.editedAt) : null,
           })),
@@ -96,5 +99,33 @@ export function useReplyToMyTicket(ticketId: TicketId) {
       toast.success('Reply sent')
     },
     onError: (e: Error) => toast.error(e.message || 'Failed to send reply'),
+  })
+}
+
+export function useCreateMyTicket() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      subject: string
+      descriptionJson?: JSONContent | null
+      descriptionText?: string | null
+      priority?: 'low' | 'normal' | 'high' | 'urgent'
+    }) =>
+      createMyTicketFn({
+        data: {
+          subject: input.subject,
+          descriptionJson: (input.descriptionJson ?? null) as {
+            type: 'doc'
+            content?: unknown[]
+          } | null,
+          descriptionText: input.descriptionText ?? null,
+          priority: input.priority,
+        },
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['portal', 'tickets', 'list'] })
+      toast.success('Ticket created')
+    },
+    onError: (e: Error) => toast.error(e.message || 'Failed to create ticket'),
   })
 }

@@ -7,8 +7,13 @@ import type { HookHandler, HookResult } from '../../events/hook-types'
 import type { EventData, EventTicketRef } from '../../events/types'
 import { isRetryableError } from '../../events/hook-utils'
 import { buildGitHubIssueBody } from './message'
-import { buildTicketIssueBody, buildTicketUpdateBody } from './ticket-message'
 import {
+  appendQuackbackTicketIssueMarker,
+  buildTicketIssueBody,
+  buildTicketUpdateBody,
+} from './ticket-message'
+import {
+  buildQuackbackSystemMarker,
   buildOutboundGitHubCommentBody,
   createGitHubIssueComment,
   deleteGitHubIssueComment,
@@ -44,6 +49,15 @@ interface SyncLogEntry {
   status: 'success' | 'failed' | 'skipped'
   errorMessage?: string
   durationMs?: number
+}
+
+interface TicketAttachmentForSync {
+  id: string
+  threadId: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  publicUrl: string | null
 }
 
 async function logSyncAttempt(entry: SyncLogEntry): Promise<void> {
@@ -349,6 +363,14 @@ export const githubHook: HookHandler = {
         return withSyncLog(event, ownerRepo, ghConfig, () =>
           handleTicketThreadDeleted(event, ownerRepo, ghConfig)
         )
+      case 'ticket.attachment_added':
+        return withSyncLog(event, ownerRepo, ghConfig, () =>
+          handleTicketAttachmentAdded(event, ownerRepo, ghConfig)
+        )
+      case 'ticket.attachment_removed':
+        return withSyncLog(event, ownerRepo, ghConfig, () =>
+          handleTicketAttachmentRemoved(event, ownerRepo, ghConfig)
+        )
       default:
         return { success: true }
     }
@@ -406,7 +428,17 @@ async function handleTicketCreated(
   if (event.type !== 'ticket.created') return { success: true }
 
   log.debug(`Creating issue for ticket -> repo ${ownerRepo}`)
+  const ticketDescriptionMarkdown = await loadTicketDescriptionMarkdown(event.data.ticket.id)
+  const attachments = await listTicketPublicAttachmentsForSync(event.data.ticket.id)
   const { title, body, labels } = buildTicketIssueBody(event, config.rootUrl)
+  const bodyWithAssets = withTicketMediaBlocks(body, {
+    descriptionMarkdown: ticketDescriptionMarkdown,
+    attachments,
+  })
+  const markedBody = appendQuackbackTicketIssueMarker(bodyWithAssets, {
+    ticketId: event.data.ticket.id,
+    integrationId: config.integrationId,
+  })
   const configuredInboxSlug = await findConfiguredInboxSlug(config, event.data.ticket)
   const issueLabels = configuredInboxSlug
     ? Array.from(new Set([...labels, configuredInboxSlug]))
@@ -416,7 +448,7 @@ async function handleTicketCreated(
     const response = await fetch(`${GITHUB_API}/repos/${ownerRepo}/issues`, {
       method: 'POST',
       headers: githubHeaders(config.accessToken),
-      body: JSON.stringify({ title, body, labels: issueLabels }),
+      body: JSON.stringify({ title, body: markedBody, labels: issueLabels }),
     })
 
     if (!response.ok) {
@@ -567,9 +599,20 @@ async function handleTicketUpdated(
     if (hasContentChange) {
       log.debug(`Updating issue #${issueNumber} content in ${ownerRepo}`)
       const update = buildTicketUpdateBody(ticket, config.rootUrl)
+      const ticketDescriptionMarkdown = await loadTicketDescriptionMarkdown(ticket.id)
+      const attachments = await listTicketPublicAttachmentsForSync(ticket.id)
       const patchBody: Record<string, unknown> = {}
       if (update.title) patchBody.title = update.title
-      if (update.body) patchBody.body = update.body
+      if (update.body) {
+        const bodyWithAssets = withTicketMediaBlocks(update.body, {
+          descriptionMarkdown: ticketDescriptionMarkdown,
+          attachments,
+        })
+        patchBody.body = appendQuackbackTicketIssueMarker(bodyWithAssets, {
+          ticketId: ticket.id,
+          integrationId: config.integrationId,
+        })
+      }
 
       if (Object.keys(patchBody).length === 0) {
         return hasPriorityChange ? { success: true } : skipped()
@@ -650,11 +693,17 @@ async function handleTicketThreadAdded(
 
   try {
     const authorName = await getThreadAuthorName(fullThread.principalId)
+    const renderedThreadBody = await renderThreadBodyForGitHub(fullThread)
+    const attachmentBlock = buildAttachmentBlock(
+      (await listThreadAttachmentsForSync(threadId)) ?? [],
+      'Thread attachments'
+    )
+    const threadBody = `${renderedThreadBody}${attachmentBlock ? `\n\n${attachmentBlock}` : ''}`
     const body = buildOutboundGitHubCommentBody({
       ticketId: ticket.id,
       threadId,
       integrationId: config.integrationId,
-      bodyText: fullThread.bodyText,
+      bodyText: threadBody,
       authorName,
       isFromRequester: thread?.isFromRequester,
     })
@@ -699,11 +748,17 @@ async function handleTicketThreadUpdated(
 
   try {
     const authorName = await getThreadAuthorName(fullThread.principalId)
+    const renderedThreadBody = await renderThreadBodyForGitHub(fullThread)
+    const attachmentBlock = buildAttachmentBlock(
+      (await listThreadAttachmentsForSync(threadId)) ?? [],
+      'Thread attachments'
+    )
+    const threadBody = `${renderedThreadBody}${attachmentBlock ? `\n\n${attachmentBlock}` : ''}`
     const body = buildOutboundGitHubCommentBody({
       ticketId: ticket.id,
       threadId,
       integrationId: config.integrationId,
-      bodyText: fullThread.bodyText,
+      bodyText: threadBody,
       authorName,
       isFromRequester: thread.isFromRequester,
     })
@@ -765,6 +820,81 @@ async function handleTicketThreadDeleted(
   }
 }
 
+async function handleTicketAttachmentAdded(
+  event: EventData,
+  ownerRepo: string,
+  config: GitHubConfig
+): Promise<HookResult> {
+  if (event.type !== 'ticket.attachment_added') return { success: true }
+  if (!config.integrationId) return skipped()
+
+  const { ticket, attachment } = event.data
+  const issueNumber = await findTicketIssueNumber(ticket.id, config.integrationId)
+  if (!issueNumber) return skipped()
+
+  try {
+    const lines: string[] = ['_Quackback attachment added_', '', formatAttachmentEntry(attachment)]
+    if (attachment.publicUrl && isImageAttachment(attachment.mimeType)) {
+      lines.push('', `![${attachment.filename}](${attachment.publicUrl})`)
+    }
+    lines.push(
+      '',
+      buildQuackbackSystemMarker({
+        integrationId: config.integrationId,
+        event: `ticket.attachment_added:${attachment.id}`,
+      })
+    )
+
+    const comment = await createGitHubIssueComment({
+      ownerRepo,
+      issueNumber,
+      accessToken: config.accessToken,
+      body: lines.join('\n'),
+    })
+
+    return { success: true, externalId: comment.id, externalUrl: comment.htmlUrl ?? undefined }
+  } catch (error) {
+    return githubCommentError(error)
+  }
+}
+
+async function handleTicketAttachmentRemoved(
+  event: EventData,
+  ownerRepo: string,
+  config: GitHubConfig
+): Promise<HookResult> {
+  if (event.type !== 'ticket.attachment_removed') return { success: true }
+  if (!config.integrationId) return skipped()
+
+  const { ticket, attachment } = event.data
+  const issueNumber = await findTicketIssueNumber(ticket.id, config.integrationId)
+  if (!issueNumber) return skipped()
+
+  try {
+    const body = [
+      '_Quackback attachment removed_',
+      '',
+      `Removed file: **${attachment.filename}**`,
+      '',
+      buildQuackbackSystemMarker({
+        integrationId: config.integrationId,
+        event: `ticket.attachment_removed:${attachment.id}`,
+      }),
+    ].join('\n')
+
+    const comment = await createGitHubIssueComment({
+      ownerRepo,
+      issueNumber,
+      accessToken: config.accessToken,
+      body,
+    })
+
+    return { success: true, externalId: comment.id, externalUrl: comment.htmlUrl ?? undefined }
+  } catch (error) {
+    return githubCommentError(error)
+  }
+}
+
 // ============================================================================
 // Helpers
 // ============================================================================
@@ -779,6 +909,139 @@ function githubCommentError(error: unknown): HookResult {
     error: error instanceof Error ? error.message : 'Unknown error',
     shouldRetry: isRetryableError(error),
   }
+}
+
+async function renderThreadBodyForGitHub(thread: {
+  bodyJson?: unknown
+  bodyText?: string | null
+}): Promise<string> {
+  const fallback = (thread.bodyText ?? '').trim()
+  if (!thread.bodyJson) return fallback
+
+  try {
+    const { tiptapJsonToMarkdown } = await import('@/lib/server/markdown-tiptap')
+    const markdown = tiptapJsonToMarkdown(thread.bodyJson).trim()
+    return markdown || fallback
+  } catch {
+    return fallback
+  }
+}
+
+async function loadTicketDescriptionMarkdown(ticketId: string): Promise<string | null> {
+  try {
+    const { db, tickets, eq } = await import('@/lib/server/db')
+    const row = await db.query.tickets.findFirst({
+      where: eq(tickets.id, ticketId as TicketId),
+      columns: { descriptionJson: true, descriptionText: true },
+    })
+    if (!row?.descriptionJson) return row?.descriptionText?.trim() || null
+
+    const { tiptapJsonToMarkdown } = await import('@/lib/server/markdown-tiptap')
+    const markdown = tiptapJsonToMarkdown(row.descriptionJson).trim()
+    return markdown || row.descriptionText?.trim() || null
+  } catch {
+    return null
+  }
+}
+
+async function listTicketPublicAttachmentsForSync(
+  ticketId: string
+): Promise<TicketAttachmentForSync[]> {
+  const { db, ticketAttachments, ticketThreads, eq, and } = await import('@/lib/server/db')
+  return db
+    .select({
+      id: ticketAttachments.id,
+      threadId: ticketAttachments.threadId,
+      filename: ticketAttachments.filename,
+      mimeType: ticketAttachments.mimeType,
+      sizeBytes: ticketAttachments.sizeBytes,
+      publicUrl: ticketAttachments.publicUrl,
+    })
+    .from(ticketAttachments)
+    .innerJoin(ticketThreads, eq(ticketThreads.id, ticketAttachments.threadId))
+    .where(
+      and(eq(ticketThreads.ticketId, ticketId as TicketId), eq(ticketThreads.audience, 'public'))
+    )
+}
+
+async function listThreadAttachmentsForSync(threadId: string): Promise<TicketAttachmentForSync[]> {
+  const { db, ticketAttachments, eq } = await import('@/lib/server/db')
+  return db
+    .select({
+      id: ticketAttachments.id,
+      threadId: ticketAttachments.threadId,
+      filename: ticketAttachments.filename,
+      mimeType: ticketAttachments.mimeType,
+      sizeBytes: ticketAttachments.sizeBytes,
+      publicUrl: ticketAttachments.publicUrl,
+    })
+    .from(ticketAttachments)
+    .where(eq(ticketAttachments.threadId, threadId as import('@quackback/ids').TicketThreadId))
+}
+
+function withTicketMediaBlocks(
+  baseBody: string,
+  opts: {
+    descriptionMarkdown: string | null
+    attachments: TicketAttachmentForSync[]
+  }
+): string {
+  const sections = baseBody.split('\n\n---\n\n')
+  const meta = sections.length > 1 ? sections[1] : ''
+  const description = opts.descriptionMarkdown?.trim() || sections[0]?.trim() || ''
+  const attachmentBlock = buildAttachmentBlock(opts.attachments, 'Attachments')
+
+  const bodySections: string[] = [description || sections[0] || '']
+  if (attachmentBlock) {
+    bodySections.push(attachmentBlock)
+  }
+  if (meta) {
+    bodySections.push(`---\n\n${meta}`)
+  }
+
+  return bodySections.filter(Boolean).join('\n\n')
+}
+
+function buildAttachmentBlock(attachments: TicketAttachmentForSync[], heading: string): string {
+  if (!attachments.length) return ''
+
+  const lines: string[] = [`### ${heading}`]
+  for (const attachment of attachments) {
+    lines.push(formatAttachmentEntry(attachment))
+    if (attachment.publicUrl && isImageAttachment(attachment.mimeType)) {
+      lines.push('', `![${attachment.filename}](${attachment.publicUrl})`)
+    }
+  }
+  return lines.join('\n')
+}
+
+function formatAttachmentEntry(attachment: {
+  filename: string
+  publicUrl: string | null
+  mimeType: string
+  sizeBytes: number
+}): string {
+  const sizeLabel = formatBytes(attachment.sizeBytes)
+  const fileLabel = attachment.publicUrl
+    ? `[${attachment.filename}](${attachment.publicUrl})`
+    : `**${attachment.filename}**`
+  return `- ${fileLabel} (${attachment.mimeType}, ${sizeLabel})`
+}
+
+function formatBytes(sizeBytes: number): string {
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let value = sizeBytes
+  let unitIdx = 0
+  while (value >= 1024 && unitIdx < units.length - 1) {
+    value /= 1024
+    unitIdx += 1
+  }
+  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIdx]}`
+}
+
+function isImageAttachment(mimeType: string | null | undefined): boolean {
+  return typeof mimeType === 'string' && mimeType.startsWith('image/')
 }
 
 /**

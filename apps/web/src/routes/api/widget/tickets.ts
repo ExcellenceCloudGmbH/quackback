@@ -254,6 +254,15 @@ export async function handleCreateWidgetTicket({
       createdByPrincipalId: session.principal.id,
     })
 
+    // Create an initial public thread for attachment storage during creation flow
+    const { addThread } = await import('@/lib/server/domains/tickets')
+    const initialThread = await addThread({
+      ticketId: ticket.id,
+      principalId: session.principal.id,
+      audience: 'public',
+      bodyText: '[Attachments added at ticket creation]',
+    })
+
     const status = ticket.statusId
       ? await db.query.ticketStatuses.findFirst({
           where: eq(ticketStatuses.id, ticket.statusId),
@@ -271,6 +280,7 @@ export async function handleCreateWidgetTicket({
           statusColor: status?.color ?? null,
           createdAt: ticket.createdAt.toISOString(),
           lastActivityAt: ticket.lastActivityAt.toISOString(),
+          initialThreadId: initialThread.id,
         },
       },
       { headers: widgetCorsHeaders() }

@@ -12,6 +12,7 @@
 import type { GitHubIntegrationConfig } from './types'
 import { markdownToTiptapJson } from '@/lib/server/markdown-tiptap'
 import {
+  parseQuackbackSystemMarker,
   buildInboundTicketThreadBody,
   findThreadLinkByExternalComment,
   loadThreadForSync,
@@ -21,6 +22,7 @@ import {
   markThreadLinkDeleted,
   type GitHubIssueComment,
 } from './ticket-comments'
+import { parseQuackbackTicketIssueMarker } from './ticket-message'
 import type { TicketId, TicketStatusId, PrincipalId, InboxId, IntegrationId } from '@quackback/ids'
 import type { TicketStatusCategory } from '@/lib/server/db'
 
@@ -291,6 +293,12 @@ export async function handleGitHubIssueCommentEvent(
   }
 
   try {
+    const systemMarker = parseQuackbackSystemMarker(payload.comment.body)
+    if (systemMarker?.integrationId === integration.id) {
+      await logResult('skipped')
+      return true
+    }
+
     const marker = parseQuackbackThreadMarker(payload.comment.body)
     if (marker) {
       if (marker.integrationId === integration.id) {
@@ -496,6 +504,22 @@ async function handleIssueOpened(
   payload: GitHubIssuePayload,
   integration: IntegrationRecord
 ): Promise<void> {
+  const issueNumber = String(payload.issue.number)
+  const alreadyLinkedTicketId = await findLinkedTicket(issueNumber, integration.id)
+  if (alreadyLinkedTicketId) {
+    return
+  }
+
+  const recoveredTicketId = await recoverLinkedTicketFromIssueBody({
+    issueNumber,
+    issueUrl: payload.issue.html_url,
+    issueBody: payload.issue.body ?? null,
+    integrationId: integration.id,
+  })
+  if (recoveredTicketId) {
+    return
+  }
+
   const { createTicket } = await import('@/lib/server/domains/tickets/ticket.service')
   const { db, ticketExternalLinks } = await import('@/lib/server/db')
 
@@ -742,7 +766,14 @@ async function recoverLinkedTicketFromIssueBody(args: {
 
 function extractTicketIdFromGitHubIssueBody(body: string | null): string | null {
   if (!body) return null
-  return body.match(/\/admin\/tickets\/(ticket_[A-Za-z0-9]+)/)?.[1] ?? null
+  const marker = parseQuackbackTicketIssueMarker(body)
+  if (marker?.ticketId) return marker.ticketId
+
+  return (
+    body.match(/\/(?:admin\/)?tickets\/(ticket_[A-Za-z0-9]+)/)?.[1] ??
+    body.match(/\bticketId=(ticket_[A-Za-z0-9]+)/)?.[1] ??
+    null
+  )
 }
 
 /**

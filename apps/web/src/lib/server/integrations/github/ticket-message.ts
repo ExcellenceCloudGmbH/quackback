@@ -5,6 +5,9 @@
 import type { EventData, EventTicketRef } from '../../events/types'
 import { truncate } from '../../events/hook-utils'
 
+const ISSUE_MARKER_RE =
+  /<!--\s*quackback:ticket-issue\s+ticketId=([^\s]+)(?:\s+integrationId=([^\s]+))?\s*-->/i
+
 /**
  * Build a GitHub issue title and body from a ticket event.
  */
@@ -26,6 +29,33 @@ export function buildTicketIssueBody(
   const labels = buildTicketLabels(ticket)
 
   return { title, body, labels }
+}
+
+export function buildQuackbackTicketIssueMarker(args: {
+  ticketId: string
+  integrationId?: string | null
+}): string {
+  const integrationPart = args.integrationId ? ` integrationId=${args.integrationId}` : ''
+  return `<!-- quackback:ticket-issue ticketId=${args.ticketId}${integrationPart} -->`
+}
+
+export function parseQuackbackTicketIssueMarker(
+  body: string | null | undefined
+): { ticketId: string; integrationId: string | null } | null {
+  const match = body?.match(ISSUE_MARKER_RE)
+  if (!match) return null
+  return {
+    ticketId: match[1],
+    integrationId: match[2] ?? null,
+  }
+}
+
+export function appendQuackbackTicketIssueMarker(
+  body: string,
+  args: { ticketId: string; integrationId?: string | null }
+): string {
+  const marker = buildQuackbackTicketIssueMarker(args)
+  return body.includes(marker) ? body : `${body}\n\n${marker}`
 }
 
 function formatTicketBody(ticket: EventTicketRef, rootUrl?: string): string {

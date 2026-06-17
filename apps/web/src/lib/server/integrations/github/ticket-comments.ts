@@ -4,11 +4,18 @@ import type { TicketThread } from '@/lib/server/db'
 const GITHUB_API = 'https://api.github.com'
 const MARKER_RE =
   /<!--\s*quackback:ticket-thread\s+ticketId=([^\s]+)\s+threadId=([^\s]+)\s+integrationId=([^\s]+)\s*-->/i
+const SYSTEM_MARKER_RE =
+  /<!--\s*quackback:ticket-system\s+integrationId=([^\s]+)\s+event=([^\s]+)\s*-->/i
 
 export interface QuackbackThreadMarker {
   ticketId: string
   threadId: string
   integrationId: string
+}
+
+export interface QuackbackSystemMarker {
+  integrationId: string
+  event: string
 }
 
 export interface GitHubIssueComment {
@@ -41,6 +48,18 @@ export function buildQuackbackThreadMarker(args: {
   integrationId: string
 }): string {
   return `<!-- quackback:ticket-thread ticketId=${args.ticketId} threadId=${args.threadId} integrationId=${args.integrationId} -->`
+}
+
+export function parseQuackbackSystemMarker(
+  body: string | null | undefined
+): QuackbackSystemMarker | null {
+  const match = body?.match(SYSTEM_MARKER_RE)
+  if (!match) return null
+  return { integrationId: match[1], event: match[2] }
+}
+
+export function buildQuackbackSystemMarker(args: { integrationId: string; event: string }): string {
+  return `<!-- quackback:ticket-system integrationId=${args.integrationId} event=${args.event} -->`
 }
 
 export function buildOutboundGitHubCommentBody(args: {

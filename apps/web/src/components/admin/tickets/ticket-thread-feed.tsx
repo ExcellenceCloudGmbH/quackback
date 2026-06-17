@@ -4,8 +4,9 @@
  * yellow tinted, shared_team = purple tinted with the team label.
  */
 import { useCallback, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import type { JSONContent } from '@tiptap/react'
-import type { TicketId, TeamId, PrincipalId } from '@quackback/ids'
+import type { TicketId, TeamId, PrincipalId, TicketThreadId } from '@quackback/ids'
 import { cn } from '@/lib/shared/utils'
 import { TimeAgo } from '@/components/ui/time-ago'
 import {
@@ -15,9 +16,12 @@ import {
 } from '@/components/ui/rich-text-editor'
 import { Button } from '@/components/ui/button'
 import { Pencil } from 'lucide-react'
+import { TicketAttachments } from '@/components/tickets/ticket-attachments'
+import { ticketQueries } from '@/lib/client/queries/tickets'
+import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
 
 export interface ThreadRow {
-  id: string
+  id: TicketThreadId
   ticketId: TicketId
   principalId: PrincipalId | null
   audience: 'public' | 'internal' | 'shared_team'
@@ -30,6 +34,8 @@ export interface ThreadRow {
 
 export interface TicketThreadFeedProps {
   threads: ThreadRow[]
+  /** Optional fallback ticketId for attachment lookups when thread rows omit it. */
+  fallbackTicketId?: TicketId
   /** Optional map of teamId → teamName for nicer "Shared with X" labels. */
   teamNames?: Record<string, string>
   /** Optional map of principalId → display name for author labels. */
@@ -47,7 +53,7 @@ const DESCRIPTION_EDITOR_FEATURES = {
   codeBlocks: true,
   blockquotes: true,
   dividers: false,
-  images: false,
+  images: true,
   taskLists: false,
   tables: false,
   embeds: false,
@@ -112,12 +118,14 @@ const audienceLabels: Record<ThreadRow['audience'], string> = {
 
 export function TicketThreadFeed({
   threads,
+  fallbackTicketId,
   teamNames,
   principalNames,
   description,
   onDescriptionUpdate,
   isDescriptionSaving,
 }: TicketThreadFeedProps) {
+  const { upload: uploadImage } = useImageUpload({ prefix: 'uploads' })
   const hasDesc = hasDescriptionContent(description)
   const [editingDescription, setEditingDescription] = useState(false)
   const [descDraft, setDescDraft] = useState<JSONContent | null>(null)
@@ -166,6 +174,7 @@ export function TicketThreadFeed({
               placeholder="Add a description..."
               minHeight="100px"
               features={DESCRIPTION_EDITOR_FEATURES}
+              onImageUpload={uploadImage}
             />
           </div>
           <div className="mt-2 flex items-center justify-end gap-1">
@@ -239,9 +248,37 @@ export function TicketThreadFeed({
             ) : (
               <div className="text-sm whitespace-pre-wrap">{th.bodyText}</div>
             )}
+            <ThreadAttachmentsLoader
+              ticketId={(th.ticketId ?? fallbackTicketId) as TicketId}
+              threadId={th.id}
+            />
           </article>
         )
       })}
+    </div>
+  )
+}
+
+function ThreadAttachmentsLoader({
+  ticketId,
+  threadId,
+}: {
+  ticketId: TicketId
+  threadId: TicketThreadId
+}) {
+  const {
+    data: attachments,
+    isLoading,
+    isError,
+  } = useQuery(ticketQueries.attachments(ticketId, threadId))
+
+  if (isError || (!isLoading && (!attachments || attachments.length === 0))) {
+    return null
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border/50">
+      <TicketAttachments attachments={attachments ?? []} isLoading={isLoading} />
     </div>
   )
 }

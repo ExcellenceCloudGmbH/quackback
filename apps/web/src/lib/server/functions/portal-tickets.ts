@@ -26,8 +26,11 @@ import {
   type PortalViewerRelationship,
 } from '@/lib/server/domains/tickets/ticket.portal-query'
 import { listPublicThreadsForTicket } from '@/lib/server/domains/tickets/ticket.threads'
+import { createTicket } from '@/lib/server/domains/tickets/ticket.service'
+import { getMemberByUser } from '@/lib/server/domains/principals/principal.service'
 import type { PrincipalId, TicketId, TicketStatusId, UserId } from '@quackback/ids'
 import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils'
+import { ForbiddenError } from '@/lib/shared/errors'
 
 const tiptapDocSchema = z
   .object({ type: z.literal('doc'), content: z.array(z.unknown()).optional() })
@@ -287,5 +290,78 @@ export const reopenMyTicketFn = createServerFn({ method: 'POST' })
       statusCategory: (status?.category ?? 'open') as SerializedTicketRow['statusCategory'],
       statusName: status?.name ?? 'Open',
       updatedAt: toIsoString(updated.updatedAt),
+    }
+  })
+
+export const createMyTicketFn = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      subject: z.string().min(1).max(500),
+      descriptionJson: tiptapDocSchema.nullable().optional(),
+      descriptionText: z.string().max(100_000).nullable().optional(),
+      priority: z.enum(['low', 'normal', 'high', 'urgent']).optional(),
+    })
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth()
+    const memberRow = await getMemberByUser(ctx.user.id as UserId)
+    if (!memberRow) {
+      throw new ForbiddenError('PORTAL_NO_PRINCIPAL', 'portal user has no principal')
+    }
+
+    const created = await createTicket({
+      subject: data.subject,
+      descriptionJson: (data.descriptionJson ?? null) as never,
+      descriptionText: data.descriptionText ?? null,
+      priority: data.priority,
+      channel: 'portal',
+      requesterPrincipalId: memberRow.id as PrincipalId,
+      createdByPrincipalId: memberRow.id as PrincipalId,
+    })
+
+    const status = created.statusId
+      ? await db.query.ticketStatuses.findFirst({
+          where: eq(ticketStatuses.id, created.statusId),
+        })
+      : undefined
+
+    return {
+      id: created.id as TicketId,
+      subject: created.subject,
+      statusId: created.statusId as TicketStatusId,
+      statusCategory: (status?.category ?? 'open') as SerializedTicketRow['statusCategory'],
+      statusName: status?.name ?? 'Unknown',
+      statusColor: status?.color ?? null,
+      createdAt: toIsoString(created.createdAt),
+      lastActivityAt: toIsoString(created.lastActivityAt),
+    }
+  })
+
+/**
+ * Create an initial public thread for a ticket to hold attachments during
+ * the creation flow. This ensures files can be attached immediately after
+ * ticket creation without requiring the user to open a reply.
+ */
+export const createTicketInitialThreadFn = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ ticketId: z.string().min(1) }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth()
+    const ticketId = data.ticketId as TicketId
+
+    // Verify ownership via portal user check
+    await getTicketForPortalUser({
+      userId: ctx.user.id as UserId,
+      ticketId,
+    })
+
+    // Create a public thread with a placeholder body
+    const thread = await addPortalReply({
+      userId: ctx.user.id as UserId,
+      ticketId,
+      bodyText: '[Attachments added at ticket creation]',
+    })
+
+    return {
+      id: thread.id,
     }
   })

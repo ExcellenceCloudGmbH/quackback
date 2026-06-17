@@ -249,6 +249,32 @@ describe('handleGitHubTicketEvent — issues.opened', () => {
       })
     )
   })
+
+  it('does not create a duplicate ticket when issue body carries a Quackback marker', async () => {
+    findFirstLinkMock.mockResolvedValueOnce(null)
+    findFirstTicketMock.mockResolvedValueOnce({ id: 'ticket_linked1' })
+
+    const payload = makePayload('opened', {
+      body: [
+        'Customer-visible issue text',
+        '',
+        '<!-- quackback:ticket-issue ticketId=ticket_linked1 integrationId=integration_gh1 -->',
+      ].join('\n'),
+    })
+
+    const result = await handleGitHubTicketEvent(payload, makeIntegration())
+
+    expect(result).toBe(true)
+    expect(createTicketMock).not.toHaveBeenCalled()
+    expect(insertValuesMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ticketId: 'ticket_linked1',
+        integrationType: 'github',
+        externalId: '42',
+        syncDirection: 'outbound',
+      })
+    )
+  })
 })
 
 describe('handleGitHubTicketEvent — issues.closed', () => {
@@ -681,5 +707,18 @@ describe('handleGitHubIssueCommentEvent', () => {
     expect(addThreadMock).not.toHaveBeenCalled()
     expect(editThreadMock).not.toHaveBeenCalled()
     expect(softDeleteThreadMock).not.toHaveBeenCalled()
+  })
+
+  it('skips Quackback system marker comments to prevent attachment echo', async () => {
+    const marker =
+      '<!-- quackback:ticket-system integrationId=integration_gh1 event=ticket.attachment_added:att_1 -->'
+
+    const result = await handleGitHubIssueCommentEvent(
+      makeCommentPayload('created', `Attachment synced\n\n${marker}`),
+      makeIntegration()
+    )
+
+    expect(result).toBe(true)
+    expect(addThreadMock).not.toHaveBeenCalled()
   })
 })

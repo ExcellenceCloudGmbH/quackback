@@ -10,6 +10,8 @@ const OUTBOUND_TICKET_EVENTS = [
   'ticket.thread_added',
   'ticket.thread_updated',
   'ticket.thread_deleted',
+  'ticket.attachment_added',
+  'ticket.attachment_removed',
 ] as const
 
 const LEGACY_POST_EVENTS = ['post.created'] as const

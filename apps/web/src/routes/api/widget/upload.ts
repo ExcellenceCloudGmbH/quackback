@@ -4,6 +4,7 @@ import { isS3Configured, uploadImageFromFormData } from '@/lib/server/storage/s3
 import { getWidgetConfig } from '@/lib/server/domains/settings/settings.widget'
 import { handleDomainError } from '@/lib/server/domains/api/responses'
 import { DomainException } from '@/lib/shared/errors'
+import { getPublicOriginFromRequest } from '@/lib/server/integrations/oauth'
 
 export async function handleWidgetUpload({ request }: { request: Request }): Promise<Response> {
   // Block writes from suspended/deleting workspaces. Read-only widget
@@ -46,7 +47,7 @@ export async function handleWidgetUpload({ request }: { request: Request }): Pro
   } catch {
     return Response.json({ error: 'Invalid request body' }, { status: 400 })
   }
-  return uploadImageFromFormData(formData, 'widget-images')
+  return uploadImageFromFormData(formData, 'widget-images', getPublicOriginFromRequest(request))
 }
 
 export const Route = createFileRoute('/api/widget/upload')({

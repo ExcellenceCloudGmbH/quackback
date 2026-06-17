@@ -3,10 +3,10 @@
  * Internal / Shared with team) are gated by the actor's permissions for this
  * ticket. The shared-team tab requires picking a team via `<TeamPicker />`.
  */
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { JSONContent } from '@tiptap/react'
-import type { TicketId, TeamId } from '@quackback/ids'
+import type { TicketId, TeamId, TicketThreadId } from '@quackback/ids'
 import { Button } from '@/components/ui/button'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { RichTextEditor } from '@/components/ui/rich-text-editor'
@@ -15,6 +15,8 @@ import { addThreadFn } from '@/lib/server/functions/tickets'
 import { ticketQueries } from '@/lib/client/queries/tickets'
 import { toast } from 'sonner'
 import { cn } from '@/lib/shared/utils'
+import { X, Upload } from 'lucide-react'
+import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
 
 export type ComposerAudience = 'public' | 'internal' | 'shared_team'
 
@@ -47,6 +49,8 @@ export function TicketThreadComposer({
   onPosted,
 }: TicketThreadComposerProps) {
   const qc = useQueryClient()
+  const { upload: uploadImage } = useImageUpload({ prefix: 'uploads' })
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const allowedTabs = useMemo(() => {
     const tabs: ComposerAudience[] = []
     if (canPublic) tabs.push('public')
@@ -59,10 +63,13 @@ export function TicketThreadComposer({
   const [body, setBody] = useState<JSONContent | null>(null)
   const [bodyText, setBodyText] = useState('')
   const [sharedTeamId, setSharedTeamId] = useState<TeamId | null>(null)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({})
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({})
 
   const postMutation = useMutation({
-    mutationFn: () =>
-      addThreadFn({
+    mutationFn: async () => {
+      const thread = await addThreadFn({
         data: {
           ticketId,
           audience,
@@ -70,10 +77,44 @@ export function TicketThreadComposer({
           bodyText: bodyText || plainTextFromJson(body),
           sharedWithTeamId: audience === 'shared_team' ? sharedTeamId : null,
         },
-      }),
+      })
+
+      // Upload files if any
+      if (selectedFiles.length > 0 && thread?.id) {
+        const threadId = thread.id as TicketThreadId
+        for (const file of selectedFiles) {
+          try {
+            setUploadProgress((prev) => ({ ...prev, [file.name]: 0 }))
+            const formData = new FormData()
+            formData.append('file', file)
+            const res = await fetch(`/api/v1/tickets/${ticketId}/threads/${threadId}/attachments`, {
+              method: 'POST',
+              body: formData,
+            })
+            if (!res.ok) {
+              const error = await res.text()
+              setUploadErrors((prev) => ({ ...prev, [file.name]: error }))
+              throw new Error(`Upload failed: ${error}`)
+            }
+            setUploadProgress((prev) => ({ ...prev, [file.name]: 100 }))
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : 'Upload failed'
+            setUploadErrors((prev) => ({ ...prev, [file.name]: msg }))
+            toast.error(`Failed to upload ${file.name}: ${msg}`)
+          }
+        }
+        // Invalidate attachments query for this thread
+        qc.invalidateQueries({ queryKey: ticketQueries.attachments(ticketId, threadId).queryKey })
+      }
+
+      return thread
+    },
     onSuccess: () => {
       setBody(null)
       setBodyText('')
+      setSelectedFiles([])
+      setUploadProgress({})
+      setUploadErrors({})
       qc.invalidateQueries({ queryKey: ticketQueries.threads(ticketId).queryKey })
       qc.invalidateQueries({ queryKey: ticketQueries.detail(ticketId).queryKey })
       qc.invalidateQueries({ queryKey: ['tickets', 'list'] })
@@ -144,16 +185,66 @@ export function TicketThreadComposer({
             codeBlocks: true,
             blockquotes: true,
             dividers: false,
-            images: false,
+            images: true,
             taskLists: false,
             tables: false,
             embeds: false,
             slashMenu: false,
           }}
+          onImageUpload={uploadImage}
         />
       </div>
 
-      <div className="flex items-center justify-end mt-2">
+      {/* File picker and list */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) {
+            setSelectedFiles(Array.from(e.target.files))
+          }
+        }}
+      />
+
+      {selectedFiles.length > 0 && (
+        <div className="mt-2 space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">
+            Attachments ({selectedFiles.length})
+          </div>
+          <div className="space-y-1">
+            {selectedFiles.map((file) => (
+              <div
+                key={file.name}
+                className="flex items-center justify-between rounded bg-muted/50 px-2 py-1 text-xs"
+              >
+                <span className="truncate">{file.name}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSelectedFiles((prev) => prev.filter((f) => f.name !== file.name))
+                  }
+                  className="ml-2 hover:text-red-500"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex items-center justify-between mt-2 gap-2">
+        <Button
+          size="sm"
+          variant="outline"
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+        >
+          <Upload className="h-4 w-4 mr-1" />
+          Attach files
+        </Button>
         <Button
           size="sm"
           onClick={() => postMutation.mutate()}

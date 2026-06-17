@@ -1,7 +1,9 @@
 import { useState, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { FormattedMessage, useIntl } from 'react-intl'
 import type { JSONContent } from '@tiptap/react'
+import type { TicketId, TicketThreadId, PrincipalId } from '@quackback/ids'
 import {
   RichTextContent,
   RichTextEditor,
@@ -9,10 +11,13 @@ import {
 } from '@/components/ui/rich-text-editor'
 import { Button } from '@/components/ui/button'
 import { Pencil } from 'lucide-react'
-import type { PrincipalId } from '@quackback/ids'
+import { TicketAttachments } from '@/components/tickets/ticket-attachments'
+import { ticketQueries } from '@/lib/client/queries/tickets'
+import { usePortalImageUpload } from '@/lib/client/hooks/use-image-upload'
 
 export interface PortalThread {
-  id: string
+  id: TicketThreadId
+  ticketId: TicketId
   principalId: PrincipalId | null
   bodyJson: unknown
   bodyText: string
@@ -68,6 +73,7 @@ export function PortalTicketThreadFeed({
   isDescriptionSaving,
 }: PortalTicketThreadFeedProps) {
   const intl = useIntl()
+  const { upload: uploadImage } = usePortalImageUpload()
   const hasDesc = description && (description.text || isRichTextContent(description.json))
   const [editingDescription, setEditingDescription] = useState(false)
   const [descDraft, setDescDraft] = useState<JSONContent | null>(null)
@@ -121,12 +127,13 @@ export function PortalTicketThreadFeed({
                 codeBlocks: true,
                 blockquotes: true,
                 dividers: false,
-                images: false,
+                images: true,
                 taskLists: false,
                 tables: false,
                 embeds: false,
                 slashMenu: false,
               }}
+              onImageUpload={uploadImage}
             />
           </div>
           <div className="flex items-center gap-1 mt-2 justify-end">
@@ -208,9 +215,34 @@ export function PortalTicketThreadFeed({
             ) : (
               <div className="whitespace-pre-wrap text-sm">{th.bodyText}</div>
             )}
+            <PortalThreadAttachmentsLoader ticketId={th.ticketId} threadId={th.id} />
           </article>
         )
       })}
+    </div>
+  )
+}
+
+function PortalThreadAttachmentsLoader({
+  ticketId,
+  threadId,
+}: {
+  ticketId: TicketId
+  threadId: TicketThreadId
+}) {
+  const {
+    data: attachments,
+    isLoading,
+    isError,
+  } = useQuery(ticketQueries.attachments(ticketId, threadId))
+
+  if (isError || (!isLoading && (!attachments || attachments.length === 0))) {
+    return null
+  }
+
+  return (
+    <div className="mt-3 pt-3 border-t border-border/50">
+      <TicketAttachments attachments={attachments ?? []} isLoading={isLoading} />
     </div>
   )
 }

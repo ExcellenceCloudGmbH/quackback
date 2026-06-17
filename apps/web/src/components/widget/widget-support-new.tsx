@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
+import type { JSONContent } from '@tiptap/react'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { RichTextEditor } from '@/components/ui/rich-text-editor'
+import { useWidgetImageUpload } from '@/lib/client/hooks/use-image-upload'
+import { TICKET_CREATE_EDITOR_FEATURES } from '@/components/tickets/ticket-create-editor-features'
 import {
   createWidgetTicket,
   WidgetTicketError,
@@ -13,18 +17,35 @@ import { useWidgetAuth } from './widget-auth-provider'
 interface WidgetSupportNewProps {
   onCreated: (ticket: WidgetTicketCreateResponse) => void
   categories?: WidgetSupportCategory[]
+  imageUploadsInWidget?: boolean
 }
 
 const inputCls =
   'w-full bg-background rounded-md border border-border/50 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground/50 outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/50 transition-colors'
 
-export function WidgetSupportNew({ onCreated, categories = [] }: WidgetSupportNewProps) {
+function plainTextFromJson(json: JSONContent | null): string {
+  if (!json) return ''
+  let out = ''
+  const walk = (node: JSONContent) => {
+    if (node.type === 'text' && typeof node.text === 'string') out += node.text
+    if (node.content) node.content.forEach(walk)
+    if (node.type === 'paragraph' || node.type === 'heading') out += '\n'
+  }
+  walk(json)
+  return out.trim()
+}
+
+export function WidgetSupportNew({
+  onCreated,
+  categories = [],
+  imageUploadsInWidget = true,
+}: WidgetSupportNewProps) {
   const intl = useIntl()
   const { isIdentified, hmacRequired, identifyWithEmail, ensureSessionThen, emitEvent } =
     useWidgetAuth()
 
   const [subject, setSubject] = useState('')
-  const [body, setBody] = useState('')
+  const [bodyJson, setBodyJson] = useState<JSONContent | null>(null)
   const [priority, setPriority] = useState<WidgetSupportPriority>('normal')
   const [categoryKey, setCategoryKey] = useState<string>(
     categories.length === 1 ? categories[0].categoryKey : ''
@@ -33,16 +54,21 @@ export function WidgetSupportNew({ onCreated, categories = [] }: WidgetSupportNe
   const [name, setName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const { upload: uploadImage } = useWidgetImageUpload()
 
   const needsEmail = !isIdentified && !hmacRequired
   const cantIdentify = !isIdentified && hmacRequired
   const selectedCategory = categories.find((category) => category.categoryKey === categoryKey)
+  const canUploadImages =
+    imageUploadsInWidget && (selectedCategory?.display?.showAttachments ?? true)
   const priorityOptions: WidgetSupportPriority[] = selectedCategory?.allowedPriorities?.length
     ? selectedCategory.allowedPriorities
     : selectedCategory
       ? ['low', 'normal', 'high', 'urgent']
       : ['low', 'normal', 'high']
   const showPrioritySelector = selectedCategory?.display?.showPrioritySelector !== false
+  const bodyText = plainTextFromJson(bodyJson)
 
   useEffect(() => {
     if (categories.length === 1 && categoryKey !== categories[0].categoryKey) {
@@ -59,9 +85,19 @@ export function WidgetSupportNew({ onCreated, categories = [] }: WidgetSupportNe
   const canSubmit =
     !cantIdentify &&
     subject.trim().length > 0 &&
-    body.trim().length > 0 &&
+    bodyText.length > 0 &&
     (categories.length <= 1 || categoryKey.length > 0) &&
     (!needsEmail || email.trim().length > 0)
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.currentTarget.files || [])
+    setSelectedFiles((prev) => [...prev, ...files])
+    e.currentTarget.value = ''
+  }, [])
+
+  const removeFile = useCallback((index: number) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
+  }, [])
 
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
@@ -88,7 +124,8 @@ export function WidgetSupportNew({ onCreated, categories = [] }: WidgetSupportNe
         await ensureSessionThen(async () => {
           created = await createWidgetTicket({
             subject: subject.trim(),
-            bodyText: body.trim(),
+            bodyJson,
+            bodyText,
             priority: showPrioritySelector ? priority : undefined,
             categoryKey: selectedCategory?.categoryKey,
           })
@@ -103,6 +140,32 @@ export function WidgetSupportNew({ onCreated, categories = [] }: WidgetSupportNe
           )
           return
         }
+
+        // Upload files if selected
+        if (canUploadImages && selectedFiles.length > 0 && finalCreated.initialThreadId) {
+          try {
+            for (let i = 0; i < selectedFiles.length; i++) {
+              const file = selectedFiles[i]
+              try {
+                const formData = new FormData()
+                formData.append('file', file)
+
+                await fetch(
+                  `/api/widget/tickets/${finalCreated.id}/threads/${finalCreated.initialThreadId}/attachments`,
+                  {
+                    method: 'POST',
+                    body: formData,
+                  }
+                )
+              } catch (err) {
+                console.error(`Error uploading ${file.name}:`, err)
+              }
+            }
+          } catch (err) {
+            console.error('Failed to upload files:', err)
+          }
+        }
+
         emitEvent('ticket:created', {
           id: finalCreated.id,
           subject: finalCreated.subject,
@@ -132,13 +195,16 @@ export function WidgetSupportNew({ onCreated, categories = [] }: WidgetSupportNe
       name,
       ensureSessionThen,
       subject,
-      body,
+      bodyJson,
+      bodyText,
       priority,
       showPrioritySelector,
       selectedCategory?.categoryKey,
       emitEvent,
       onCreated,
       intl,
+      canUploadImages,
+      selectedFiles,
     ]
   )
 
@@ -192,18 +258,60 @@ export function WidgetSupportNew({ onCreated, categories = [] }: WidgetSupportNe
             })}
             className={inputCls}
           />
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            maxLength={10000}
-            rows={6}
+          <RichTextEditor
+            value={bodyJson ?? undefined}
+            onChange={(json) => setBodyJson(json)}
+            minHeight="120px"
+            borderless
             disabled={submitting}
+            features={{
+              ...TICKET_CREATE_EDITOR_FEATURES,
+              images: canUploadImages,
+            }}
+            onImageUpload={canUploadImages ? uploadImage : undefined}
+            className="rounded-md border border-border/50 bg-background px-2.5 py-1.5"
             placeholder={intl.formatMessage({
               id: 'widget.support.composer.bodyPlaceholder',
               defaultMessage: 'Describe your issue...',
             })}
-            className={`${inputCls} min-h-[120px] resize-y`}
           />
+
+          {canUploadImages && (
+            <div className="space-y-1">
+              <label className="text-[11px] text-muted-foreground">
+                <FormattedMessage
+                  id="widget.support.composer.attachments"
+                  defaultMessage="Attachments (optional)"
+                />
+              </label>
+              <input
+                type="file"
+                multiple
+                onChange={handleFileSelect}
+                disabled={submitting}
+                className={`${inputCls} file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-muted file:text-muted-foreground hover:file:bg-muted/80`}
+              />
+              {selectedFiles.length > 0 && (
+                <div className="space-y-1 pt-1">
+                  {selectedFiles.map((file, index) => (
+                    <div
+                      key={`${file.name}-${index}`}
+                      className="flex items-center justify-between rounded-md border border-border/30 bg-muted/30 px-2 py-1 text-[11px]"
+                    >
+                      <span className="truncate text-muted-foreground">{file.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="ml-1 text-muted-foreground/60 hover:text-muted-foreground"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {showPrioritySelector && (
             <div className="flex items-center gap-2">

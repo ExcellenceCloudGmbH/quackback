@@ -5,7 +5,14 @@
  * from `/api/upload/image`; this module records the metadata pointing at the
  * already-uploaded object.
  */
-import { db, eq, ticketAttachments, ticketThreads, type TicketAttachment } from '@/lib/server/db'
+import {
+  db,
+  eq,
+  ticketAttachments,
+  ticketThreads,
+  tickets,
+  type TicketAttachment,
+} from '@/lib/server/db'
 import type { TicketId, TicketThreadId, TicketAttachmentId, PrincipalId } from '@quackback/ids'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { recordEvent } from '../audit'
@@ -13,6 +20,7 @@ import { writeActivity, bumpLastActivity } from './ticket.service'
 
 const MAX_FILENAME = 256
 const MAX_BYTES = 50 * 1024 * 1024 // 50 MB
+const THREAD_PREVIEW_MAX = 500
 
 export interface AttachInput {
   threadId: TicketThreadId
@@ -22,6 +30,75 @@ export interface AttachInput {
   sizeBytes: number
   storageKey: string
   publicUrl?: string | null
+}
+
+async function loadTicketEventRef(ticketId: TicketId): Promise<Record<string, unknown>> {
+  const ticket = await db.query.tickets.findFirst({
+    where: eq(tickets.id, ticketId),
+    columns: {
+      id: true,
+      subject: true,
+      descriptionText: true,
+      statusId: true,
+      statusCategory: true,
+      priority: true,
+      channel: true,
+      visibilityScope: true,
+      inboxId: true,
+      primaryTeamId: true,
+      assigneePrincipalId: true,
+      assigneeTeamId: true,
+      requesterPrincipalId: true,
+      requesterContactId: true,
+    },
+  })
+
+  return ticket ?? { id: ticketId }
+}
+
+function threadPreview(bodyText: string): { bodyTextPreview: string; bodyTextTruncated: boolean } {
+  return {
+    bodyTextPreview:
+      bodyText.length > THREAD_PREVIEW_MAX ? bodyText.slice(0, THREAD_PREVIEW_MAX) : bodyText,
+    bodyTextTruncated: bodyText.length > THREAD_PREVIEW_MAX,
+  }
+}
+
+async function dispatchThreadRefresh(args: {
+  actor: { type: 'user' | 'service'; principalId?: string; displayName?: string }
+  ticket: Record<string, unknown>
+  thread: {
+    id: string
+    audience: 'public' | 'internal' | 'shared_team'
+    sharedWithTeamId: string | null
+    bodyText: string | null
+    principalId: string | null
+    createdAt: Date | string
+    editedAt: Date | string | null
+  }
+}): Promise<void> {
+  const { dispatchTicketThreadUpdated } = await import('@/lib/server/events/dispatch')
+  const bodyText = args.thread.bodyText ?? ''
+  const requesterPrincipalId =
+    (args.ticket.requesterPrincipalId as string | null | undefined) ?? null
+  const isFromRequester =
+    args.thread.principalId !== null && args.thread.principalId === requesterPrincipalId
+
+  await dispatchTicketThreadUpdated(
+    args.actor,
+    args.ticket,
+    args.thread.id,
+    args.thread.audience,
+    args.thread.sharedWithTeamId,
+    {
+      ...threadPreview(bodyText),
+      bodyText,
+      authorPrincipalId: args.thread.principalId,
+      isFromRequester,
+      createdAt: args.thread.createdAt,
+      editedAt: args.thread.editedAt,
+    }
+  )
 }
 
 export async function attachToThread(input: AttachInput): Promise<TicketAttachment> {
@@ -45,7 +122,17 @@ export async function attachToThread(input: AttachInput): Promise<TicketAttachme
 
   const thread = await db.query.ticketThreads.findFirst({
     where: eq(ticketThreads.id, input.threadId),
-    columns: { id: true, ticketId: true, deletedAt: true },
+    columns: {
+      id: true,
+      ticketId: true,
+      deletedAt: true,
+      audience: true,
+      sharedWithTeamId: true,
+      bodyText: true,
+      principalId: true,
+      createdAt: true,
+      editedAt: true,
+    },
   })
   if (!thread || thread.deletedAt) {
     throw new NotFoundError('TICKET_THREAD_NOT_FOUND', `thread ${input.threadId} not found`)
@@ -79,25 +166,51 @@ export async function attachToThread(input: AttachInput): Promise<TicketAttachme
     diff: { context: { attachmentId: created.id, filename } },
   })
   try {
-    const { dispatchTicketAttachmentAdded, buildEventActor } =
-      await import('@/lib/server/events/dispatch')
+    const { buildEventActor } = await import('@/lib/server/events/dispatch')
     const actor = input.uploadedByPrincipalId
       ? buildEventActor({
           principalId: input.uploadedByPrincipalId,
           displayName: 'ticket-system',
         })
       : { type: 'service' as const, displayName: 'ticket-system' }
-    await dispatchTicketAttachmentAdded(actor, { id: thread.ticketId } as Record<string, unknown>, {
-      id: created.id,
-      threadId: input.threadId,
-      filename,
-      mimeType: input.mimeType,
-      sizeBytes: input.sizeBytes,
-      uploadedByPrincipalId: input.uploadedByPrincipalId,
-      publicUrl: input.publicUrl ?? null,
-    })
+    const ticketEventRef = await loadTicketEventRef(thread.ticketId as TicketId)
+
+    try {
+      const { dispatchTicketAttachmentAdded } = await import('@/lib/server/events/dispatch')
+      await dispatchTicketAttachmentAdded(actor, ticketEventRef, {
+        id: created.id,
+        threadId: input.threadId,
+        filename,
+        mimeType: input.mimeType,
+        sizeBytes: input.sizeBytes,
+        uploadedByPrincipalId: input.uploadedByPrincipalId,
+        publicUrl: input.publicUrl ?? null,
+      })
+    } catch (err) {
+      console.warn('[tickets] dispatchTicketAttachmentAdded failed', err)
+    }
+
+    // Compatibility fallback: integrations created before attachment event
+    // mappings existed still receive thread updates and can sync attachments.
+    try {
+      await dispatchThreadRefresh({
+        actor,
+        ticket: ticketEventRef,
+        thread: {
+          id: thread.id,
+          audience: thread.audience,
+          sharedWithTeamId: thread.sharedWithTeamId ?? null,
+          bodyText: thread.bodyText ?? '',
+          principalId: thread.principalId ?? null,
+          createdAt: thread.createdAt,
+          editedAt: thread.editedAt ?? null,
+        },
+      })
+    } catch (err) {
+      console.warn('[tickets] dispatchTicketThreadUpdated fallback failed', err)
+    }
   } catch (err) {
-    console.warn('[tickets] dispatchTicketAttachmentAdded failed', err)
+    console.warn('[tickets] attachment dispatch setup failed', err)
   }
   return created
 }
@@ -119,7 +232,16 @@ export async function removeAttachment(
   await db.delete(ticketAttachments).where(eq(ticketAttachments.id, attachmentId))
   const thread = await db.query.ticketThreads.findFirst({
     where: eq(ticketThreads.id, existing.threadId),
-    columns: { ticketId: true },
+    columns: {
+      id: true,
+      ticketId: true,
+      audience: true,
+      sharedWithTeamId: true,
+      bodyText: true,
+      principalId: true,
+      createdAt: true,
+      editedAt: true,
+    },
   })
   if (thread) {
     await bumpLastActivity(thread.ticketId as TicketId)
@@ -134,19 +256,45 @@ export async function removeAttachment(
       diff: { context: { attachmentId } },
     })
     try {
-      const { dispatchTicketAttachmentRemoved, buildEventActor } =
-        await import('@/lib/server/events/dispatch')
+      const { buildEventActor } = await import('@/lib/server/events/dispatch')
       const actor = actorPrincipalId
         ? buildEventActor({ principalId: actorPrincipalId, displayName: 'ticket-system' })
         : { type: 'service' as const, displayName: 'ticket-system' }
-      await dispatchTicketAttachmentRemoved(
-        actor,
-        { id: thread.ticketId } as Record<string, unknown>,
-        { id: attachmentId, threadId: existing.threadId, filename: existing.filename },
-        actorPrincipalId
-      )
+      const ticketEventRef = await loadTicketEventRef(thread.ticketId as TicketId)
+
+      try {
+        const { dispatchTicketAttachmentRemoved } = await import('@/lib/server/events/dispatch')
+        await dispatchTicketAttachmentRemoved(
+          actor,
+          ticketEventRef,
+          { id: attachmentId, threadId: existing.threadId, filename: existing.filename },
+          actorPrincipalId
+        )
+      } catch (err) {
+        console.warn('[tickets] dispatchTicketAttachmentRemoved failed', err)
+      }
+
+      // Compatibility fallback: refresh linked thread comment body when
+      // integrations do not yet have attachment event mappings.
+      try {
+        await dispatchThreadRefresh({
+          actor,
+          ticket: ticketEventRef,
+          thread: {
+            id: thread.id,
+            audience: thread.audience,
+            sharedWithTeamId: thread.sharedWithTeamId ?? null,
+            bodyText: thread.bodyText ?? '',
+            principalId: thread.principalId ?? null,
+            createdAt: thread.createdAt,
+            editedAt: thread.editedAt ?? null,
+          },
+        })
+      } catch (err) {
+        console.warn('[tickets] dispatchTicketThreadUpdated fallback failed', err)
+      }
     } catch (err) {
-      console.warn('[tickets] dispatchTicketAttachmentRemoved failed', err)
+      console.warn('[tickets] attachment removal dispatch setup failed', err)
     }
   }
 }

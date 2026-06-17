@@ -6,7 +6,7 @@
  * `useQuery` / `useSuspenseQuery` and `queryClient.ensureQueryData(...)`.
  */
 import { queryOptions } from '@tanstack/react-query'
-import type { TicketId } from '@quackback/ids'
+import type { TicketId, TicketThreadId } from '@quackback/ids'
 import {
   listTicketsFn,
   getTicketFn,
@@ -112,6 +112,27 @@ export const ticketQueries = {
             syncDirection: string
           }>
         ),
+      staleTime: 30_000,
+    }),
+  /** Attachments for a specific thread. */
+  attachments: (ticketId: TicketId, threadId: TicketThreadId) =>
+    queryOptions({
+      queryKey: ['tickets', 'attachments', ticketId, threadId] as const,
+      queryFn: async () => {
+        const res = await fetch(`/api/v1/tickets/${ticketId}/threads/${threadId}/attachments`)
+        if (!res.ok) {
+          throw new Error(`Failed to load attachments: ${res.statusText}`)
+        }
+        const data = await res.json()
+        return (data.data ?? (Array.isArray(data) ? data : [])) as Array<{
+          id: string
+          filename: string
+          mimeType: string
+          sizeBytes: number
+          publicUrl: string | null
+          createdAt: string
+        }>
+      },
       staleTime: 30_000,
     }),
 }

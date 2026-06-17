@@ -30,8 +30,8 @@ import { getThread, attachToThread } from '@/lib/server/domains/tickets'
 import { getWidgetConfig } from '@/lib/server/domains/settings/settings.widget'
 import {
   isS3Configured,
-  isAllowedImageType,
-  MAX_FILE_SIZE,
+  isAllowedAttachmentType,
+  MAX_ATTACHMENT_FILE_SIZE,
   generateStorageKey,
   uploadObject,
 } from '@/lib/server/storage/s3'
@@ -43,7 +43,7 @@ import {
 import { widgetTicketingGate } from '@/lib/server/widget/ticketing-gate'
 import type { PrincipalId, TicketId, TicketThreadId, UserId } from '@quackback/ids'
 
-const STORAGE_PREFIX = 'widget-images'
+const STORAGE_PREFIX = 'ticket-attachments'
 
 export async function handleWidgetThreadAttachmentUpload({
   request,
@@ -111,21 +111,21 @@ export async function handleWidgetThreadAttachmentUpload({
     if (!(file instanceof File)) {
       return widgetJsonError('VALIDATION_ERROR', 'missing "file" field', 400)
     }
-    if (!isAllowedImageType(file.type)) {
-      return widgetJsonError('VALIDATION_ERROR', `unsupported mime type: ${file.type}`, 400)
+    if (!isAllowedAttachmentType(file.type)) {
+      return widgetJsonError('VALIDATION_ERROR', `unsupported file type: ${file.type}`, 400)
     }
     if (file.size === 0) {
       return widgetJsonError('VALIDATION_ERROR', 'file is empty', 400)
     }
-    if (file.size > MAX_FILE_SIZE) {
+    if (file.size > MAX_ATTACHMENT_FILE_SIZE) {
       return widgetJsonError(
         'VALIDATION_ERROR',
-        `file exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+        `file exceeds ${MAX_ATTACHMENT_FILE_SIZE / 1024 / 1024}MB`,
         400
       )
     }
 
-    const ext = file.type.split('/')[1] || 'bin'
+    const ext = file.name.split('.').pop() || 'bin'
     const filename = file.name || `upload-${Date.now()}.${ext}`
     const key = generateStorageKey(STORAGE_PREFIX, filename)
     const buffer = Buffer.from(await file.arrayBuffer())

@@ -217,16 +217,78 @@ export async function getTicketEmailTargets(
   })
 
   const allowed: PrincipalId[] = []
+  const dedupIds = Array.from(dedup)
+  const principalRows = dedupIds.length
+    ? await db
+        .select({ id: principal.id, userId: principal.userId })
+        .from(principal)
+        .where(inArray(principal.id, dedupIds))
+    : []
+
+  const userIdByPrincipal = new Map<PrincipalId, string>()
+  const userIds: string[] = []
+  for (const row of principalRows) {
+    if (row.userId) {
+      userIdByPrincipal.set(row.id as PrincipalId, row.userId)
+      userIds.push(row.userId)
+    }
+  }
+
+  const siblingRows = userIds.length
+    ? await db
+        .select({ id: principal.id, userId: principal.userId })
+        .from(principal)
+        .where(inArray(principal.userId, Array.from(new Set(userIds))))
+    : []
+
+  const siblingsByUser = new Map<string, PrincipalId[]>()
+  for (const row of siblingRows) {
+    if (!row.userId) continue
+    const siblings = siblingsByUser.get(row.userId) ?? []
+    siblings.push(row.id as PrincipalId)
+    siblingsByUser.set(row.userId, siblings)
+  }
+
+  const canViewCache = new Map<PrincipalId, boolean>()
+  const canPrincipalView = async (principalId: PrincipalId): Promise<boolean> => {
+    const cached = canViewCache.get(principalId)
+    if (cached !== undefined) return cached
+    try {
+      const set = await loadPermissionSet(principalId)
+      const ok = canViewTicket(set, scope)
+      canViewCache.set(principalId, ok)
+      return ok
+    } catch (err) {
+      console.warn('[ticket-targets] permission check failed for', principalId, err)
+      canViewCache.set(principalId, false)
+      return false
+    }
+  }
+
   for (const principalId of dedup) {
     if (trustedRecipients?.has(principalId)) {
       allowed.push(principalId)
       continue
     }
-    try {
-      const set = await loadPermissionSet(principalId)
-      if (canViewTicket(set, scope)) allowed.push(principalId)
-    } catch (err) {
-      console.warn('[ticket-targets] permission check failed for', principalId, err)
+
+    if (await canPrincipalView(principalId)) {
+      allowed.push(principalId)
+      continue
+    }
+
+    // Some users can own multiple principals; if a subscription points to a
+    // sibling principal without ticket grants, accept when any sibling for the
+    // same user can view this ticket.
+    const userId = userIdByPrincipal.get(principalId)
+    if (!userId) continue
+
+    const siblings = siblingsByUser.get(userId) ?? []
+    for (const siblingId of siblings) {
+      if (siblingId === principalId) continue
+      if (await canPrincipalView(siblingId)) {
+        allowed.push(principalId)
+        break
+      }
     }
   }
 

@@ -83,6 +83,16 @@ const TICKET_EVENTS = [
     label: 'Public reply deleted → Delete issue comment',
     description: 'Delete the linked GitHub issue comment when a public reply is deleted',
   },
+  {
+    id: 'ticket.attachment_added',
+    label: 'Attachment added → Comment on issue',
+    description: 'Sync ticket attachment additions to GitHub issue comments',
+  },
+  {
+    id: 'ticket.attachment_removed',
+    label: 'Attachment removed → Comment on issue',
+    description: 'Sync ticket attachment removals to GitHub issue comments',
+  },
 ]
 
 const POST_EVENTS = [

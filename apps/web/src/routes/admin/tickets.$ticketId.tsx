@@ -175,6 +175,7 @@ function TicketDetailPage() {
                 createdAt: t.createdAt,
                 editedAt: t.editedAt,
               }))}
+              fallbackTicketId={ticketId}
               principalNames={principalNames}
               description={
                 ticket.descriptionText || ticket.descriptionJson

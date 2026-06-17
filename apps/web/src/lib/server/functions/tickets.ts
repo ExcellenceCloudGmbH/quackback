@@ -634,3 +634,30 @@ export const manualSyncTicketFn = createServerFn({ method: 'POST' })
     // TODO: implement bidirectional manual sync in Phase 8
     return { success: false, error: 'Manual sync not yet implemented' } as const
   })
+
+/**
+ * Create an initial public thread for a ticket to hold attachments during
+ * the creation flow. This ensures files can be attached immediately after
+ * ticket creation without requiring the user to open a reply.
+ */
+export const createTicketInitialThreadFn = createServerFn({ method: 'POST' })
+  .inputValidator(z.object({ ticketId: ticketIdSchema }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuthWithPermissions()
+    const scope = await loadScope(data.ticketId)
+    if (!canReplyPublic(ctx.permissions, scope)) {
+      throw new ForbiddenError('TICKET_REPLY_PUBLIC_DENIED', 'cannot reply publicly to this ticket')
+    }
+
+    const { addThread } = await import('@/lib/server/domains/tickets')
+    const thread = await addThread({
+      ticketId: data.ticketId,
+      principalId: ctx.principal.id,
+      audience: 'public',
+      bodyText: '[Attachments added at ticket creation]',
+    })
+
+    return {
+      id: thread.id,
+    }
+  })

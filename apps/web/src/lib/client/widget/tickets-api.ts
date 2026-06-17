@@ -71,6 +71,7 @@ export interface WidgetTicketDetailResponse {
 
 export interface WidgetTicketCreateInput {
   subject: string
+  bodyJson?: { type: 'doc'; content?: unknown[] } | null
   bodyText?: string | null
   priority?: WidgetSupportPriority
   categoryKey?: string
@@ -96,6 +97,7 @@ export interface WidgetTicketCreateResponse {
   statusColor: string | null
   createdAt: string
   lastActivityAt: string
+  initialThreadId?: string
 }
 
 export interface WidgetTicketReplyResponse {

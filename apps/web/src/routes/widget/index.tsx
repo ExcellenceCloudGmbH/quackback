@@ -696,7 +696,11 @@ function EnabledWidgetPage({ data }: { data: WidgetLoaderData }) {
       )}
 
       {view === 'support-new' && (
-        <WidgetSupportNew onCreated={handleSupportTicketCreated} categories={supportCategories} />
+        <WidgetSupportNew
+          onCreated={handleSupportTicketCreated}
+          categories={supportCategories}
+          imageUploadsInWidget={imageUploadsInWidget}
+        />
       )}
 
       {view === 'support-detail' && selectedTicketId && (
