@@ -33,6 +33,23 @@ import type {
   EventTicketStatusRef,
   EventContactRef,
   EventOrganizationRef,
+  EventHelpCenterCategoryRef,
+  EventHelpCenterArticleRef,
+  EventChangelogRef,
+  EventSegmentRef,
+  EventUserAttributeRef,
+  EventBoardRef,
+  EventTagRef,
+  EventStatusRef,
+  EventRoadmapRef,
+  EventSlaPolicyRef,
+  EventRoutingRuleRef,
+  EventBusinessHoursRef,
+  EventInboxChannelRef,
+  EventInboxMembershipRef,
+  EventApiKeyRef,
+  EventRoleRef,
+  EventRoleAssignmentRef,
 } from './types.js'
 
 import { logger } from '@/lib/server/logger'
@@ -1154,5 +1171,570 @@ export async function dispatchOrganizationUnarchived(
     ...eventEnvelope(actor),
     type: 'organization.unarchived',
     data: { organization },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Help Center — category events
+// ---------------------------------------------------------------------------
+
+export async function dispatchHelpCenterCategoryCreated(
+  actor: EventActor,
+  category: EventHelpCenterCategoryRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'help_center.category.created',
+    data: { category },
+  })
+}
+
+export async function dispatchHelpCenterCategoryUpdated(
+  actor: EventActor,
+  category: EventHelpCenterCategoryRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'help_center.category.updated',
+    data: { category, changedFields },
+  })
+}
+
+export async function dispatchHelpCenterCategoryDeleted(
+  actor: EventActor,
+  category: EventHelpCenterCategoryRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'help_center.category.deleted',
+    data: { category },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Help Center — article events
+// ---------------------------------------------------------------------------
+
+export async function dispatchHelpCenterArticleCreated(
+  actor: EventActor,
+  article: EventHelpCenterArticleRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'help_center.article.created',
+    data: { article },
+  })
+}
+
+export async function dispatchHelpCenterArticleUpdated(
+  actor: EventActor,
+  article: EventHelpCenterArticleRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'help_center.article.updated',
+    data: { article, changedFields },
+  })
+}
+
+export async function dispatchHelpCenterArticlePublished(
+  actor: EventActor,
+  article: EventHelpCenterArticleRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'help_center.article.published',
+    data: { article },
+  })
+}
+
+export async function dispatchHelpCenterArticleUnpublished(
+  actor: EventActor,
+  article: EventHelpCenterArticleRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'help_center.article.unpublished',
+    data: { article },
+  })
+}
+
+export async function dispatchHelpCenterArticleDeleted(
+  actor: EventActor,
+  article: EventHelpCenterArticleRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'help_center.article.deleted',
+    data: { article },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Changelog — entry CRUD events ('changelog.published' is dispatched above)
+// ---------------------------------------------------------------------------
+
+export async function dispatchChangelogCreated(
+  actor: EventActor,
+  changelog: EventChangelogRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'changelog.created',
+    data: { changelog },
+  })
+}
+
+export async function dispatchChangelogUpdated(
+  actor: EventActor,
+  changelog: EventChangelogRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'changelog.updated',
+    data: { changelog, changedFields },
+  })
+}
+
+export async function dispatchChangelogDeleted(
+  actor: EventActor,
+  changelog: EventChangelogRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'changelog.deleted',
+    data: { changelog },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Audience — segment events
+// ---------------------------------------------------------------------------
+
+export async function dispatchSegmentCreated(
+  actor: EventActor,
+  segment: EventSegmentRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'segment.created',
+    data: { segment },
+  })
+}
+
+export async function dispatchSegmentUpdated(
+  actor: EventActor,
+  segment: EventSegmentRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'segment.updated',
+    data: { segment, changedFields },
+  })
+}
+
+export async function dispatchSegmentDeleted(
+  actor: EventActor,
+  segment: EventSegmentRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'segment.deleted',
+    data: { segment },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Audience — user-attribute definition events
+// ---------------------------------------------------------------------------
+
+export async function dispatchUserAttributeCreated(
+  actor: EventActor,
+  attribute: EventUserAttributeRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'user_attribute.created',
+    data: { attribute },
+  })
+}
+
+export async function dispatchUserAttributeUpdated(
+  actor: EventActor,
+  attribute: EventUserAttributeRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'user_attribute.updated',
+    data: { attribute, changedFields },
+  })
+}
+
+export async function dispatchUserAttributeDeleted(
+  actor: EventActor,
+  attribute: EventUserAttributeRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'user_attribute.deleted',
+    data: { attribute },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Feedback configuration — board events
+// ---------------------------------------------------------------------------
+
+export async function dispatchBoardCreated(actor: EventActor, board: EventBoardRef): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'board.created', data: { board } })
+}
+
+export async function dispatchBoardUpdated(
+  actor: EventActor,
+  board: EventBoardRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'board.updated',
+    data: { board, changedFields },
+  })
+}
+
+export async function dispatchBoardDeleted(actor: EventActor, board: EventBoardRef): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'board.deleted', data: { board } })
+}
+
+// ---------------------------------------------------------------------------
+// Feedback configuration — tag events
+// ---------------------------------------------------------------------------
+
+export async function dispatchTagCreated(actor: EventActor, tag: EventTagRef): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'tag.created', data: { tag } })
+}
+
+export async function dispatchTagUpdated(
+  actor: EventActor,
+  tag: EventTagRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'tag.updated',
+    data: { tag, changedFields },
+  })
+}
+
+export async function dispatchTagDeleted(actor: EventActor, tag: EventTagRef): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'tag.deleted', data: { tag } })
+}
+
+// ---------------------------------------------------------------------------
+// Feedback configuration — status events
+// ---------------------------------------------------------------------------
+
+export async function dispatchStatusCreated(
+  actor: EventActor,
+  status: EventStatusRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'status.created', data: { status } })
+}
+
+export async function dispatchStatusUpdated(
+  actor: EventActor,
+  status: EventStatusRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'status.updated',
+    data: { status, changedFields },
+  })
+}
+
+export async function dispatchStatusDeleted(
+  actor: EventActor,
+  status: EventStatusRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'status.deleted', data: { status } })
+}
+
+// ---------------------------------------------------------------------------
+// Feedback configuration — roadmap events
+// ---------------------------------------------------------------------------
+
+export async function dispatchRoadmapCreated(
+  actor: EventActor,
+  roadmap: EventRoadmapRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'roadmap.created', data: { roadmap } })
+}
+
+export async function dispatchRoadmapUpdated(
+  actor: EventActor,
+  roadmap: EventRoadmapRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'roadmap.updated',
+    data: { roadmap, changedFields },
+  })
+}
+
+export async function dispatchRoadmapDeleted(
+  actor: EventActor,
+  roadmap: EventRoadmapRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'roadmap.deleted', data: { roadmap } })
+}
+
+// ---------------------------------------------------------------------------
+// Support configuration — SLA policy events
+// ---------------------------------------------------------------------------
+
+export async function dispatchSlaPolicyCreated(
+  actor: EventActor,
+  policy: EventSlaPolicyRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'sla_policy.created', data: { policy } })
+}
+
+export async function dispatchSlaPolicyUpdated(
+  actor: EventActor,
+  policy: EventSlaPolicyRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'sla_policy.updated',
+    data: { policy, changedFields },
+  })
+}
+
+export async function dispatchSlaPolicyArchived(
+  actor: EventActor,
+  policy: EventSlaPolicyRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'sla_policy.archived', data: { policy } })
+}
+
+// ---------------------------------------------------------------------------
+// Support configuration — routing rule events
+// ---------------------------------------------------------------------------
+
+export async function dispatchRoutingRuleCreated(
+  actor: EventActor,
+  rule: EventRoutingRuleRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'routing_rule.created', data: { rule } })
+}
+
+export async function dispatchRoutingRuleUpdated(
+  actor: EventActor,
+  rule: EventRoutingRuleRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'routing_rule.updated',
+    data: { rule, changedFields },
+  })
+}
+
+export async function dispatchRoutingRuleDeleted(
+  actor: EventActor,
+  rule: EventRoutingRuleRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'routing_rule.deleted', data: { rule } })
+}
+
+// ---------------------------------------------------------------------------
+// Support configuration — business hours events
+// ---------------------------------------------------------------------------
+
+export async function dispatchBusinessHoursCreated(
+  actor: EventActor,
+  businessHours: EventBusinessHoursRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'business_hours.created',
+    data: { businessHours },
+  })
+}
+
+export async function dispatchBusinessHoursUpdated(
+  actor: EventActor,
+  businessHours: EventBusinessHoursRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'business_hours.updated',
+    data: { businessHours, changedFields },
+  })
+}
+
+export async function dispatchBusinessHoursArchived(
+  actor: EventActor,
+  businessHours: EventBusinessHoursRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'business_hours.archived',
+    data: { businessHours },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Support configuration — inbox channel events
+// ---------------------------------------------------------------------------
+
+export async function dispatchInboxChannelCreated(
+  actor: EventActor,
+  channel: EventInboxChannelRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'inbox_channel.created', data: { channel } })
+}
+
+export async function dispatchInboxChannelUpdated(
+  actor: EventActor,
+  channel: EventInboxChannelRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'inbox_channel.updated',
+    data: { channel, changedFields },
+  })
+}
+
+export async function dispatchInboxChannelArchived(
+  actor: EventActor,
+  channel: EventInboxChannelRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'inbox_channel.archived',
+    data: { channel },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Support configuration — inbox membership events
+// ---------------------------------------------------------------------------
+
+export async function dispatchInboxMembershipAdded(
+  actor: EventActor,
+  membership: EventInboxMembershipRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'inbox_membership.added',
+    data: { membership },
+  })
+}
+
+export async function dispatchInboxMembershipUpdated(
+  actor: EventActor,
+  membership: EventInboxMembershipRef,
+  previousRole: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'inbox_membership.updated',
+    data: { membership, previousRole },
+  })
+}
+
+export async function dispatchInboxMembershipRemoved(
+  actor: EventActor,
+  membership: EventInboxMembershipRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'inbox_membership.removed',
+    data: { membership },
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Administration / security — API key events
+// ---------------------------------------------------------------------------
+
+export async function dispatchApiKeyCreated(
+  actor: EventActor,
+  apiKey: EventApiKeyRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'api_key.created', data: { apiKey } })
+}
+
+export async function dispatchApiKeyRotated(
+  actor: EventActor,
+  apiKey: EventApiKeyRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'api_key.rotated', data: { apiKey } })
+}
+
+export async function dispatchApiKeyRevoked(
+  actor: EventActor,
+  apiKey: EventApiKeyRef
+): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'api_key.revoked', data: { apiKey } })
+}
+
+// ---------------------------------------------------------------------------
+// Administration / security — role events
+// ---------------------------------------------------------------------------
+
+export async function dispatchRoleCreated(actor: EventActor, role: EventRoleRef): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'role.created', data: { role } })
+}
+
+export async function dispatchRoleUpdated(
+  actor: EventActor,
+  role: EventRoleRef,
+  changedFields: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'role.updated',
+    data: { role, changedFields },
+  })
+}
+
+export async function dispatchRoleDeleted(actor: EventActor, role: EventRoleRef): Promise<void> {
+  await dispatchEvent({ ...eventEnvelope(actor), type: 'role.deleted', data: { role } })
+}
+
+// ---------------------------------------------------------------------------
+// Administration / security — role assignment events
+// ---------------------------------------------------------------------------
+
+export async function dispatchRoleAssignmentCreated(
+  actor: EventActor,
+  assignment: EventRoleAssignmentRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'role_assignment.created',
+    data: { assignment },
+  })
+}
+
+export async function dispatchRoleAssignmentRevoked(
+  actor: EventActor,
+  assignment: EventRoleAssignmentRef
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'role_assignment.revoked',
+    data: { assignment },
   })
 }

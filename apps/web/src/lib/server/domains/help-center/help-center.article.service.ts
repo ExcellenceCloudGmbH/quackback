@@ -28,6 +28,46 @@ import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'help-center-articles' })
 
+/**
+ * Best-effort webhook dispatch for help-center article lifecycle events.
+ * Lazy import + `service` actor + try/catch so a dispatch failure never aborts
+ * the mutation. Mirrors the config-plane fire helpers.
+ */
+async function fireArticleEvent(
+  kind: 'created' | 'updated' | 'published' | 'unpublished' | 'deleted',
+  article: HelpCenterArticleWithCategory,
+  changedFields?: string[]
+): Promise<void> {
+  try {
+    const {
+      dispatchHelpCenterArticleCreated,
+      dispatchHelpCenterArticleUpdated,
+      dispatchHelpCenterArticlePublished,
+      dispatchHelpCenterArticleUnpublished,
+      dispatchHelpCenterArticleDeleted,
+    } = await import('@/lib/server/events/dispatch')
+    const actor = { type: 'service' as const, displayName: 'help-center-system' }
+    const ref = {
+      id: article.id,
+      categoryId: article.categoryId,
+      slug: article.slug,
+      title: article.title,
+      authorPrincipalId: article.principalId ?? null,
+      publishedAt: article.publishedAt ? article.publishedAt.toISOString() : null,
+      createdAt: article.createdAt ? article.createdAt.toISOString() : null,
+      updatedAt: article.updatedAt ? article.updatedAt.toISOString() : null,
+    }
+    if (kind === 'created') await dispatchHelpCenterArticleCreated(actor, ref)
+    else if (kind === 'updated')
+      await dispatchHelpCenterArticleUpdated(actor, ref, changedFields ?? [])
+    else if (kind === 'published') await dispatchHelpCenterArticlePublished(actor, ref)
+    else if (kind === 'unpublished') await dispatchHelpCenterArticleUnpublished(actor, ref)
+    else await dispatchHelpCenterArticleDeleted(actor, ref)
+  } catch (err) {
+    log.error({ err }, `failed to dispatch help_center.article.${kind} event`)
+  }
+}
+
 function normalizeIdArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string')
@@ -216,6 +256,8 @@ export async function createArticle(
     log.error({ article_id: article.id, err }, 'article embedding generation failed')
   )
 
+  void fireArticleEvent('created', resolved)
+
   return resolved
 }
 
@@ -284,6 +326,10 @@ export async function updateArticle(
     )
   }
 
+  // Report the changed columns (drop the always-present updatedAt bump).
+  const changedFields = Object.keys(updateData).filter((k) => k !== 'updatedAt')
+  void fireArticleEvent('updated', resolved, changedFields)
+
   return resolved
 }
 
@@ -296,7 +342,9 @@ export async function publishArticle(
     .where(and(eq(helpCenterArticles.id, id), isNull(helpCenterArticles.deletedAt)))
     .returning()
   if (!updated) throw new NotFoundError('ARTICLE_NOT_FOUND', `Article ${id} not found`)
-  return resolveArticleWithCategory(updated)
+  const resolved = await resolveArticleWithCategory(updated)
+  void fireArticleEvent('published', resolved)
+  return resolved
 }
 
 export async function unpublishArticle(
@@ -308,19 +356,24 @@ export async function unpublishArticle(
     .where(and(eq(helpCenterArticles.id, id), isNull(helpCenterArticles.deletedAt)))
     .returning()
   if (!updated) throw new NotFoundError('ARTICLE_NOT_FOUND', `Article ${id} not found`)
-  return resolveArticleWithCategory(updated)
+  const resolved = await resolveArticleWithCategory(updated)
+  void fireArticleEvent('unpublished', resolved)
+  return resolved
 }
 
 export async function deleteArticle(id: HelpCenterArticleId): Promise<void> {
-  const result = await db
+  const [deleted] = await db
     .update(helpCenterArticles)
     .set({ deletedAt: new Date() })
     .where(and(eq(helpCenterArticles.id, id), isNull(helpCenterArticles.deletedAt)))
     .returning()
 
-  if (result.length === 0) {
+  if (!deleted) {
     throw new NotFoundError('ARTICLE_NOT_FOUND', `Article ${id} not found`)
   }
+
+  const resolved = await resolveArticleWithCategory(deleted)
+  void fireArticleEvent('deleted', resolved)
 }
 
 export async function restoreArticle(

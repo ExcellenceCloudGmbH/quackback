@@ -6,8 +6,30 @@ import { db, eq, and, isNull, asc, inboxChannels, type InboxChannel } from '@/li
 import type { InboxChannelKind, AuditJsonValue } from '@/lib/server/db'
 import type { InboxId, InboxChannelId } from '@quackback/ids'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/shared/errors'
+import {
+  dispatchInboxChannelCreated,
+  dispatchInboxChannelUpdated,
+  dispatchInboxChannelArchived,
+  type EventActor,
+} from '@/lib/server/events/dispatch'
+import type { EventInboxChannelRef } from '@/lib/server/events/types'
+import { toIsoStringOrNull } from '@/lib/shared/utils/date'
 
 const LABEL_MAX = 200
+
+const inboxChannelActor: EventActor = { type: 'service', displayName: 'inbox-channel-system' }
+
+function inboxChannelRef(c: InboxChannel): EventInboxChannelRef {
+  return {
+    id: c.id,
+    inboxId: c.inboxId,
+    kind: c.kind,
+    label: c.label,
+    externalId: c.externalId ?? null,
+    enabled: c.enabled,
+    archivedAt: toIsoStringOrNull(c.archivedAt),
+  }
+}
 
 export interface AddInboxChannelInput {
   inboxId: InboxId
@@ -51,6 +73,7 @@ export async function addInboxChannel(input: AddInboxChannelInput): Promise<Inbo
       enabled: input.enabled ?? true,
     })
     .returning()
+  void dispatchInboxChannelCreated(inboxChannelActor, inboxChannelRef(created)).catch(() => {})
   return created
 }
 
@@ -85,6 +108,11 @@ export async function updateInboxChannel(
     .set(patch)
     .where(eq(inboxChannels.id, channelId))
     .returning()
+  void dispatchInboxChannelUpdated(
+    inboxChannelActor,
+    inboxChannelRef(updated),
+    Object.keys(patch)
+  ).catch(() => {})
   return updated
 }
 
@@ -97,6 +125,7 @@ export async function archiveInboxChannel(channelId: InboxChannelId): Promise<In
     .set({ archivedAt: new Date(), enabled: false })
     .where(eq(inboxChannels.id, channelId))
     .returning()
+  void dispatchInboxChannelArchived(inboxChannelActor, inboxChannelRef(updated)).catch(() => {})
   return updated
 }
 

@@ -33,11 +33,36 @@ import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { slugify } from '@/lib/shared/utils'
 import { markdownToTiptapJson } from '@/lib/server/markdown-tiptap'
 import { rehostExternalImages } from '@/lib/server/content/rehost-images'
-import { buildEventActor, dispatchChangelogPublished } from '@/lib/server/events/dispatch'
+import {
+  buildEventActor,
+  dispatchChangelogPublished,
+  dispatchChangelogCreated,
+  dispatchChangelogUpdated,
+  dispatchChangelogDeleted,
+} from '@/lib/server/events/dispatch'
+import type { EventActor } from '@/lib/server/events/dispatch'
 import { scheduleDispatch, cancelScheduledDispatch } from '@/lib/server/events/scheduler'
 import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'changelog' })
+
+/**
+ * Build an `EventChangelogRef` from a changelog entry with details. Lean
+ * shape — ids + key display fields, mirroring the contact/organization refs.
+ */
+function changelogRef(entry: ChangelogEntryWithDetails) {
+  return {
+    id: entry.id,
+    title: entry.title,
+    contentPreview: entry.content.slice(0, 200),
+    categoryId: entry.categoryId ?? null,
+    productId: entry.productId ?? null,
+    publishedAt: entry.publishedAt ? entry.publishedAt.toISOString() : null,
+    linkedPostCount: entry.linkedPosts.length,
+    createdAt: entry.createdAt ? entry.createdAt.toISOString() : null,
+    updatedAt: entry.updatedAt ? entry.updatedAt.toISOString() : null,
+  }
+}
 import type {
   CreateChangelogInput,
   UpdateChangelogInput,
@@ -132,7 +157,11 @@ export async function createChangelog(
   }
 
   // Return with details
-  return getChangelogById(entry.id)
+  const created = await getChangelogById(entry.id)
+  dispatchChangelogCreated(actor, changelogRef(created)).catch((err) =>
+    log.error({ err }, 'failed to dispatch changelog created event')
+  )
+  return created
 }
 
 // ============================================================================
@@ -245,7 +274,32 @@ export async function updateChangelog(
     }
   }
 
-  return getChangelogById(id)
+  const result = await getChangelogById(id)
+
+  // Emit the generic changelog.updated event (independent of the publish-state
+  // dispatch above, which fires changelog.published only on a draft→published
+  // transition). Report which input fields were supplied.
+  const changedFields = (
+    [
+      'title',
+      'content',
+      'contentJson',
+      'categoryId',
+      'categoryName',
+      'productId',
+      'productName',
+      'publishState',
+      'linkedPostIds',
+    ] as const
+  ).filter((k) => input[k] !== undefined)
+  const updateActor: EventActor = existing.principalId
+    ? buildEventActor({ principalId: existing.principalId })
+    : { type: 'service', displayName: 'changelog-system' }
+  dispatchChangelogUpdated(updateActor, changelogRef(result), changedFields).catch((err) =>
+    log.error({ err }, 'failed to dispatch changelog updated event')
+  )
+
+  return result
 }
 
 // ============================================================================
@@ -262,6 +316,12 @@ export async function updateChangelog(
  * @param id - Changelog entry ID
  */
 export async function deleteChangelog(id: ChangelogId): Promise<void> {
+  // Best-effort snapshot before soft-deleting so the webhook ref carries
+  // display fields and we can attribute the actor to the entry's author. The
+  // authoritative existence check stays the empty-result guard below, so a
+  // failed snapshot read never blocks (or short-circuits) the delete.
+  const existing = await getChangelogById(id).catch(() => null)
+
   const result = await db
     .update(changelogEntries)
     .set({ deletedAt: new Date() })
@@ -270,6 +330,15 @@ export async function deleteChangelog(id: ChangelogId): Promise<void> {
 
   if (result.length === 0) {
     throw new NotFoundError('CHANGELOG_NOT_FOUND', `Changelog entry with ID ${id} not found`)
+  }
+
+  if (existing) {
+    const actor: EventActor = existing.principalId
+      ? buildEventActor({ principalId: existing.principalId })
+      : { type: 'service', displayName: 'changelog-system' }
+    dispatchChangelogDeleted(actor, changelogRef(existing)).catch((err) =>
+      log.error({ err }, 'failed to dispatch changelog deleted event')
+    )
   }
 }
 

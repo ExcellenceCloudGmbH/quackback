@@ -10,6 +10,25 @@ import {
   type RoutingAction,
   type RuleSet,
 } from './routing.types'
+import {
+  dispatchRoutingRuleCreated,
+  dispatchRoutingRuleUpdated,
+  dispatchRoutingRuleDeleted,
+  type EventActor,
+} from '@/lib/server/events/dispatch'
+import type { EventRoutingRuleRef } from '@/lib/server/events/types'
+
+const routingRuleActor: EventActor = { type: 'service', displayName: 'routing-system' }
+
+function routingRuleRef(r: RoutingRule): EventRoutingRuleRef {
+  return {
+    id: r.id,
+    name: r.name,
+    enabled: r.enabled,
+    priority: r.priority,
+    inboxIdScope: r.inboxIdScope ?? null,
+  }
+}
 
 export interface CreateRoutingRuleInput {
   name: string
@@ -53,6 +72,7 @@ export async function createRoutingRule(input: CreateRoutingRuleInput): Promise<
       inboxIdScope: input.inboxIdScope ?? null,
     })
     .returning()
+  void dispatchRoutingRuleCreated(routingRuleActor, routingRuleRef(created)).catch(() => {})
   return created
 }
 
@@ -99,11 +119,20 @@ export async function updateRoutingRule(
     .set(patch)
     .where(eq(routingRules.id, ruleId))
     .returning()
+  void dispatchRoutingRuleUpdated(
+    routingRuleActor,
+    routingRuleRef(updated),
+    Object.keys(patch)
+  ).catch(() => {})
   return updated
 }
 
 export async function deleteRoutingRule(ruleId: RoutingRuleId): Promise<void> {
+  const snapshot = await getRoutingRule(ruleId)
   await db.delete(routingRules).where(eq(routingRules.id, ruleId))
+  if (snapshot) {
+    void dispatchRoutingRuleDeleted(routingRuleActor, routingRuleRef(snapshot)).catch(() => {})
+  }
 }
 
 export async function getRoutingRule(ruleId: RoutingRuleId): Promise<RoutingRule | undefined> {

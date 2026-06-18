@@ -23,7 +23,16 @@ import {
 import type { PermissionId, PrincipalId, RoleId, RoleAssignmentId, TeamId } from '@quackback/ids'
 import { ConflictError, ForbiddenError, NotFoundError } from '@/lib/shared/errors'
 import { recordEvent } from '@/lib/server/domains/audit/audit.service'
+import {
+  dispatchRoleCreated,
+  dispatchRoleUpdated,
+  dispatchRoleDeleted,
+  dispatchRoleAssignmentCreated,
+  dispatchRoleAssignmentRevoked,
+} from '@/lib/server/events/dispatch'
 import { ALL_PERMISSIONS, type PermissionKey } from './authz.permissions'
+
+const ROLE_ACTOR = { type: 'service' as const, displayName: 'authz-system' }
 
 export interface RoleListItem {
   id: RoleId
@@ -162,6 +171,14 @@ export async function createRole(input: CreateRoleInput): Promise<RoleId> {
       },
     },
   })
+
+  void dispatchRoleCreated(ROLE_ACTOR, {
+    id: newId,
+    key: input.key,
+    name: input.name,
+    isSystem: false,
+  }).catch(() => {})
+
   return newId
 }
 
@@ -192,6 +209,19 @@ export async function updateRole(input: UpdateRoleInput): Promise<void> {
       after: { name: input.name, description: input.description ?? null },
     },
   })
+
+  const changedFields = ['name']
+  if (input.description !== undefined) changedFields.push('description')
+  void dispatchRoleUpdated(
+    ROLE_ACTOR,
+    {
+      id: role.id as RoleId,
+      key: role.key,
+      name: input.name,
+      isSystem: role.isSystem,
+    },
+    changedFields
+  ).catch(() => {})
 }
 
 export async function deleteRole(input: {
@@ -222,6 +252,13 @@ export async function deleteRole(input: {
     targetId: input.id,
     diff: { before: { key: role.key, name: role.name } },
   })
+
+  void dispatchRoleDeleted(ROLE_ACTOR, {
+    id: role.id as RoleId,
+    key: role.key,
+    name: role.name,
+    isSystem: role.isSystem,
+  }).catch(() => {})
 }
 
 interface SetRolePermissionsInput {
@@ -354,6 +391,14 @@ export async function assignRole(input: AssignRoleInput): Promise<RoleAssignment
     },
   })
 
+  void dispatchRoleAssignmentCreated(ROLE_ACTOR, {
+    id: inserted.id as RoleAssignmentId,
+    roleId: input.roleId,
+    roleKey: role.key,
+    principalId: input.principalId,
+    teamId,
+  }).catch(() => {})
+
   return inserted.id as RoleAssignmentId
 }
 
@@ -387,6 +432,14 @@ export async function revokeRoleAssignment(input: {
       before: { role: row.roleKey, teamId: row.teamId },
     },
   })
+
+  void dispatchRoleAssignmentRevoked(ROLE_ACTOR, {
+    id: input.assignmentId,
+    roleId: row.roleId as RoleId,
+    roleKey: row.roleKey,
+    principalId: row.principalId as PrincipalId,
+    teamId: (row.teamId as TeamId | null) ?? null,
+  }).catch(() => {})
 }
 
 // --- helpers --------------------------------------------------------------

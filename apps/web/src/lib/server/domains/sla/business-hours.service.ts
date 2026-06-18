@@ -9,6 +9,25 @@ import type { BusinessHoursId } from '@quackback/ids'
 import type { BusinessHoursWeek, BusinessHoursHoliday } from '@/lib/server/db'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { isValidTimezone, validateSchedule, validateHolidays } from './business-hours.calc'
+import {
+  dispatchBusinessHoursCreated,
+  dispatchBusinessHoursUpdated,
+  dispatchBusinessHoursArchived,
+  type EventActor,
+} from '@/lib/server/events/dispatch'
+import type { EventBusinessHoursRef } from '@/lib/server/events/types'
+import { toIsoStringOrNull } from '@/lib/shared/utils/date'
+
+const businessHoursActor: EventActor = { type: 'service', displayName: 'business-hours-system' }
+
+function businessHoursRef(b: BusinessHours): EventBusinessHoursRef {
+  return {
+    id: b.id,
+    name: b.name,
+    timezone: b.timezone,
+    archivedAt: toIsoStringOrNull(b.archivedAt),
+  }
+}
 
 const NAME_MAX = 200
 
@@ -78,6 +97,7 @@ export async function createBusinessHours(input: CreateBusinessHoursInput): Prom
       holidays: input.holidays ?? [],
     })
     .returning()
+  void dispatchBusinessHoursCreated(businessHoursActor, businessHoursRef(created)).catch(() => {})
   return created
 }
 
@@ -106,6 +126,11 @@ export async function updateBusinessHours(
     .set(patch)
     .where(eq(businessHours.id, id))
     .returning()
+  void dispatchBusinessHoursUpdated(
+    businessHoursActor,
+    businessHoursRef(updated),
+    Object.keys(patch)
+  ).catch(() => {})
   return updated
 }
 
@@ -117,6 +142,7 @@ export async function archiveBusinessHours(id: BusinessHoursId): Promise<Busines
     .returning()
   if (!updated)
     throw new NotFoundError('BUSINESS_HOURS_NOT_FOUND', `business_hours ${id} not found`)
+  void dispatchBusinessHoursArchived(businessHoursActor, businessHoursRef(updated)).catch(() => {})
   return updated
 }
 

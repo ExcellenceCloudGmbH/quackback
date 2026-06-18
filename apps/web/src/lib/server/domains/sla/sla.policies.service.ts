@@ -38,6 +38,27 @@ import {
   ESCALATION_RECIPIENT_TYPES,
   ESCALATION_CHANNELS,
 } from '@/lib/server/db'
+import {
+  dispatchSlaPolicyCreated,
+  dispatchSlaPolicyUpdated,
+  dispatchSlaPolicyArchived,
+  type EventActor,
+} from '@/lib/server/events/dispatch'
+import type { EventSlaPolicyRef } from '@/lib/server/events/types'
+import { toIsoStringOrNull } from '@/lib/shared/utils/date'
+
+const slaPolicyActor: EventActor = { type: 'service', displayName: 'sla-system' }
+
+function slaPolicyRef(p: SlaPolicy): EventSlaPolicyRef {
+  return {
+    id: p.id,
+    name: p.name,
+    scope: p.scope,
+    enabled: p.enabled,
+    priority: p.priority,
+    archivedAt: toIsoStringOrNull(p.archivedAt),
+  }
+}
 
 const NAME_MAX = 200
 
@@ -114,6 +135,7 @@ export async function createSlaPolicy(input: CreateSlaPolicyInput): Promise<SlaP
       pauseOnOnHold: input.pauseOnOnHold ?? true,
     })
     .returning()
+  void dispatchSlaPolicyCreated(slaPolicyActor, slaPolicyRef(created)).catch(() => {})
   return created
 }
 
@@ -152,6 +174,9 @@ export async function updateSlaPolicy(
     .set(patch)
     .where(eq(slaPolicies.id, id))
     .returning()
+  void dispatchSlaPolicyUpdated(slaPolicyActor, slaPolicyRef(updated), Object.keys(patch)).catch(
+    () => {}
+  )
   return updated
 }
 
@@ -162,6 +187,7 @@ export async function archiveSlaPolicy(id: SlaPolicyId): Promise<SlaPolicy> {
     .where(eq(slaPolicies.id, id))
     .returning()
   if (!updated) throw new NotFoundError('SLA_POLICY_NOT_FOUND', `policy ${id} not found`)
+  void dispatchSlaPolicyArchived(slaPolicyActor, slaPolicyRef(updated)).catch(() => {})
   return updated
 }
 

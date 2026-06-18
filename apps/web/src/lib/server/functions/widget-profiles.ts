@@ -1,27 +1,13 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
+import { widgetApplications, widgetEnvironmentProfiles } from '@/lib/server/db'
 import {
-  and,
-  asc,
-  db,
-  eq,
-  isNull,
-  widgetApplications,
-  widgetEnvironmentProfiles,
-  type WidgetProfileConfigOverrides,
-  type WidgetProfileContentFilters,
-  type WidgetProfileSupportConfig,
-} from '@/lib/server/db'
+  listWidgetApplications,
+  upsertWidgetApplication,
+  upsertWidgetEnvironmentProfile,
+} from '@/lib/server/domains/widget-profiles/widget-profile.service'
 import { requireAuth } from './auth-helpers'
 import { toIsoString, toIsoStringOrNull } from '@/lib/shared/utils/date'
-import type { WidgetApplicationId, WidgetProfileId } from '@quackback/ids'
-
-function normalizeKey(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]/g, '-')
-}
 
 type JsonObject = Record<string, any>
 
@@ -82,16 +68,7 @@ const profileSchema = z.object({
 
 export const listWidgetApplicationsFn = createServerFn({ method: 'GET' }).handler(async () => {
   await requireAuth({ roles: ['admin'] })
-  const apps = await db.query.widgetApplications.findMany({
-    where: isNull(widgetApplications.archivedAt),
-    orderBy: [asc(widgetApplications.name)],
-    with: {
-      profiles: {
-        where: isNull(widgetEnvironmentProfiles.archivedAt),
-        orderBy: [asc(widgetEnvironmentProfiles.environment)],
-      },
-    },
-  })
+  const apps = await listWidgetApplications()
   return apps.map(serializeApplication)
 })
 
@@ -99,60 +76,14 @@ export const upsertWidgetApplicationFn = createServerFn({ method: 'POST' })
   .inputValidator(applicationSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin'] })
-    const patch = {
-      key: normalizeKey(data.key),
-      name: data.name.trim(),
-      description: data.description?.trim() || null,
-    }
-
-    if (data.id) {
-      const [updated] = await db
-        .update(widgetApplications)
-        .set(patch)
-        .where(
-          and(
-            eq(widgetApplications.id, data.id as WidgetApplicationId),
-            isNull(widgetApplications.archivedAt)
-          )
-        )
-        .returning()
-      return updated ? serializeApplication(updated) : null
-    }
-
-    const [created] = await db.insert(widgetApplications).values(patch).returning()
-    return serializeApplication(created)
+    const application = await upsertWidgetApplication(data)
+    return application ? serializeApplication(application) : null
   })
 
 export const upsertWidgetEnvironmentProfileFn = createServerFn({ method: 'POST' })
   .inputValidator(profileSchema)
   .handler(async ({ data }) => {
     await requireAuth({ roles: ['admin'] })
-    const environment = normalizeKey(data.environment)
-    const patch = {
-      applicationId: data.applicationId as WidgetApplicationId,
-      environment,
-      displayName: data.displayName?.trim() || environment,
-      enabled: data.enabled ?? true,
-      allowedOrigins: data.allowedOrigins ?? [],
-      configOverrides: (data.configOverrides ?? {}) as WidgetProfileConfigOverrides,
-      contentFilters: (data.contentFilters ?? {}) as WidgetProfileContentFilters,
-      supportConfig: (data.supportConfig ?? {}) as WidgetProfileSupportConfig,
-    }
-
-    if (data.id) {
-      const [updated] = await db
-        .update(widgetEnvironmentProfiles)
-        .set(patch)
-        .where(
-          and(
-            eq(widgetEnvironmentProfiles.id, data.id as WidgetProfileId),
-            isNull(widgetEnvironmentProfiles.archivedAt)
-          )
-        )
-        .returning()
-      return updated ? serializeProfile(updated) : null
-    }
-
-    const [created] = await db.insert(widgetEnvironmentProfiles).values(patch).returning()
-    return serializeProfile(created)
+    const profile = await upsertWidgetEnvironmentProfile(data)
+    return profile ? serializeProfile(profile) : null
   })

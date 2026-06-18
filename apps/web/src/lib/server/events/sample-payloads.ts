@@ -153,6 +153,153 @@ const SAMPLE_MESSAGE_DATA = {
   createdAt: SAMPLE_TIMESTAMP,
 }
 
+const SAMPLE_HELP_CENTER_CATEGORY_REF = {
+  id: 'category_sample',
+  slug: 'getting-started',
+  name: 'Getting Started',
+  parentId: null,
+  isPublic: true,
+  visibility: 'public',
+  position: 0,
+  createdAt: SAMPLE_TIMESTAMP,
+  updatedAt: SAMPLE_TIMESTAMP,
+}
+
+const SAMPLE_HELP_CENTER_ARTICLE_REF = {
+  id: 'article_sample',
+  categoryId: 'category_sample',
+  slug: 'how-to-get-started',
+  title: 'How to get started',
+  authorPrincipalId: 'principal_sample_author',
+  publishedAt: SAMPLE_TIMESTAMP,
+  createdAt: SAMPLE_TIMESTAMP,
+  updatedAt: SAMPLE_TIMESTAMP,
+}
+
+const SAMPLE_CHANGELOG_REF = {
+  id: 'changelog_sample',
+  title: 'Sample release',
+  contentPreview: 'New things shipped this week.',
+  categoryId: null,
+  productId: null,
+  publishedAt: SAMPLE_TIMESTAMP,
+  linkedPostCount: 3,
+  createdAt: SAMPLE_TIMESTAMP,
+  updatedAt: SAMPLE_TIMESTAMP,
+}
+
+const SAMPLE_SEGMENT_REF = {
+  id: 'segment_sample',
+  slug: 'power-users',
+  name: 'Power Users',
+  type: 'dynamic',
+  color: '#6b7280',
+  createdAt: SAMPLE_TIMESTAMP,
+  updatedAt: SAMPLE_TIMESTAMP,
+}
+
+const SAMPLE_USER_ATTRIBUTE_REF = {
+  id: 'user_attr_sample',
+  key: 'plan_tier',
+  label: 'Plan Tier',
+  type: 'string',
+  currencyCode: null,
+  externalKey: null,
+  createdAt: SAMPLE_TIMESTAMP,
+  updatedAt: SAMPLE_TIMESTAMP,
+}
+
+const SAMPLE_BOARD_REF = {
+  id: 'board_sample',
+  slug: 'feature-requests',
+  name: 'Feature Requests',
+  description: null,
+  createdAt: SAMPLE_TIMESTAMP,
+  updatedAt: SAMPLE_TIMESTAMP,
+}
+const SAMPLE_TAG_REF = {
+  id: 'tag_sample',
+  name: 'bug',
+  color: '#ef4444',
+  description: null,
+  createdAt: SAMPLE_TIMESTAMP,
+}
+const SAMPLE_STATUS_REF = {
+  id: 'status_sample',
+  slug: 'planned',
+  name: 'Planned',
+  color: '#3b82f6',
+  category: 'active',
+  position: 0,
+  showOnRoadmap: true,
+  isDefault: false,
+  createdAt: SAMPLE_TIMESTAMP,
+}
+const SAMPLE_ROADMAP_REF = {
+  id: 'roadmap_sample',
+  slug: '2026',
+  name: '2026 Roadmap',
+  description: null,
+  isPublic: true,
+  position: 0,
+  createdAt: SAMPLE_TIMESTAMP,
+  updatedAt: SAMPLE_TIMESTAMP,
+}
+const SAMPLE_SLA_POLICY_REF = {
+  id: 'sla_pol_sample',
+  name: 'Standard SLA',
+  scope: 'workspace',
+  enabled: true,
+  priority: 0,
+  archivedAt: null,
+}
+const SAMPLE_ROUTING_RULE_REF = {
+  id: 'route_rule_sample',
+  name: 'Billing to Finance',
+  enabled: true,
+  priority: 0,
+  inboxIdScope: null,
+}
+const SAMPLE_BUSINESS_HOURS_REF = {
+  id: 'bizhrs_sample',
+  name: 'Weekdays 9-5',
+  timezone: 'America/New_York',
+  archivedAt: null,
+}
+const SAMPLE_INBOX_CHANNEL_REF = {
+  id: 'inbox_ch_sample',
+  inboxId: 'inbox_sample',
+  kind: 'email',
+  label: 'Support Email',
+  externalId: null,
+  enabled: true,
+  archivedAt: null,
+}
+const SAMPLE_INBOX_MEMBERSHIP_REF = {
+  id: 'inbox_mem_sample',
+  inboxId: 'inbox_sample',
+  principalId: 'principal_sample',
+  role: 'agent',
+}
+const SAMPLE_API_KEY_REF = {
+  id: 'api_key_sample',
+  name: 'CI deploy key',
+  scopes: ['ticket.view_all'],
+}
+const SAMPLE_ROLE_REF = {
+  id: 'role_sample',
+  key: 'billing_agent',
+  name: 'Billing Agent',
+  isSystem: false,
+}
+const SAMPLE_ROLE_ASSIGNMENT_REF = {
+  id: 'role_asgn_sample',
+  roleId: 'role_sample',
+  roleKey: 'billing_agent',
+  principalId: 'principal_sample',
+  teamId: null,
+}
+
 const SAMPLES: Partial<{ [K in EventType]: EventData }> & Record<string, EventData> = {
   'post.created': {
     ...envelope('post.created', 'evt_sample_post_created'),
@@ -572,6 +719,238 @@ const SAMPLES: Partial<{ [K in EventType]: EventData }> & Record<string, EventDa
       message: { id: 'msg_sample', conversationId: 'conv_sample' },
       conversation: SAMPLE_CONVERSATION_REF,
     },
+  },
+  'help_center.category.created': {
+    ...envelope('help_center.category.created', 'evt_sample_help_center_category_created'),
+    data: { category: SAMPLE_HELP_CENTER_CATEGORY_REF },
+  },
+  'help_center.category.updated': {
+    ...envelope('help_center.category.updated', 'evt_sample_help_center_category_updated'),
+    data: {
+      category: { ...SAMPLE_HELP_CENTER_CATEGORY_REF, name: 'Getting Started (renamed)' },
+      changedFields: ['name'],
+    },
+  },
+  'help_center.category.deleted': {
+    ...envelope('help_center.category.deleted', 'evt_sample_help_center_category_deleted'),
+    data: { category: SAMPLE_HELP_CENTER_CATEGORY_REF },
+  },
+  'help_center.article.created': {
+    ...envelope('help_center.article.created', 'evt_sample_help_center_article_created'),
+    data: { article: { ...SAMPLE_HELP_CENTER_ARTICLE_REF, publishedAt: null } },
+  },
+  'help_center.article.updated': {
+    ...envelope('help_center.article.updated', 'evt_sample_help_center_article_updated'),
+    data: {
+      article: { ...SAMPLE_HELP_CENTER_ARTICLE_REF, title: 'How to get started (revised)' },
+      changedFields: ['title'],
+    },
+  },
+  'help_center.article.published': {
+    ...envelope('help_center.article.published', 'evt_sample_help_center_article_published'),
+    data: { article: SAMPLE_HELP_CENTER_ARTICLE_REF },
+  },
+  'help_center.article.unpublished': {
+    ...envelope('help_center.article.unpublished', 'evt_sample_help_center_article_unpublished'),
+    data: { article: { ...SAMPLE_HELP_CENTER_ARTICLE_REF, publishedAt: null } },
+  },
+  'help_center.article.deleted': {
+    ...envelope('help_center.article.deleted', 'evt_sample_help_center_article_deleted'),
+    data: { article: SAMPLE_HELP_CENTER_ARTICLE_REF },
+  },
+  'changelog.created': {
+    ...envelope('changelog.created', 'evt_sample_changelog_created'),
+    data: { changelog: { ...SAMPLE_CHANGELOG_REF, publishedAt: null, linkedPostCount: 0 } },
+  },
+  'changelog.updated': {
+    ...envelope('changelog.updated', 'evt_sample_changelog_updated'),
+    data: {
+      changelog: { ...SAMPLE_CHANGELOG_REF, title: 'Sample release (revised)' },
+      changedFields: ['title'],
+    },
+  },
+  'changelog.deleted': {
+    ...envelope('changelog.deleted', 'evt_sample_changelog_deleted'),
+    data: { changelog: SAMPLE_CHANGELOG_REF },
+  },
+  'segment.created': {
+    ...envelope('segment.created', 'evt_sample_segment_created'),
+    data: { segment: SAMPLE_SEGMENT_REF },
+  },
+  'segment.updated': {
+    ...envelope('segment.updated', 'evt_sample_segment_updated'),
+    data: {
+      segment: { ...SAMPLE_SEGMENT_REF, name: 'Power Users (renamed)' },
+      changedFields: ['name'],
+    },
+  },
+  'segment.deleted': {
+    ...envelope('segment.deleted', 'evt_sample_segment_deleted'),
+    data: { segment: SAMPLE_SEGMENT_REF },
+  },
+  'user_attribute.created': {
+    ...envelope('user_attribute.created', 'evt_sample_user_attribute_created'),
+    data: { attribute: SAMPLE_USER_ATTRIBUTE_REF },
+  },
+  'user_attribute.updated': {
+    ...envelope('user_attribute.updated', 'evt_sample_user_attribute_updated'),
+    data: {
+      attribute: { ...SAMPLE_USER_ATTRIBUTE_REF, label: 'Plan Tier (renamed)' },
+      changedFields: ['label'],
+    },
+  },
+  'user_attribute.deleted': {
+    ...envelope('user_attribute.deleted', 'evt_sample_user_attribute_deleted'),
+    data: { attribute: SAMPLE_USER_ATTRIBUTE_REF },
+  },
+
+  // Feedback configuration
+  'board.created': {
+    ...envelope('board.created', 'evt_sample_board_created'),
+    data: { board: SAMPLE_BOARD_REF },
+  },
+  'board.updated': {
+    ...envelope('board.updated', 'evt_sample_board_updated'),
+    data: { board: { ...SAMPLE_BOARD_REF, name: 'Ideas' }, changedFields: ['name'] },
+  },
+  'board.deleted': {
+    ...envelope('board.deleted', 'evt_sample_board_deleted'),
+    data: { board: SAMPLE_BOARD_REF },
+  },
+  'tag.created': {
+    ...envelope('tag.created', 'evt_sample_tag_created'),
+    data: { tag: SAMPLE_TAG_REF },
+  },
+  'tag.updated': {
+    ...envelope('tag.updated', 'evt_sample_tag_updated'),
+    data: { tag: { ...SAMPLE_TAG_REF, name: 'defect' }, changedFields: ['name'] },
+  },
+  'tag.deleted': {
+    ...envelope('tag.deleted', 'evt_sample_tag_deleted'),
+    data: { tag: SAMPLE_TAG_REF },
+  },
+  'status.created': {
+    ...envelope('status.created', 'evt_sample_status_created'),
+    data: { status: SAMPLE_STATUS_REF },
+  },
+  'status.updated': {
+    ...envelope('status.updated', 'evt_sample_status_updated'),
+    data: { status: { ...SAMPLE_STATUS_REF, name: 'In Progress' }, changedFields: ['name'] },
+  },
+  'status.deleted': {
+    ...envelope('status.deleted', 'evt_sample_status_deleted'),
+    data: { status: SAMPLE_STATUS_REF },
+  },
+  'roadmap.created': {
+    ...envelope('roadmap.created', 'evt_sample_roadmap_created'),
+    data: { roadmap: SAMPLE_ROADMAP_REF },
+  },
+  'roadmap.updated': {
+    ...envelope('roadmap.updated', 'evt_sample_roadmap_updated'),
+    data: { roadmap: { ...SAMPLE_ROADMAP_REF, isPublic: false }, changedFields: ['isPublic'] },
+  },
+  'roadmap.deleted': {
+    ...envelope('roadmap.deleted', 'evt_sample_roadmap_deleted'),
+    data: { roadmap: SAMPLE_ROADMAP_REF },
+  },
+
+  // Support configuration
+  'sla_policy.created': {
+    ...envelope('sla_policy.created', 'evt_sample_sla_policy_created'),
+    data: { policy: SAMPLE_SLA_POLICY_REF },
+  },
+  'sla_policy.updated': {
+    ...envelope('sla_policy.updated', 'evt_sample_sla_policy_updated'),
+    data: { policy: { ...SAMPLE_SLA_POLICY_REF, enabled: false }, changedFields: ['enabled'] },
+  },
+  'sla_policy.archived': {
+    ...envelope('sla_policy.archived', 'evt_sample_sla_policy_archived'),
+    data: { policy: { ...SAMPLE_SLA_POLICY_REF, archivedAt: SAMPLE_TIMESTAMP } },
+  },
+  'routing_rule.created': {
+    ...envelope('routing_rule.created', 'evt_sample_routing_rule_created'),
+    data: { rule: SAMPLE_ROUTING_RULE_REF },
+  },
+  'routing_rule.updated': {
+    ...envelope('routing_rule.updated', 'evt_sample_routing_rule_updated'),
+    data: { rule: { ...SAMPLE_ROUTING_RULE_REF, enabled: false }, changedFields: ['enabled'] },
+  },
+  'routing_rule.deleted': {
+    ...envelope('routing_rule.deleted', 'evt_sample_routing_rule_deleted'),
+    data: { rule: SAMPLE_ROUTING_RULE_REF },
+  },
+  'business_hours.created': {
+    ...envelope('business_hours.created', 'evt_sample_business_hours_created'),
+    data: { businessHours: SAMPLE_BUSINESS_HOURS_REF },
+  },
+  'business_hours.updated': {
+    ...envelope('business_hours.updated', 'evt_sample_business_hours_updated'),
+    data: {
+      businessHours: { ...SAMPLE_BUSINESS_HOURS_REF, name: 'Weekdays 8-6' },
+      changedFields: ['name'],
+    },
+  },
+  'business_hours.archived': {
+    ...envelope('business_hours.archived', 'evt_sample_business_hours_archived'),
+    data: { businessHours: { ...SAMPLE_BUSINESS_HOURS_REF, archivedAt: SAMPLE_TIMESTAMP } },
+  },
+  'inbox_channel.created': {
+    ...envelope('inbox_channel.created', 'evt_sample_inbox_channel_created'),
+    data: { channel: SAMPLE_INBOX_CHANNEL_REF },
+  },
+  'inbox_channel.updated': {
+    ...envelope('inbox_channel.updated', 'evt_sample_inbox_channel_updated'),
+    data: { channel: { ...SAMPLE_INBOX_CHANNEL_REF, enabled: false }, changedFields: ['enabled'] },
+  },
+  'inbox_channel.archived': {
+    ...envelope('inbox_channel.archived', 'evt_sample_inbox_channel_archived'),
+    data: { channel: { ...SAMPLE_INBOX_CHANNEL_REF, archivedAt: SAMPLE_TIMESTAMP } },
+  },
+  'inbox_membership.added': {
+    ...envelope('inbox_membership.added', 'evt_sample_inbox_membership_added'),
+    data: { membership: SAMPLE_INBOX_MEMBERSHIP_REF },
+  },
+  'inbox_membership.updated': {
+    ...envelope('inbox_membership.updated', 'evt_sample_inbox_membership_updated'),
+    data: { membership: { ...SAMPLE_INBOX_MEMBERSHIP_REF, role: 'owner' }, previousRole: 'agent' },
+  },
+  'inbox_membership.removed': {
+    ...envelope('inbox_membership.removed', 'evt_sample_inbox_membership_removed'),
+    data: { membership: SAMPLE_INBOX_MEMBERSHIP_REF },
+  },
+
+  // Administration
+  'api_key.created': {
+    ...envelope('api_key.created', 'evt_sample_api_key_created'),
+    data: { apiKey: SAMPLE_API_KEY_REF },
+  },
+  'api_key.rotated': {
+    ...envelope('api_key.rotated', 'evt_sample_api_key_rotated'),
+    data: { apiKey: SAMPLE_API_KEY_REF },
+  },
+  'api_key.revoked': {
+    ...envelope('api_key.revoked', 'evt_sample_api_key_revoked'),
+    data: { apiKey: SAMPLE_API_KEY_REF },
+  },
+  'role.created': {
+    ...envelope('role.created', 'evt_sample_role_created'),
+    data: { role: SAMPLE_ROLE_REF },
+  },
+  'role.updated': {
+    ...envelope('role.updated', 'evt_sample_role_updated'),
+    data: { role: { ...SAMPLE_ROLE_REF, name: 'Billing Lead' }, changedFields: ['name'] },
+  },
+  'role.deleted': {
+    ...envelope('role.deleted', 'evt_sample_role_deleted'),
+    data: { role: SAMPLE_ROLE_REF },
+  },
+  'role_assignment.created': {
+    ...envelope('role_assignment.created', 'evt_sample_role_assignment_created'),
+    data: { assignment: SAMPLE_ROLE_ASSIGNMENT_REF },
+  },
+  'role_assignment.revoked': {
+    ...envelope('role_assignment.revoked', 'evt_sample_role_assignment_revoked'),
+    data: { assignment: SAMPLE_ROLE_ASSIGNMENT_REF },
   },
 }
 

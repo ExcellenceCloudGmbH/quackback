@@ -13,6 +13,11 @@ import { createHmac, randomBytes, timingSafeEqual } from 'crypto'
 import { config } from '@/lib/server/config'
 import { createServicePrincipal } from '@/lib/server/domains/principals/principal.service'
 import { ALL_PERMISSIONS } from '@/lib/server/domains/authz/authz.permissions'
+import {
+  dispatchApiKeyCreated,
+  dispatchApiKeyRotated,
+  dispatchApiKeyRevoked,
+} from '@/lib/server/events/dispatch'
 import type {
   ApiKey,
   ApiKeyId,
@@ -169,6 +174,14 @@ export async function createApiKey(
     .set({ serviceMetadata: { kind: 'api_key', apiKeyId: apiKey.id } })
     .where(eq(principal.id, servicePrincipal.id))
 
+  const actor = { type: 'service' as const, displayName: 'api-key-system' }
+  // Never include the key hash/secret/plaintext in the event ref.
+  void dispatchApiKeyCreated(actor, {
+    id: apiKey.id,
+    name: apiKey.name,
+    scopes,
+  }).catch(() => {})
+
   return { apiKey: toApiKey(apiKey), plainTextKey }
 }
 
@@ -255,13 +268,27 @@ export async function rotateApiKey(id: ApiKeyId): Promise<CreateApiKeyResult> {
     throw new NotFoundError('API_KEY_NOT_FOUND', 'API key not found or already revoked')
   }
 
-  return { apiKey: toApiKey(updatedKey), plainTextKey }
+  const rotated = toApiKey(updatedKey)
+  const actor = { type: 'service' as const, displayName: 'api-key-system' }
+  // Never include the key hash/secret/plaintext in the event ref.
+  void dispatchApiKeyRotated(actor, {
+    id: rotated.id,
+    name: rotated.name,
+    scopes: rotated.scopes,
+  }).catch(() => {})
+
+  return { apiKey: rotated, plainTextKey }
 }
 
 /**
  * Revoke an API key (soft delete)
  */
 export async function revokeApiKey(id: ApiKeyId): Promise<void> {
+  // Best-effort snapshot before the mutation so the event ref carries the
+  // key's identity. A failed snapshot read must never block (or alter) the
+  // revoke — the authoritative existence check is the empty-result guard below.
+  const snapshot = await getApiKeyById(id).catch(() => null)
+
   const result = await db
     .update(apiKeys)
     .set({ revokedAt: new Date() })
@@ -270,6 +297,16 @@ export async function revokeApiKey(id: ApiKeyId): Promise<void> {
 
   if (result.length === 0) {
     throw new NotFoundError('API_KEY_NOT_FOUND', 'API key not found or already revoked')
+  }
+
+  if (snapshot) {
+    const actor = { type: 'service' as const, displayName: 'api-key-system' }
+    // Never include the key hash/secret/plaintext in the event ref.
+    void dispatchApiKeyRevoked(actor, {
+      id: snapshot.id,
+      name: snapshot.name,
+      scopes: snapshot.scopes,
+    }).catch(() => {})
   }
 
   // Downgrade the service principal so it no longer counts as admin/member

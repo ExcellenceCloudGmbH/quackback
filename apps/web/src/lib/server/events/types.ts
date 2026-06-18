@@ -67,6 +67,64 @@ export const EVENT_TYPES = [
   'message.created',
   'message.note_created',
   'message.deleted',
+  // Help Center (Phase 2) — category & article CRUD
+  'help_center.category.created',
+  'help_center.category.updated',
+  'help_center.category.deleted',
+  'help_center.article.created',
+  'help_center.article.updated',
+  'help_center.article.published',
+  'help_center.article.unpublished',
+  'help_center.article.deleted',
+  // Changelog (Phase 2) — entry CRUD ('changelog.published' already exists)
+  'changelog.created',
+  'changelog.updated',
+  'changelog.deleted',
+  // Audience (Phase 2) — segments & user-attribute definitions
+  'segment.created',
+  'segment.updated',
+  'segment.deleted',
+  'user_attribute.created',
+  'user_attribute.updated',
+  'user_attribute.deleted',
+  // Feedback configuration (Phase 8) — boards, tags, statuses, roadmaps
+  'board.created',
+  'board.updated',
+  'board.deleted',
+  'tag.created',
+  'tag.updated',
+  'tag.deleted',
+  'status.created',
+  'status.updated',
+  'status.deleted',
+  'roadmap.created',
+  'roadmap.updated',
+  'roadmap.deleted',
+  // Support configuration (Phase 8) — SLA, routing, business hours, channels, memberships
+  'sla_policy.created',
+  'sla_policy.updated',
+  'sla_policy.archived',
+  'routing_rule.created',
+  'routing_rule.updated',
+  'routing_rule.deleted',
+  'business_hours.created',
+  'business_hours.updated',
+  'business_hours.archived',
+  'inbox_channel.created',
+  'inbox_channel.updated',
+  'inbox_channel.archived',
+  'inbox_membership.added',
+  'inbox_membership.updated',
+  'inbox_membership.removed',
+  // Administration / security (Phase 8) — API keys, roles, role assignments
+  'api_key.created',
+  'api_key.rotated',
+  'api_key.revoked',
+  'role.created',
+  'role.updated',
+  'role.deleted',
+  'role_assignment.created',
+  'role_assignment.revoked',
 ] as const
 
 export type EventType = (typeof EVENT_TYPES)[number]
@@ -420,6 +478,58 @@ export type EventData =
   | MessageCreatedEvent
   | MessageNoteCreatedEvent
   | MessageDeletedEvent
+  | HelpCenterCategoryCreatedEvent
+  | HelpCenterCategoryUpdatedEvent
+  | HelpCenterCategoryDeletedEvent
+  | HelpCenterArticleCreatedEvent
+  | HelpCenterArticleUpdatedEvent
+  | HelpCenterArticlePublishedEvent
+  | HelpCenterArticleUnpublishedEvent
+  | HelpCenterArticleDeletedEvent
+  | ChangelogCreatedEvent
+  | ChangelogUpdatedEvent
+  | ChangelogDeletedEvent
+  | SegmentCreatedEvent
+  | SegmentUpdatedEvent
+  | SegmentDeletedEvent
+  | UserAttributeCreatedEvent
+  | UserAttributeUpdatedEvent
+  | UserAttributeDeletedEvent
+  | BoardCreatedEvent
+  | BoardUpdatedEvent
+  | BoardDeletedEvent
+  | TagCreatedEvent
+  | TagUpdatedEvent
+  | TagDeletedEvent
+  | StatusCreatedEvent
+  | StatusUpdatedEvent
+  | StatusDeletedEvent
+  | RoadmapCreatedEvent
+  | RoadmapUpdatedEvent
+  | RoadmapDeletedEvent
+  | SlaPolicyCreatedEvent
+  | SlaPolicyUpdatedEvent
+  | SlaPolicyArchivedEvent
+  | RoutingRuleCreatedEvent
+  | RoutingRuleUpdatedEvent
+  | RoutingRuleDeletedEvent
+  | BusinessHoursCreatedEvent
+  | BusinessHoursUpdatedEvent
+  | BusinessHoursArchivedEvent
+  | InboxChannelCreatedEvent
+  | InboxChannelUpdatedEvent
+  | InboxChannelArchivedEvent
+  | InboxMembershipAddedEvent
+  | InboxMembershipUpdatedEvent
+  | InboxMembershipRemovedEvent
+  | ApiKeyCreatedEvent
+  | ApiKeyRotatedEvent
+  | ApiKeyRevokedEvent
+  | RoleCreatedEvent
+  | RoleUpdatedEvent
+  | RoleDeletedEvent
+  | RoleAssignmentCreatedEvent
+  | RoleAssignmentRevokedEvent
 
 // ============================================================================
 // Ticket Events (Phase 7.5)
@@ -918,4 +1028,555 @@ export interface OrganizationArchivedEvent extends EventBase<'organization.archi
 }
 export interface OrganizationUnarchivedEvent extends EventBase<'organization.unarchived'> {
   data: OrganizationUnarchivedPayload
+}
+
+// ============================================================================
+// Help Center events (Phase 2) — categories and articles
+// ============================================================================
+
+/**
+ * Snapshot of a help-center category embedded in `help_center.category.*`
+ * events. Lean shape — ids + key display/visibility fields. Receivers can
+ * hydrate richer data (counts, audience lists) via REST GET.
+ */
+export interface EventHelpCenterCategoryRef {
+  id: string
+  slug: string
+  name: string
+  parentId: string | null
+  isPublic: boolean
+  visibility: string | null
+  position: number
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+/**
+ * Snapshot of a help-center article embedded in `help_center.article.*`
+ * events. Omits the rendered body — receivers can hydrate via REST GET.
+ */
+export interface EventHelpCenterArticleRef {
+  id: string
+  categoryId: string
+  slug: string
+  title: string
+  authorPrincipalId: string | null
+  publishedAt: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface HelpCenterCategoryCreatedPayload {
+  category: EventHelpCenterCategoryRef
+}
+export interface HelpCenterCategoryUpdatedPayload {
+  category: EventHelpCenterCategoryRef
+  changedFields: string[]
+}
+export interface HelpCenterCategoryDeletedPayload {
+  category: EventHelpCenterCategoryRef
+}
+export interface HelpCenterArticleCreatedPayload {
+  article: EventHelpCenterArticleRef
+}
+export interface HelpCenterArticleUpdatedPayload {
+  article: EventHelpCenterArticleRef
+  changedFields: string[]
+}
+export interface HelpCenterArticlePublishedPayload {
+  article: EventHelpCenterArticleRef
+}
+export interface HelpCenterArticleUnpublishedPayload {
+  article: EventHelpCenterArticleRef
+}
+export interface HelpCenterArticleDeletedPayload {
+  article: EventHelpCenterArticleRef
+}
+
+export interface HelpCenterCategoryCreatedEvent extends EventBase<'help_center.category.created'> {
+  data: HelpCenterCategoryCreatedPayload
+}
+export interface HelpCenterCategoryUpdatedEvent extends EventBase<'help_center.category.updated'> {
+  data: HelpCenterCategoryUpdatedPayload
+}
+export interface HelpCenterCategoryDeletedEvent extends EventBase<'help_center.category.deleted'> {
+  data: HelpCenterCategoryDeletedPayload
+}
+export interface HelpCenterArticleCreatedEvent extends EventBase<'help_center.article.created'> {
+  data: HelpCenterArticleCreatedPayload
+}
+export interface HelpCenterArticleUpdatedEvent extends EventBase<'help_center.article.updated'> {
+  data: HelpCenterArticleUpdatedPayload
+}
+export interface HelpCenterArticlePublishedEvent extends EventBase<'help_center.article.published'> {
+  data: HelpCenterArticlePublishedPayload
+}
+export interface HelpCenterArticleUnpublishedEvent extends EventBase<'help_center.article.unpublished'> {
+  data: HelpCenterArticleUnpublishedPayload
+}
+export interface HelpCenterArticleDeletedEvent extends EventBase<'help_center.article.deleted'> {
+  data: HelpCenterArticleDeletedPayload
+}
+
+// ============================================================================
+// Changelog events (Phase 2) — entry CRUD ('changelog.published' is separate)
+// ============================================================================
+
+/** Snapshot of a changelog entry embedded in `changelog.*` CRUD events. */
+export interface EventChangelogRef {
+  id: string
+  title: string
+  contentPreview: string
+  categoryId: string | null
+  productId: string | null
+  publishedAt: string | null
+  linkedPostCount: number
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface ChangelogCreatedPayload {
+  changelog: EventChangelogRef
+}
+export interface ChangelogUpdatedPayload {
+  changelog: EventChangelogRef
+  changedFields: string[]
+}
+export interface ChangelogDeletedPayload {
+  changelog: EventChangelogRef
+}
+
+export interface ChangelogCreatedEvent extends EventBase<'changelog.created'> {
+  data: ChangelogCreatedPayload
+}
+export interface ChangelogUpdatedEvent extends EventBase<'changelog.updated'> {
+  data: ChangelogUpdatedPayload
+}
+export interface ChangelogDeletedEvent extends EventBase<'changelog.deleted'> {
+  data: ChangelogDeletedPayload
+}
+
+// ============================================================================
+// Audience events (Phase 2) — segments and user-attribute definitions
+// ============================================================================
+
+/** Snapshot of a segment embedded in `segment.*` events. */
+export interface EventSegmentRef {
+  id: string
+  slug: string
+  name: string
+  type: string
+  color: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+/** Snapshot of a user-attribute definition embedded in `user_attribute.*` events. */
+export interface EventUserAttributeRef {
+  id: string
+  key: string
+  label: string
+  type: string
+  currencyCode: string | null
+  externalKey: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface SegmentCreatedPayload {
+  segment: EventSegmentRef
+}
+export interface SegmentUpdatedPayload {
+  segment: EventSegmentRef
+  changedFields: string[]
+}
+export interface SegmentDeletedPayload {
+  segment: EventSegmentRef
+}
+export interface UserAttributeCreatedPayload {
+  attribute: EventUserAttributeRef
+}
+export interface UserAttributeUpdatedPayload {
+  attribute: EventUserAttributeRef
+  changedFields: string[]
+}
+export interface UserAttributeDeletedPayload {
+  attribute: EventUserAttributeRef
+}
+
+export interface SegmentCreatedEvent extends EventBase<'segment.created'> {
+  data: SegmentCreatedPayload
+}
+export interface SegmentUpdatedEvent extends EventBase<'segment.updated'> {
+  data: SegmentUpdatedPayload
+}
+export interface SegmentDeletedEvent extends EventBase<'segment.deleted'> {
+  data: SegmentDeletedPayload
+}
+export interface UserAttributeCreatedEvent extends EventBase<'user_attribute.created'> {
+  data: UserAttributeCreatedPayload
+}
+export interface UserAttributeUpdatedEvent extends EventBase<'user_attribute.updated'> {
+  data: UserAttributeUpdatedPayload
+}
+export interface UserAttributeDeletedEvent extends EventBase<'user_attribute.deleted'> {
+  data: UserAttributeDeletedPayload
+}
+
+// ============================================================================
+// Feedback configuration events (Phase 8) — boards, tags, statuses, roadmaps
+// ============================================================================
+
+/** Snapshot of a feedback board embedded in `board.*` events. */
+export interface EventBoardRef {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+/** Snapshot of a tag embedded in `tag.*` events. */
+export interface EventTagRef {
+  id: string
+  name: string
+  color: string | null
+  description: string | null
+  createdAt: string | null
+}
+
+/** Snapshot of a post status embedded in `status.*` events. */
+export interface EventStatusRef {
+  id: string
+  slug: string
+  name: string
+  color: string | null
+  category: string
+  position: number
+  showOnRoadmap: boolean
+  isDefault: boolean
+  createdAt: string | null
+}
+
+/** Snapshot of a roadmap embedded in `roadmap.*` events. */
+export interface EventRoadmapRef {
+  id: string
+  slug: string
+  name: string
+  description: string | null
+  isPublic: boolean
+  position: number
+  createdAt: string | null
+  updatedAt: string | null
+}
+
+export interface BoardCreatedPayload {
+  board: EventBoardRef
+}
+export interface BoardUpdatedPayload {
+  board: EventBoardRef
+  changedFields: string[]
+}
+export interface BoardDeletedPayload {
+  board: EventBoardRef
+}
+export interface TagCreatedPayload {
+  tag: EventTagRef
+}
+export interface TagUpdatedPayload {
+  tag: EventTagRef
+  changedFields: string[]
+}
+export interface TagDeletedPayload {
+  tag: EventTagRef
+}
+export interface StatusCreatedPayload {
+  status: EventStatusRef
+}
+export interface StatusUpdatedPayload {
+  status: EventStatusRef
+  changedFields: string[]
+}
+export interface StatusDeletedPayload {
+  status: EventStatusRef
+}
+export interface RoadmapCreatedPayload {
+  roadmap: EventRoadmapRef
+}
+export interface RoadmapUpdatedPayload {
+  roadmap: EventRoadmapRef
+  changedFields: string[]
+}
+export interface RoadmapDeletedPayload {
+  roadmap: EventRoadmapRef
+}
+
+export interface BoardCreatedEvent extends EventBase<'board.created'> {
+  data: BoardCreatedPayload
+}
+export interface BoardUpdatedEvent extends EventBase<'board.updated'> {
+  data: BoardUpdatedPayload
+}
+export interface BoardDeletedEvent extends EventBase<'board.deleted'> {
+  data: BoardDeletedPayload
+}
+export interface TagCreatedEvent extends EventBase<'tag.created'> {
+  data: TagCreatedPayload
+}
+export interface TagUpdatedEvent extends EventBase<'tag.updated'> {
+  data: TagUpdatedPayload
+}
+export interface TagDeletedEvent extends EventBase<'tag.deleted'> {
+  data: TagDeletedPayload
+}
+export interface StatusCreatedEvent extends EventBase<'status.created'> {
+  data: StatusCreatedPayload
+}
+export interface StatusUpdatedEvent extends EventBase<'status.updated'> {
+  data: StatusUpdatedPayload
+}
+export interface StatusDeletedEvent extends EventBase<'status.deleted'> {
+  data: StatusDeletedPayload
+}
+export interface RoadmapCreatedEvent extends EventBase<'roadmap.created'> {
+  data: RoadmapCreatedPayload
+}
+export interface RoadmapUpdatedEvent extends EventBase<'roadmap.updated'> {
+  data: RoadmapUpdatedPayload
+}
+export interface RoadmapDeletedEvent extends EventBase<'roadmap.deleted'> {
+  data: RoadmapDeletedPayload
+}
+
+// ============================================================================
+// Support configuration events (Phase 8) — SLA, routing, business hours,
+// inbox channels, inbox memberships
+// ============================================================================
+
+/** Snapshot of an SLA policy embedded in `sla_policy.*` events. */
+export interface EventSlaPolicyRef {
+  id: string
+  name: string
+  scope: string
+  enabled: boolean
+  priority: number
+  archivedAt: string | null
+}
+
+/** Snapshot of a routing rule embedded in `routing_rule.*` events. */
+export interface EventRoutingRuleRef {
+  id: string
+  name: string
+  enabled: boolean
+  priority: number
+  inboxIdScope: string | null
+}
+
+/** Snapshot of a business-hours calendar embedded in `business_hours.*` events. */
+export interface EventBusinessHoursRef {
+  id: string
+  name: string
+  timezone: string
+  archivedAt: string | null
+}
+
+/** Snapshot of an inbox channel embedded in `inbox_channel.*` events. `config` is intentionally omitted (opaque, may carry secrets). */
+export interface EventInboxChannelRef {
+  id: string
+  inboxId: string
+  kind: string
+  label: string
+  externalId: string | null
+  enabled: boolean
+  archivedAt: string | null
+}
+
+/** Snapshot of an inbox membership embedded in `inbox_membership.*` events. */
+export interface EventInboxMembershipRef {
+  id: string
+  inboxId: string
+  principalId: string
+  role: string
+}
+
+export interface SlaPolicyCreatedPayload {
+  policy: EventSlaPolicyRef
+}
+export interface SlaPolicyUpdatedPayload {
+  policy: EventSlaPolicyRef
+  changedFields: string[]
+}
+export interface SlaPolicyArchivedPayload {
+  policy: EventSlaPolicyRef
+}
+export interface RoutingRuleCreatedPayload {
+  rule: EventRoutingRuleRef
+}
+export interface RoutingRuleUpdatedPayload {
+  rule: EventRoutingRuleRef
+  changedFields: string[]
+}
+export interface RoutingRuleDeletedPayload {
+  rule: EventRoutingRuleRef
+}
+export interface BusinessHoursCreatedPayload {
+  businessHours: EventBusinessHoursRef
+}
+export interface BusinessHoursUpdatedPayload {
+  businessHours: EventBusinessHoursRef
+  changedFields: string[]
+}
+export interface BusinessHoursArchivedPayload {
+  businessHours: EventBusinessHoursRef
+}
+export interface InboxChannelCreatedPayload {
+  channel: EventInboxChannelRef
+}
+export interface InboxChannelUpdatedPayload {
+  channel: EventInboxChannelRef
+  changedFields: string[]
+}
+export interface InboxChannelArchivedPayload {
+  channel: EventInboxChannelRef
+}
+export interface InboxMembershipAddedPayload {
+  membership: EventInboxMembershipRef
+}
+export interface InboxMembershipUpdatedPayload {
+  membership: EventInboxMembershipRef
+  previousRole: string | null
+}
+export interface InboxMembershipRemovedPayload {
+  membership: EventInboxMembershipRef
+}
+
+export interface SlaPolicyCreatedEvent extends EventBase<'sla_policy.created'> {
+  data: SlaPolicyCreatedPayload
+}
+export interface SlaPolicyUpdatedEvent extends EventBase<'sla_policy.updated'> {
+  data: SlaPolicyUpdatedPayload
+}
+export interface SlaPolicyArchivedEvent extends EventBase<'sla_policy.archived'> {
+  data: SlaPolicyArchivedPayload
+}
+export interface RoutingRuleCreatedEvent extends EventBase<'routing_rule.created'> {
+  data: RoutingRuleCreatedPayload
+}
+export interface RoutingRuleUpdatedEvent extends EventBase<'routing_rule.updated'> {
+  data: RoutingRuleUpdatedPayload
+}
+export interface RoutingRuleDeletedEvent extends EventBase<'routing_rule.deleted'> {
+  data: RoutingRuleDeletedPayload
+}
+export interface BusinessHoursCreatedEvent extends EventBase<'business_hours.created'> {
+  data: BusinessHoursCreatedPayload
+}
+export interface BusinessHoursUpdatedEvent extends EventBase<'business_hours.updated'> {
+  data: BusinessHoursUpdatedPayload
+}
+export interface BusinessHoursArchivedEvent extends EventBase<'business_hours.archived'> {
+  data: BusinessHoursArchivedPayload
+}
+export interface InboxChannelCreatedEvent extends EventBase<'inbox_channel.created'> {
+  data: InboxChannelCreatedPayload
+}
+export interface InboxChannelUpdatedEvent extends EventBase<'inbox_channel.updated'> {
+  data: InboxChannelUpdatedPayload
+}
+export interface InboxChannelArchivedEvent extends EventBase<'inbox_channel.archived'> {
+  data: InboxChannelArchivedPayload
+}
+export interface InboxMembershipAddedEvent extends EventBase<'inbox_membership.added'> {
+  data: InboxMembershipAddedPayload
+}
+export interface InboxMembershipUpdatedEvent extends EventBase<'inbox_membership.updated'> {
+  data: InboxMembershipUpdatedPayload
+}
+export interface InboxMembershipRemovedEvent extends EventBase<'inbox_membership.removed'> {
+  data: InboxMembershipRemovedPayload
+}
+
+// ============================================================================
+// Administration / security events (Phase 8) — API keys, roles, assignments
+// ============================================================================
+
+/**
+ * Snapshot of an API key embedded in `api_key.*` events.
+ *
+ * SECURITY: the plaintext key, key hash, and key prefix MUST NEVER appear in
+ * the event payload. Only id + name + scopes (capabilities) are exposed.
+ */
+export interface EventApiKeyRef {
+  id: string
+  name: string
+  scopes: string[]
+}
+
+/** Snapshot of a role embedded in `role.*` events. */
+export interface EventRoleRef {
+  id: string
+  key: string
+  name: string
+  isSystem: boolean
+}
+
+/** Snapshot of a role assignment embedded in `role_assignment.*` events. */
+export interface EventRoleAssignmentRef {
+  id: string
+  roleId: string
+  roleKey: string
+  principalId: string
+  teamId: string | null
+}
+
+export interface ApiKeyCreatedPayload {
+  apiKey: EventApiKeyRef
+}
+export interface ApiKeyRotatedPayload {
+  apiKey: EventApiKeyRef
+}
+export interface ApiKeyRevokedPayload {
+  apiKey: EventApiKeyRef
+}
+export interface RoleCreatedPayload {
+  role: EventRoleRef
+}
+export interface RoleUpdatedPayload {
+  role: EventRoleRef
+  changedFields: string[]
+}
+export interface RoleDeletedPayload {
+  role: EventRoleRef
+}
+export interface RoleAssignmentCreatedPayload {
+  assignment: EventRoleAssignmentRef
+}
+export interface RoleAssignmentRevokedPayload {
+  assignment: EventRoleAssignmentRef
+}
+
+export interface ApiKeyCreatedEvent extends EventBase<'api_key.created'> {
+  data: ApiKeyCreatedPayload
+}
+export interface ApiKeyRotatedEvent extends EventBase<'api_key.rotated'> {
+  data: ApiKeyRotatedPayload
+}
+export interface ApiKeyRevokedEvent extends EventBase<'api_key.revoked'> {
+  data: ApiKeyRevokedPayload
+}
+export interface RoleCreatedEvent extends EventBase<'role.created'> {
+  data: RoleCreatedPayload
+}
+export interface RoleUpdatedEvent extends EventBase<'role.updated'> {
+  data: RoleUpdatedPayload
+}
+export interface RoleDeletedEvent extends EventBase<'role.deleted'> {
+  data: RoleDeletedPayload
+}
+export interface RoleAssignmentCreatedEvent extends EventBase<'role_assignment.created'> {
+  data: RoleAssignmentCreatedPayload
+}
+export interface RoleAssignmentRevokedEvent extends EventBase<'role_assignment.revoked'> {
+  data: RoleAssignmentRevokedPayload
 }

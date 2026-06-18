@@ -7,6 +7,24 @@ import type { Inbox } from '@/lib/shared/db-types'
 import type { InboxMembershipRole } from '@/lib/server/db'
 import type { InboxId, InboxMembershipId, PrincipalId } from '@quackback/ids'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
+import {
+  dispatchInboxMembershipAdded,
+  dispatchInboxMembershipUpdated,
+  dispatchInboxMembershipRemoved,
+  type EventActor,
+} from '@/lib/server/events/dispatch'
+import type { EventInboxMembershipRef } from '@/lib/server/events/types'
+
+const inboxMembershipActor: EventActor = { type: 'service', displayName: 'inbox-membership-system' }
+
+function inboxMembershipRef(m: InboxMembership): EventInboxMembershipRef {
+  return {
+    id: m.id,
+    inboxId: m.inboxId,
+    principalId: m.principalId,
+    role: m.role,
+  }
+}
 
 export interface AddInboxMembershipInput {
   inboxId: InboxId
@@ -34,6 +52,9 @@ export async function addInboxMembership(input: AddInboxMembershipInput): Promis
       role: input.role ?? 'agent',
     })
     .returning()
+  void dispatchInboxMembershipAdded(inboxMembershipActor, inboxMembershipRef(created)).catch(
+    () => {}
+  )
   return created
 }
 
@@ -46,16 +67,30 @@ export async function updateInboxMembershipRole(
   })
   if (!existing) throw new NotFoundError('INBOX_MEMBERSHIP_NOT_FOUND', 'Membership not found')
   if (existing.role === role) return existing
+  const previousRole = existing.role
   const [updated] = await db
     .update(inboxMemberships)
     .set({ role })
     .where(eq(inboxMemberships.id, membershipId))
     .returning()
+  void dispatchInboxMembershipUpdated(
+    inboxMembershipActor,
+    inboxMembershipRef(updated),
+    previousRole
+  ).catch(() => {})
   return updated
 }
 
 export async function removeInboxMembership(membershipId: InboxMembershipId): Promise<void> {
+  const snapshot = await db.query.inboxMemberships.findFirst({
+    where: eq(inboxMemberships.id, membershipId),
+  })
   await db.delete(inboxMemberships).where(eq(inboxMemberships.id, membershipId))
+  if (snapshot) {
+    void dispatchInboxMembershipRemoved(inboxMembershipActor, inboxMembershipRef(snapshot)).catch(
+      () => {}
+    )
+  }
 }
 
 export async function listMembershipsForInbox(inboxId: InboxId): Promise<InboxMembership[]> {

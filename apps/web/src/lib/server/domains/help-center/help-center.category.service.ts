@@ -31,6 +31,44 @@ import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'help-center-categories' })
 
+/**
+ * Best-effort webhook dispatch for help-center category lifecycle events.
+ * Mirrors the config-plane fire helpers (e.g. ticket-statuses.service): lazy
+ * import, a `service` actor (these mutations carry no principal), and a
+ * try/catch so a dispatch failure never aborts the mutation.
+ */
+async function fireCategoryEvent(
+  kind: 'created' | 'updated' | 'deleted',
+  category: HelpCenterCategory,
+  changedFields?: string[]
+): Promise<void> {
+  try {
+    const {
+      dispatchHelpCenterCategoryCreated,
+      dispatchHelpCenterCategoryUpdated,
+      dispatchHelpCenterCategoryDeleted,
+    } = await import('@/lib/server/events/dispatch')
+    const actor = { type: 'service' as const, displayName: 'help-center-system' }
+    const ref = {
+      id: category.id,
+      slug: category.slug,
+      name: category.name,
+      parentId: category.parentId ?? null,
+      isPublic: category.isPublic,
+      visibility: category.visibility ?? null,
+      position: category.position,
+      createdAt: category.createdAt ? category.createdAt.toISOString() : null,
+      updatedAt: category.updatedAt ? category.updatedAt.toISOString() : null,
+    }
+    if (kind === 'created') await dispatchHelpCenterCategoryCreated(actor, ref)
+    else if (kind === 'updated')
+      await dispatchHelpCenterCategoryUpdated(actor, ref, changedFields ?? [])
+    else await dispatchHelpCenterCategoryDeleted(actor, ref)
+  } catch (err) {
+    log.error({ err }, `failed to dispatch help_center.category.${kind} event`)
+  }
+}
+
 function normalizeIdArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string')
@@ -295,7 +333,9 @@ export async function createCategory(input: CreateCategoryInput): Promise<HelpCe
     })
     .returning()
 
-  return normalizeCategoryAudience(category)
+  const result = normalizeCategoryAudience(category)
+  void fireCategoryEvent('created', result)
+  return result
 }
 
 export async function updateCategory(
@@ -347,7 +387,11 @@ export async function updateCategory(
     .returning()
 
   if (!updated) throw new NotFoundError('CATEGORY_NOT_FOUND', `Category ${id} not found`)
-  return normalizeCategoryAudience(updated)
+  const result = normalizeCategoryAudience(updated)
+  // Report the changed columns (drop the always-present updatedAt bump).
+  const changedFields = Object.keys(updateData).filter((k) => k !== 'updatedAt')
+  void fireCategoryEvent('updated', result, changedFields)
+  return result
 }
 
 export async function deleteCategory(id: HelpCenterCategoryId): Promise<void> {
@@ -358,6 +402,11 @@ export async function deleteCategory(id: HelpCenterCategoryId): Promise<void> {
   if (!flat.some((c) => c.id === id)) {
     throw new NotFoundError('CATEGORY_NOT_FOUND', `Category ${id} not found`)
   }
+
+  // Snapshot the target category before soft-deleting so the webhook ref
+  // carries its display fields (the row's deletedAt is set by the tx below).
+  // Best-effort: a failed snapshot read must never block the delete.
+  const deletedCategory = await getCategoryById(id).catch(() => null)
 
   const toDelete = collectDescendantIdsIncludingSelf(
     flat as Array<{ id: string; parentId: string | null }>,
@@ -376,6 +425,8 @@ export async function deleteCategory(id: HelpCenterCategoryId): Promise<void> {
       .set({ deletedAt: now })
       .where(and(inArray(helpCenterArticles.categoryId, ids), isNull(helpCenterArticles.deletedAt)))
   })
+
+  if (deletedCategory) void fireCategoryEvent('deleted', deletedCategory)
 }
 
 export async function restoreCategory(id: HelpCenterCategoryId): Promise<HelpCenterCategory> {
