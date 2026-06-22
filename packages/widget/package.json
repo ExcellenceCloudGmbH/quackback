@@ -10,15 +10,15 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "development": "./src/index.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "development": "./src/index.ts"
+      "require": "./dist/index.cjs"
     },
     "./react": {
       "types": "./dist/react/index.d.ts",
+      "development": "./src/react/index.ts",
       "import": "./dist/react/index.js",
-      "require": "./dist/react/index.cjs",
-      "development": "./src/react/index.ts"
+      "require": "./dist/react/index.cjs"
     },
     "./browser.js": "./dist/browser.js"
   },

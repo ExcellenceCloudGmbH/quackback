@@ -98,6 +98,17 @@ const baseTicket = {
 const T = (extra: Record<string, unknown> = {}): any => ({ ...baseTicket, ...extra })
 
 describe('notifyTicketAssigned', () => {
+  it('does not notify when there is no new assignee or previous assignee', async () => {
+    getSubscribersMock.mockResolvedValue(['principal_sub'])
+    const { notifyTicketAssigned } = await import('../ticket.notifications')
+
+    await notifyTicketAssigned(T({ assigneePrincipalId: null }), null, {
+      actorPrincipalId: 'principal_actor' as never,
+    })
+
+    expect(createNotificationsBatchMock).not.toHaveBeenCalled()
+  })
+
   it('suppresses actor and notifies new + previous assignee separately', async () => {
     getSubscribersMock.mockResolvedValue([])
     const { notifyTicketAssigned } = await import('../ticket.notifications')
@@ -124,6 +135,42 @@ describe('notifyTicketAssigned', () => {
     // Only the new-assignee dispatch attempt fires; recipient set after
     // suppression is empty so no batch insert happens.
     expect(createNotificationsBatchMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('notifyTicketCreated and status changes', () => {
+  it('notifies requester and assignee when a ticket is opened', async () => {
+    getSubscribersMock.mockResolvedValue(['principal_sub'])
+    const { notifyTicketCreated } = await import('../ticket.notifications')
+
+    await notifyTicketCreated(
+      T({ requesterPrincipalId: 'principal_req', assigneePrincipalId: 'principal_agent' }),
+      { actorPrincipalId: 'principal_actor' as never }
+    )
+
+    const recipients = createNotificationsBatchMock.mock.calls
+      .flatMap((c) => c[0])
+      .map((row) => row.principalId)
+    expect(recipients).toEqual(['principal_sub', 'principal_req', 'principal_agent'])
+    expect(createNotificationsBatchMock.mock.calls[0][0][0]).toMatchObject({
+      type: 'ticket_thread_added',
+      title: 'Ticket opened: Hello',
+    })
+  })
+
+  it('uses fallback subject and previous-category text for status changes', async () => {
+    getSubscribersMock.mockResolvedValue(['principal_sub'])
+    const { notifyTicketStatusChanged } = await import('../ticket.notifications')
+
+    await notifyTicketStatusChanged(T({ subject: null }), null, 'closed', {
+      actorPrincipalId: null,
+    })
+
+    expect(createNotificationsBatchMock.mock.calls[0][0][0]).toMatchObject({
+      title: 'Status: ticket',
+      body: '— → closed',
+      metadata: { ticketId: 'ticket_1', from: null, to: 'closed' },
+    })
   })
 })
 
@@ -180,6 +227,26 @@ describe('dispatch visibility filter', () => {
     const rows = createNotificationsBatchMock.mock.calls.flatMap((c) => c[0])
     expect(rows).toHaveLength(2) // 3 candidates − 1 denied
   })
+
+  it('skips a recipient when permission loading fails', async () => {
+    getSubscribersMock.mockResolvedValue(['principal_bad'])
+    loadPermissionSetMock.mockRejectedValueOnce(new Error('permission db unavailable'))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+    try {
+      const { notifyTicketStatusChanged } = await import('../ticket.notifications')
+      await notifyTicketStatusChanged(T(), 'open', 'pending', { actorPrincipalId: null })
+
+      expect(createNotificationsBatchMock).not.toHaveBeenCalled()
+      expect(warn).toHaveBeenCalledWith(
+        '[tickets.notifications] permission check failed for',
+        'principal_bad',
+        expect.any(Error)
+      )
+    } finally {
+      warn.mockRestore()
+    }
+  })
 })
 
 describe('notifyTicketShared', () => {
@@ -195,5 +262,64 @@ describe('notifyTicketShared', () => {
       .map((row) => row.principalId)
     // principal_x is the actor → suppressed; principal_y survives.
     expect(recipients).toEqual(['principal_y'])
+  })
+
+  it('expands team members for unshare notifications', async () => {
+    getSubscribersMock.mockResolvedValue(['principal_sub'])
+    teamMembersRows.push({ principalId: 'principal_x' })
+    const { notifyTicketUnshared } = await import('../ticket.notifications')
+
+    await notifyTicketUnshared(T(), 'team_b' as never, {
+      actorPrincipalId: 'principal_actor' as never,
+    })
+
+    const rows = createNotificationsBatchMock.mock.calls.flatMap((c) => c[0])
+    expect(rows.map((row) => row.principalId)).toEqual(['principal_x', 'principal_sub'])
+    expect(rows[0]).toMatchObject({
+      type: 'ticket_unshared',
+      title: 'Ticket access revoked: Hello',
+      metadata: { ticketId: 'ticket_1', teamId: 'team_b' },
+    })
+  })
+})
+
+describe('SLA notifications', () => {
+  it('does not dispatch SLA warnings when there are no explicit recipients', async () => {
+    const { notifyTicketSlaWarning } = await import('../ticket.notifications')
+
+    await notifyTicketSlaWarning(T(), 'first_response', 'First response', [])
+
+    expect(getSubscribersMock).not.toHaveBeenCalled()
+    expect(createNotificationsBatchMock).not.toHaveBeenCalled()
+  })
+
+  it('notifies explicit and subscribed recipients for SLA warnings', async () => {
+    getSubscribersMock.mockResolvedValue(['principal_sub'])
+    const { notifyTicketSlaWarning } = await import('../ticket.notifications')
+
+    await notifyTicketSlaWarning(T(), 'first_response', 'First response', [
+      'principal_agent' as never,
+    ])
+
+    const rows = createNotificationsBatchMock.mock.calls.flatMap((c) => c[0])
+    expect(rows.map((row) => row.principalId)).toEqual(['principal_agent', 'principal_sub'])
+    expect(rows[0]).toMatchObject({
+      type: 'ticket_sla_warning',
+      body: 'First response (first response) escalation triggered.',
+    })
+  })
+
+  it('notifies assignee and subscribers for SLA breaches', async () => {
+    getSubscribersMock.mockResolvedValue(['principal_sub'])
+    const { notifyTicketSlaBreach } = await import('../ticket.notifications')
+
+    await notifyTicketSlaBreach(T({ assigneePrincipalId: 'principal_agent' }), 'next_response')
+
+    const rows = createNotificationsBatchMock.mock.calls.flatMap((c) => c[0])
+    expect(rows.map((row) => row.principalId)).toEqual(['principal_agent', 'principal_sub'])
+    expect(rows[0]).toMatchObject({
+      type: 'ticket_sla_breach',
+      body: 'next response target was missed.',
+    })
   })
 })

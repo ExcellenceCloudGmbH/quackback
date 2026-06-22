@@ -96,6 +96,23 @@ describe('business-hours calc', () => {
         start.getTime()
       )
     })
+
+    it('falls back to linear time when no business ranges are open for a year', () => {
+      const closed: BusinessHoursLike = {
+        timezone: 'UTC',
+        schedule: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] },
+        holidays: [],
+      }
+      const start = new Date('2026-01-05T10:00:00Z')
+      const out = addBusinessMinutes(start, 45, closed)
+      expect(out.toISOString()).toBe('2026-01-05T10:45:00.000Z')
+    })
+
+    it('moves to the next open range when the start is after closing time', () => {
+      const start = new Date('2026-01-05T18:00:00Z')
+      const out = addBusinessMinutes(start, 30, NINE_TO_FIVE_UTC_WEEKDAYS)
+      expect(out.toISOString()).toBe('2026-01-06T09:30:00.000Z')
+    })
   })
 
   describe('subtractBusinessMinutes', () => {
@@ -109,6 +126,30 @@ describe('business-hours calc', () => {
       // Tue 2026-01-06 09:30 UTC - 60 = 30 min Tue (to 09:00) + 30 min Mon (to 16:30)
       const end = new Date('2026-01-06T09:30:00Z')
       const out = subtractBusinessMinutes(end, 60, NINE_TO_FIVE_UTC_WEEKDAYS)
+      expect(out.toISOString()).toBe('2026-01-05T16:30:00.000Z')
+    })
+
+    it('returns input when minutes <= 0', () => {
+      const end = new Date('2026-01-05T11:00:00Z')
+      expect(subtractBusinessMinutes(end, 0, NINE_TO_FIVE_UTC_WEEKDAYS).getTime()).toBe(
+        end.getTime()
+      )
+    })
+
+    it('falls back to linear time when no prior business ranges are open for a year', () => {
+      const closed: BusinessHoursLike = {
+        timezone: 'UTC',
+        schedule: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] },
+        holidays: [],
+      }
+      const end = new Date('2026-01-05T10:00:00Z')
+      const out = subtractBusinessMinutes(end, 45, closed)
+      expect(out.toISOString()).toBe('2026-01-05T09:15:00.000Z')
+    })
+
+    it('moves to the previous open range when the end is before opening time', () => {
+      const end = new Date('2026-01-06T06:00:00Z')
+      const out = subtractBusinessMinutes(end, 30, NINE_TO_FIVE_UTC_WEEKDAYS)
       expect(out.toISOString()).toBe('2026-01-05T16:30:00.000Z')
     })
   })
@@ -133,6 +174,12 @@ describe('business-hours calc', () => {
       const start = new Date('2026-01-09T16:00:00Z')
       const end = new Date('2026-01-12T10:00:00Z')
       expect(elapsedBusinessMs(start, end, NINE_TO_FIVE_UTC_WEEKDAYS)).toBe(120 * 60_000)
+    })
+
+    it('skips ranges that end before the effective start', () => {
+      const start = new Date('2026-01-05T18:00:00Z')
+      const end = new Date('2026-01-06T08:00:00Z')
+      expect(elapsedBusinessMs(start, end, NINE_TO_FIVE_UTC_WEEKDAYS)).toBe(0)
     })
   })
 
@@ -179,6 +226,11 @@ describe('business-hours calc', () => {
       expect(() => validateRange({ start: '09:00', end: '09:00' })).toThrow()
     })
 
+    it('validateRange rejects malformed HH:MM values', () => {
+      expect(() => validateRange({ start: '9:00', end: '17:00' })).toThrow()
+      expect(() => validateRange({ start: '09:00', end: '24:00' })).toThrow()
+    })
+
     it('validateSchedule rejects overlapping ranges', () => {
       expect(() =>
         validateSchedule({
@@ -210,6 +262,14 @@ describe('business-hours calc', () => {
           sat: [],
           sun: [],
         })
+      ).not.toThrow()
+    })
+
+    it('validateSchedule tolerates missing day arrays as closed days', () => {
+      expect(() =>
+        validateSchedule({
+          mon: [{ start: '09:00', end: '17:00' }],
+        } as unknown as BusinessHoursLike['schedule'])
       ).not.toThrow()
     })
 

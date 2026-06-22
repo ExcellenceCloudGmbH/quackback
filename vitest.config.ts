@@ -11,6 +11,10 @@ export default defineConfig({
     // the module graph for later tests. 20s gives headroom; genuine hangs
     // still fail well before the suite stalls.
     testTimeout: 20000,
+    // The suite is import-heavy and several mock-based tests are sensitive to
+    // worker CPU starvation. Keep the default command stable while allowing
+    // one-off overrides such as `VITEST_MAX_WORKERS=75% bun run test -- --run`.
+    maxWorkers: process.env.VITEST_MAX_WORKERS ?? '50%',
     include: ['**/*.test.ts', '**/*.test.tsx'],
     setupFiles: [path.resolve(__dirname, './vitest.setup.ts')],
     exclude: [

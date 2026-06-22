@@ -120,6 +120,64 @@ describe('TicketThreadFeed description editing', () => {
       'Updated description'
     )
   })
+
+  it('seeds the editor from plain text when editing an existing description', () => {
+    const onDescriptionUpdate = vi.fn()
+    renderWithClient(
+      <TicketThreadFeed
+        threads={[]}
+        description={{ text: 'Line one\nLine two', json: null }}
+        onDescriptionUpdate={onDescriptionUpdate}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+    expect(screen.getByLabelText('Add a description...')).toHaveValue('Line oneLine two')
+  })
+
+  it('saves existing rich text by deriving fallback plain text from JSON', () => {
+    const onDescriptionUpdate = vi.fn()
+    const descriptionJson: JSONContent = {
+      type: 'doc',
+      content: [
+        {
+          type: 'paragraph',
+          content: [{ type: 'text', text: 'JSON description' }],
+        },
+      ],
+    }
+
+    renderWithClient(
+      <TicketThreadFeed
+        threads={[]}
+        description={{ text: null, json: descriptionJson }}
+        onDescriptionUpdate={onDescriptionUpdate}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /edit/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+
+    expect(onDescriptionUpdate).toHaveBeenCalledWith(descriptionJson, 'JSON description')
+  })
+
+  it('treats media-only rich text as a visible description', () => {
+    renderWithClient(
+      <TicketThreadFeed
+        threads={[]}
+        description={{
+          text: null,
+          json: {
+            type: 'doc',
+            content: [{ type: 'horizontalRule' }],
+          },
+        }}
+      />
+    )
+
+    expect(screen.getByText('Description')).toBeInTheDocument()
+    expect(screen.getByTestId('rich-text-content')).toBeInTheDocument()
+  })
 })
 
 describe('TicketThreadFeed author labels', () => {
@@ -170,5 +228,45 @@ describe('TicketThreadFeed author labels', () => {
 
     expect(screen.getByText('Unknown')).toBeInTheDocument()
     expect(screen.queryByText('principal_missing_name')).not.toBeInTheDocument()
+  })
+
+  it('renders audience labels, team names, system authors, and edited markers', () => {
+    renderWithClient(
+      <TicketThreadFeed
+        threads={[
+          {
+            id: 'ticket_thread_1',
+            ticketId: 'ticket_1' as never,
+            principalId: null,
+            audience: 'internal',
+            bodyJson: null,
+            bodyText: 'Private note',
+            sharedWithTeamId: null,
+            createdAt: '2026-06-12T10:00:00.000Z',
+            editedAt: '2026-06-12T10:30:00.000Z',
+          },
+          {
+            id: 'ticket_thread_2',
+            ticketId: 'ticket_1' as never,
+            principalId: 'principal_agent' as never,
+            audience: 'shared_team',
+            bodyJson: null,
+            bodyText: 'Escalated to billing',
+            sharedWithTeamId: 'team_billing' as never,
+            createdAt: '2026-06-12T11:00:00.000Z',
+            editedAt: null,
+          },
+        ]}
+        teamNames={{ team_billing: 'Billing' }}
+        principalNames={{ principal_agent: 'Agent Smith' }}
+      />
+    )
+
+    expect(screen.getByText('System')).toBeInTheDocument()
+    expect(screen.getByText('Internal note')).toBeInTheDocument()
+    expect(screen.getByText('(edited)')).toBeInTheDocument()
+    expect(screen.getByText('Agent Smith')).toBeInTheDocument()
+    expect(screen.getByText(/Shared with team/)).toBeInTheDocument()
+    expect(screen.getByText(/Billing/)).toBeInTheDocument()
   })
 })

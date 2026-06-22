@@ -6,10 +6,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const contactFindFirstMock = vi.fn()
 const linkFindFirstMock = vi.fn()
+const linkFindManyMock = vi.fn()
 const insertReturningMock = vi.fn()
 const selectWhereMock = vi.fn()
 const selectFromMock = vi.fn(() => ({ where: selectWhereMock }))
-const selectMock = vi.fn(() => ({ from: selectFromMock }))
+const selectMock = vi.fn<() => unknown>(() => ({ from: selectFromMock }))
 
 vi.mock('@/lib/server/db', () => {
   const insertChain = {
@@ -20,7 +21,7 @@ vi.mock('@/lib/server/db', () => {
     db: {
       query: {
         contacts: { findFirst: contactFindFirstMock },
-        contactUserLinks: { findFirst: linkFindFirstMock, findMany: vi.fn() },
+        contactUserLinks: { findFirst: linkFindFirstMock, findMany: linkFindManyMock },
       },
       insert: vi.fn(() => insertChain),
       update: vi.fn(() => ({
@@ -89,11 +90,27 @@ beforeEach(() => {
   vi.clearAllMocks()
   contactFindFirstMock.mockReset()
   linkFindFirstMock.mockReset()
+  linkFindManyMock.mockReset()
   insertReturningMock.mockReset()
   selectMock.mockClear()
   selectFromMock.mockClear()
   selectWhereMock.mockReset()
 })
+
+function makeListChain(rows: unknown[]) {
+  const promise = Promise.resolve(rows)
+  const chain = {
+    from: vi.fn(() => chain),
+    where: vi.fn(() => chain),
+    orderBy: vi.fn(() => chain),
+    limit: vi.fn(() => chain),
+    offset: vi.fn(() => chain),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  }
+  return chain
+}
 
 describe('createContact', () => {
   it('rejects when neither name nor email is provided', async () => {
@@ -164,6 +181,47 @@ describe('findOrCreateByEmail', () => {
   })
 })
 
+describe('contact list and search queries', () => {
+  it('lists contacts for an organization with capped limits and clamped offsets', async () => {
+    const rows = [{ id: 'contact_1', organizationId: 'org_1' }]
+    const chain = makeListChain(rows)
+    selectMock.mockReturnValueOnce(chain)
+
+    const { listContactsForOrganization } = await import('../contact.service')
+    await expect(
+      listContactsForOrganization('org_1' as never, { limit: 500, offset: -10 })
+    ).resolves.toEqual(rows)
+
+    expect(chain.limit).toHaveBeenCalledWith(200)
+    expect(chain.offset).toHaveBeenCalledWith(0)
+  })
+
+  it('searches contacts with optional email, organization, text, and archived filters', async () => {
+    const rows = [{ id: 'contact_1', email: 'a@b.com' }]
+    const filteredChain = makeListChain(rows)
+    selectMock.mockReturnValueOnce(filteredChain)
+
+    const { searchContacts } = await import('../contact.service')
+    await expect(
+      searchContacts({
+        email: ' A@B.COM ',
+        organizationId: 'org_1' as never,
+        query: ' Alice ',
+        limit: 150,
+        offset: -1,
+      })
+    ).resolves.toEqual(rows)
+
+    expect(filteredChain.limit).toHaveBeenCalledWith(100)
+    expect(filteredChain.offset).toHaveBeenCalledWith(0)
+
+    const unfilteredChain = makeListChain([])
+    selectMock.mockReturnValueOnce(unfilteredChain)
+    await expect(searchContacts({ includeArchived: true })).resolves.toEqual([])
+    expect(unfilteredChain.where).toHaveBeenCalledWith(undefined)
+  })
+})
+
 describe('linkContactToUser', () => {
   it('returns existing link when one is present (idempotent)', async () => {
     linkFindFirstMock.mockResolvedValueOnce({
@@ -190,5 +248,22 @@ describe('linkContactToUser', () => {
       userId: 'user_x' as never,
     })
     expect(result.id).toBe('cu_link_new')
+  })
+})
+
+describe('contact-user link helpers', () => {
+  it('unlinks by link id and lists links by contact or user', async () => {
+    linkFindManyMock
+      .mockResolvedValueOnce([{ id: 'link_contact', contactId: 'contact_x' }])
+      .mockResolvedValueOnce([{ id: 'link_user', userId: 'user_x' }])
+
+    const { unlinkById, listLinksForContact, listLinksForUser } = await import('../contact.service')
+    await expect(unlinkById('link_1' as never)).resolves.toBeUndefined()
+    await expect(listLinksForContact('contact_x' as never)).resolves.toEqual([
+      { id: 'link_contact', contactId: 'contact_x' },
+    ])
+    await expect(listLinksForUser('user_x' as never)).resolves.toEqual([
+      { id: 'link_user', userId: 'user_x' },
+    ])
   })
 })

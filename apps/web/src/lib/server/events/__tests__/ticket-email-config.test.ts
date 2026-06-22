@@ -30,6 +30,7 @@ function contentSections(config: Record<string, unknown>) {
     title: string
     body?: string
     rows?: Array<{ label: string; value: string }>
+    tone?: 'default' | 'quote' | 'warning'
   }>
 }
 
@@ -176,5 +177,142 @@ describe('buildTicketEmailEventConfig', () => {
       label: 'Size',
       value: '1.5 KB',
     })
+  })
+
+  it('describes assignment, participant, and share changes', () => {
+    const assigned = buildTicketEmailEventConfig(
+      event('ticket.assigned', {
+        previousAssigneePrincipalId: null,
+        newAssigneePrincipalId: 'principal_agent',
+      }),
+      'https://example.com',
+      ticket.subject,
+      ticket.statusName ?? null
+    )
+    expect(assigned.title).toBe('Ticket assignment updated: Billing question')
+    expect(contentSections(assigned)[0]?.rows).toEqual([
+      { label: 'Previous assignee', value: 'None' },
+      { label: 'New assignee', value: 'New teammate details unavailable' },
+    ])
+
+    const unassigned = buildTicketEmailEventConfig(
+      event('ticket.unassigned', {
+        previousAssigneePrincipalId: 'principal_agent',
+      }),
+      'https://example.com',
+      ticket.subject,
+      ticket.statusName ?? null
+    )
+    expect(unassigned.summary).toBe('The ticket is no longer assigned to an individual teammate.')
+    expect(contentSections(unassigned)[0]?.rows).toContainEqual({
+      label: 'New assignee',
+      value: 'Unassigned',
+    })
+
+    const participant = buildTicketEmailEventConfig(
+      event('ticket.participant_added', { role: 'cc' }),
+      'https://example.com',
+      ticket.subject,
+      ticket.statusName ?? null
+    )
+    expect(participant.eventLabel).toBe('Participant added')
+    expect(contentSections(participant)[0]?.rows).toContainEqual({ label: 'Role', value: 'Cc' })
+
+    const shared = buildTicketEmailEventConfig(
+      event('ticket.shared', { accessLevel: 'comment' }),
+      'https://example.com',
+      ticket.subject,
+      ticket.statusName ?? null
+    )
+    expect(shared.summary).toBe('This ticket was shared with another team.')
+    expect(contentSections(shared)[0]?.rows).toContainEqual({
+      label: 'Access',
+      value: 'Comment',
+    })
+  })
+
+  it('describes edited/deleted thread content and missing thread bodies', () => {
+    const edited = buildTicketEmailEventConfig(
+      event('ticket.thread_updated', {
+        audience: 'public',
+        thread: {
+          bodyTextPreview: 'Short preview',
+          bodyText: null,
+          bodyTextTruncated: true,
+          editedAt: '2026-06-16T10:20:00.000Z',
+        },
+      }),
+      'https://example.com',
+      ticket.subject,
+      ticket.statusName ?? null
+    )
+    expect(edited.title).toBe('Reply updated: Billing question')
+    expect(contentSections(edited)[0]?.body).toContain('Content truncated in event payload.')
+
+    const deleted = buildTicketEmailEventConfig(
+      event('ticket.thread_deleted', {
+        audience: 'internal',
+        thread: {
+          bodyText: '',
+          bodyTextPreview: '',
+          bodyTextTruncated: false,
+        },
+      }),
+      'https://example.com',
+      ticket.subject,
+      ticket.statusName ?? null
+    )
+    expect(deleted.eventLabel).toBe('Reply removed')
+    expect(contentSections(deleted)[0]?.body).toBe('Thread content was unavailable.')
+  })
+
+  it('describes SLA breaches, first responses, attachment removals, deletes, and restores', () => {
+    const breach = buildTicketEmailEventConfig(
+      event('ticket.sla_breach', { kind: 'resolution' }),
+      'https://example.com',
+      ticket.subject,
+      ticket.statusName ?? null
+    )
+    expect(breach.title).toBe('SLA breached: Billing question')
+    expect(contentSections(breach)[0]?.tone).toBe('warning')
+
+    const firstResponse = buildTicketEmailEventConfig(
+      event('ticket.first_response', { firstResponseAt: '2026-06-16T11:00:00.000Z' }),
+      'https://example.com',
+      ticket.subject,
+      ticket.statusName ?? null
+    )
+    expect(firstResponse.summary).toBe('This ticket received its first response.')
+    expect(contentSections(firstResponse)[0]?.rows).toContainEqual({
+      label: 'Response content',
+      value: 'Response body unavailable in the event payload',
+    })
+
+    const removed = buildTicketEmailEventConfig(
+      event('ticket.attachment_removed', {
+        attachment: { filename: 'invoice.pdf', threadId: 'thread_1' },
+      }),
+      'https://example.com',
+      ticket.subject,
+      ticket.statusName ?? null
+    )
+    expect(removed.summary).toBe('invoice.pdf was removed from this ticket.')
+
+    const deleted = buildTicketEmailEventConfig(
+      event('ticket.deleted', {}),
+      'https://example.com',
+      null,
+      null
+    )
+    expect(deleted.title).toBe('Ticket deleted: ticket')
+    expect(deleted.statusLabel).toBeUndefined()
+
+    const restored = buildTicketEmailEventConfig(
+      event('ticket.restored', {}),
+      'https://example.com',
+      ticket.subject,
+      ticket.statusName ?? null
+    )
+    expect(restored.eventLabel).toBe('Ticket restored')
   })
 })

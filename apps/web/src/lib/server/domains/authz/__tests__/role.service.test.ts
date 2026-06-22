@@ -27,6 +27,7 @@ const h = vi.hoisted(() => {
     chain.from = self
     chain.where = self
     chain.innerJoin = self
+    chain.leftJoin = self
     chain.orderBy = self
     chain.groupBy = () => Promise.resolve(result)
     chain.limit = () => Promise.resolve(result)
@@ -63,15 +64,18 @@ vi.mock('@/lib/server/db', async (importOriginal) => ({
 const recordEventMock = h.recordEventMock
 
 import {
+  listRoles,
   getRoleWithPermissions,
   createRole,
   updateRole,
   deleteRole,
   setRolePermissions,
+  listAssignmentsForPrincipal,
   assignRole,
   revokeRoleAssignment,
 } from '../role.service'
 import type { RoleId, PrincipalId, RoleAssignmentId } from '@quackback/ids'
+import { PERMISSIONS } from '../authz.permissions'
 
 const ACTOR = 'principal_admin' as PrincipalId
 const SYSTEM_ROLE = {
@@ -133,6 +137,17 @@ describe('role.service — not-found handling (default-deny on missing rows)', (
     await expect(getRoleWithPermissions('role_missing' as RoleId)).rejects.toBeInstanceOf(
       NotFoundError
     )
+  })
+
+  it('setRolePermissions throws NotFoundError when the role is absent', async () => {
+    h.state.selectResults = [[]]
+    await expect(
+      setRolePermissions({
+        roleId: 'role_missing' as RoleId,
+        permissionKeys: [],
+        actorPrincipalId: ACTOR,
+      })
+    ).rejects.toBeInstanceOf(NotFoundError)
   })
 
   it('updateRole throws NotFoundError when the role is absent', async () => {
@@ -202,6 +217,48 @@ describe('role.service — conflict + validation guards', () => {
 })
 
 describe('role.service — successful mutations record an audit event', () => {
+  it('listRoles returns system roles first with permission and assignment counts', async () => {
+    h.state.selectResults = [
+      [SYSTEM_ROLE, CUSTOM_ROLE],
+      [{ roleId: 'role_admin', n: 4 }],
+      [{ roleId: 'role_custom', n: '2' }],
+    ]
+
+    const rows = await listRoles()
+
+    expect(rows).toEqual([
+      expect.objectContaining({
+        id: 'role_admin',
+        key: 'admin',
+        permissionCount: 4,
+        assignmentCount: 0,
+      }),
+      expect.objectContaining({
+        id: 'role_custom',
+        key: 'support',
+        permissionCount: 0,
+        assignmentCount: 2,
+      }),
+    ])
+  })
+
+  it('listRoles returns an empty list without count queries when no roles exist', async () => {
+    h.state.selectResults = [[]]
+
+    await expect(listRoles()).resolves.toEqual([])
+    expect(h.state.selectResults).toEqual([])
+  })
+
+  it('getRoleWithPermissions returns the role with permission keys', async () => {
+    h.state.selectResults = [[CUSTOM_ROLE], [{ key: PERMISSIONS.TICKET_VIEW_TEAM }]]
+
+    await expect(getRoleWithPermissions('role_custom' as RoleId)).resolves.toMatchObject({
+      id: 'role_custom',
+      key: 'support',
+      permissionKeys: [PERMISSIONS.TICKET_VIEW_TEAM],
+    })
+  })
+
   it('createRole inserts and records role.created', async () => {
     h.state.selectResults = [[]] // key lookup: no existing role
     h.state.insertReturning = [{ id: 'role_new' }]
@@ -221,6 +278,43 @@ describe('role.service — successful mutations record an audit event', () => {
     })
   })
 
+  it('createRole stores permission grants when permission keys are provided', async () => {
+    h.state.selectResults = [
+      [],
+      [{ id: 'perm_ticket_view_team', key: PERMISSIONS.TICKET_VIEW_TEAM }],
+    ]
+    h.state.insertReturning = [{ id: 'role_new' }]
+
+    await expect(
+      createRole({
+        key: 'triage',
+        name: 'Triage',
+        description: 'Can triage tickets',
+        permissionKeys: [PERMISSIONS.TICKET_VIEW_TEAM],
+        actorPrincipalId: ACTOR,
+      })
+    ).resolves.toBe('role_new')
+
+    expect(recordEventMock.mock.calls[0][0]).toMatchObject({
+      action: 'role.created',
+      diff: { after: { permissions: [PERMISSIONS.TICKET_VIEW_TEAM] } },
+    })
+  })
+
+  it('createRole fails if the inserted role is not returned', async () => {
+    h.state.selectResults = [[]]
+    h.state.insertReturning = []
+
+    await expect(
+      createRole({
+        key: 'triage',
+        name: 'Triage',
+        permissionKeys: [],
+        actorPrincipalId: ACTOR,
+      })
+    ).rejects.toThrow('Failed to insert role')
+  })
+
   it('updateRole on a custom role records role.updated with a before/after diff', async () => {
     h.state.selectResults = [[CUSTOM_ROLE]]
     await updateRole({ id: 'role_custom' as RoleId, name: 'Renamed', actorPrincipalId: ACTOR })
@@ -229,6 +323,42 @@ describe('role.service — successful mutations record an audit event', () => {
     expect(ev).toMatchObject({ action: 'role.updated', targetId: 'role_custom' })
     expect(ev.diff.before.name).toBe('Support')
     expect(ev.diff.after.name).toBe('Renamed')
+  })
+
+  it('setRolePermissions replaces grants and records before/after permissions', async () => {
+    h.state.selectResults = [
+      [CUSTOM_ROLE],
+      [{ key: PERMISSIONS.TICKET_VIEW_TEAM }],
+      [{ id: 'perm_reply', key: PERMISSIONS.TICKET_REPLY_PUBLIC }],
+    ]
+
+    await setRolePermissions({
+      roleId: 'role_custom' as RoleId,
+      permissionKeys: [PERMISSIONS.TICKET_REPLY_PUBLIC],
+      actorPrincipalId: ACTOR,
+    })
+
+    expect(recordEventMock.mock.calls[0][0]).toMatchObject({
+      action: 'role.permissions_set',
+      targetId: 'role_custom',
+      diff: {
+        before: { permissions: [PERMISSIONS.TICKET_VIEW_TEAM] },
+        after: { permissions: [PERMISSIONS.TICKET_REPLY_PUBLIC] },
+      },
+    })
+  })
+
+  it('setRolePermissions reports permissions missing from the DB', async () => {
+    h.state.selectResults = [[CUSTOM_ROLE], [], []]
+
+    await expect(
+      setRolePermissions({
+        roleId: 'role_custom' as RoleId,
+        permissionKeys: [PERMISSIONS.TICKET_REPLY_PUBLIC],
+        actorPrincipalId: ACTOR,
+      })
+    ).rejects.toMatchObject({ code: 'PERMISSIONS_MISSING' })
+    expect(recordEventMock).not.toHaveBeenCalled()
   })
 
   it('deleteRole removes an unassigned custom role and records role.deleted', async () => {
@@ -255,6 +385,86 @@ describe('role.service — successful mutations record an audit event', () => {
       targetType: 'principal',
       targetId: 'principal_user',
     })
+  })
+
+  it('assignRole grants team-scoped assignments and records the team scope', async () => {
+    h.state.selectResults = [[CUSTOM_ROLE], []]
+    h.state.insertReturning = [{ id: 'roleassign_team' }]
+
+    const id = await assignRole({
+      principalId: 'principal_user' as PrincipalId,
+      roleId: 'role_custom' as RoleId,
+      teamId: 'team_support' as never,
+      actorPrincipalId: ACTOR,
+    })
+
+    expect(id).toBe('roleassign_team')
+    expect(recordEventMock.mock.calls[0][0]).toMatchObject({
+      action: 'role_assignment.granted',
+      diff: { after: { role: 'support', teamId: 'team_support' } },
+    })
+  })
+
+  it('assignRole fails if the inserted assignment is not returned', async () => {
+    h.state.selectResults = [[CUSTOM_ROLE], []]
+    h.state.insertReturning = []
+
+    await expect(
+      assignRole({
+        principalId: 'principal_user' as PrincipalId,
+        roleId: 'role_custom' as RoleId,
+        actorPrincipalId: ACTOR,
+      })
+    ).rejects.toThrow('Failed to insert role assignment')
+  })
+
+  it('listAssignmentsForPrincipal hydrates role and optional team details', async () => {
+    const createdAt = new Date('2026-01-02T00:00:00.000Z')
+    h.state.selectResults = [
+      [
+        {
+          id: 'roleassign_1',
+          roleId: 'role_custom',
+          roleKey: 'support',
+          roleName: 'Support',
+          roleIsSystem: false,
+          teamId: 'team_support',
+          teamName: 'Support team',
+          grantedByPrincipalId: ACTOR,
+          createdAt,
+        },
+        {
+          id: 'roleassign_2',
+          roleId: 'role_admin',
+          roleKey: 'admin',
+          roleName: 'Admin',
+          roleIsSystem: true,
+          teamId: null,
+          teamName: null,
+          grantedByPrincipalId: null,
+          createdAt,
+        },
+      ],
+    ]
+
+    await expect(listAssignmentsForPrincipal('principal_user' as PrincipalId)).resolves.toEqual([
+      {
+        id: 'roleassign_1',
+        role: { id: 'role_custom', key: 'support', name: 'Support', isSystem: false },
+        teamId: 'team_support',
+        teamName: 'Support team',
+        grantedByPrincipalId: ACTOR,
+        createdAt,
+      },
+      {
+        id: 'roleassign_2',
+        role: { id: 'role_admin', key: 'admin', name: 'Admin', isSystem: true },
+        teamId: null,
+        teamName: null,
+        grantedByPrincipalId: null,
+        createdAt,
+      },
+    ])
   })
 
   it('revokeRoleAssignment deletes and records role_assignment.revoked', async () => {

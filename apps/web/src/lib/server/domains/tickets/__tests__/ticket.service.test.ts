@@ -12,11 +12,20 @@ const userFindFirstMock = vi.fn()
 const insertTicketsReturningMock = vi.fn()
 const insertActivityReturningMock = vi.fn()
 const updateTicketsReturningMock = vi.fn()
+const selectTicketsWhereMock = vi.fn()
 const recordEventMock = vi.fn()
 const findOrCreateByEmailMock = vi.fn()
 const linkContactToUserMock = vi.fn()
 const listLinksForUserMock = vi.fn()
 const getContactMock = vi.fn()
+const routeMock = vi.fn()
+const bumpMatchStatsMock = vi.fn()
+const attachClocksOnCreateMock = vi.fn()
+const onStatusTransitionMock = vi.fn()
+const safeSubscribeMock = vi.fn()
+const notifyTicketCreatedMock = vi.fn()
+const notifyTicketAssignedMock = vi.fn()
+const notifyTicketStatusChangedMock = vi.fn()
 /** Captures the .values(...) payload for every tickets insert. */
 const ticketInsertValuesCalls: Array<Record<string, unknown>> = []
 
@@ -46,6 +55,29 @@ vi.mock('@/lib/server/events/dispatch', () => ({
   dispatchTicketAssigned: (...a: unknown[]) => dispatchTicketAssignedMock(...a),
   dispatchTicketUnassigned: (...a: unknown[]) => dispatchTicketUnassignedMock(...a),
   dispatchTicketStatusChanged: (...a: unknown[]) => dispatchTicketStatusChangedMock(...a),
+}))
+
+vi.mock('../../inboxes/routing.engine', () => ({
+  route: (...args: unknown[]) => routeMock(...args),
+}))
+
+vi.mock('../../inboxes/routing.service', () => ({
+  bumpMatchStats: (...args: unknown[]) => bumpMatchStatsMock(...args),
+}))
+
+vi.mock('../../sla/sla.engine', () => ({
+  attachClocksOnCreate: (...args: unknown[]) => attachClocksOnCreateMock(...args),
+  onStatusTransition: (...args: unknown[]) => onStatusTransitionMock(...args),
+}))
+
+vi.mock('../ticket.subscriptions', () => ({
+  safeSubscribe: (...args: unknown[]) => safeSubscribeMock(...args),
+}))
+
+vi.mock('../ticket.notifications', () => ({
+  notifyTicketCreated: (...args: unknown[]) => notifyTicketCreatedMock(...args),
+  notifyTicketAssigned: (...args: unknown[]) => notifyTicketAssignedMock(...args),
+  notifyTicketStatusChanged: (...args: unknown[]) => notifyTicketStatusChangedMock(...args),
 }))
 
 vi.mock('@/lib/server/db', () => {
@@ -80,7 +112,11 @@ vi.mock('@/lib/server/db', () => {
         return makeInsertChain('tickets')
       }),
       update: vi.fn(() => updateChain),
-      select: vi.fn(),
+      select: vi.fn(() => ({
+        from: vi.fn(() => ({
+          where: (...args: unknown[]) => selectTicketsWhereMock(...args),
+        })),
+      })),
       delete: vi.fn(),
     },
     eq: vi.fn(),
@@ -88,7 +124,7 @@ vi.mock('@/lib/server/db', () => {
     or: vi.fn(),
     isNull: vi.fn(),
     isNotNull: vi.fn(),
-    inArray: vi.fn(),
+    inArray: vi.fn((left: unknown, right: unknown) => ['inArray', left, right]),
     asc: vi.fn(),
     desc: vi.fn(),
     ilike: vi.fn(),
@@ -100,6 +136,7 @@ vi.mock('@/lib/server/db', () => {
     principal: { _name: 'principal', id: 'principal.id' },
     user: { _name: 'user', id: 'user.id' },
     TICKET_PRIORITIES: ['low', 'normal', 'high', 'urgent'] as const,
+    TICKET_CHANNELS: ['api', 'email', 'web', 'chat'] as const,
     TICKET_VISIBILITY_SCOPES: ['team', 'org', 'shared', 'private'] as const,
   }
 })
@@ -137,6 +174,8 @@ beforeEach(() => {
   insertTicketsReturningMock.mockReset()
   insertActivityReturningMock.mockReset()
   updateTicketsReturningMock.mockReset()
+  selectTicketsWhereMock.mockReset()
+  selectTicketsWhereMock.mockResolvedValue([])
   findOrCreateByEmailMock.mockReset()
   linkContactToUserMock.mockReset()
   listLinksForUserMock.mockReset().mockResolvedValue([])
@@ -144,6 +183,36 @@ beforeEach(() => {
   ticketInsertValuesCalls.length = 0
   insertActivityReturningMock.mockResolvedValue([{ id: 'ticket_act_x' }])
   recordEventMock.mockReset()
+  routeMock.mockReset()
+  routeMock.mockResolvedValue(null)
+  bumpMatchStatsMock.mockReset()
+  bumpMatchStatsMock.mockResolvedValue(undefined)
+  attachClocksOnCreateMock.mockReset()
+  attachClocksOnCreateMock.mockResolvedValue(undefined)
+  onStatusTransitionMock.mockReset()
+  onStatusTransitionMock.mockResolvedValue(undefined)
+  safeSubscribeMock.mockReset()
+  safeSubscribeMock.mockResolvedValue(undefined)
+  notifyTicketCreatedMock.mockReset()
+  notifyTicketCreatedMock.mockResolvedValue(undefined)
+  notifyTicketAssignedMock.mockReset()
+  notifyTicketAssignedMock.mockResolvedValue(undefined)
+  notifyTicketStatusChangedMock.mockReset()
+  notifyTicketStatusChangedMock.mockResolvedValue(undefined)
+  dispatchTicketUpdatedMock.mockReset()
+  dispatchTicketUpdatedMock.mockResolvedValue(undefined)
+  dispatchTicketDeletedMock.mockReset()
+  dispatchTicketDeletedMock.mockResolvedValue(undefined)
+  dispatchTicketRestoredMock.mockReset()
+  dispatchTicketRestoredMock.mockResolvedValue(undefined)
+  dispatchTicketCreatedMock.mockReset()
+  dispatchTicketCreatedMock.mockResolvedValue(undefined)
+  dispatchTicketAssignedMock.mockReset()
+  dispatchTicketAssignedMock.mockResolvedValue(undefined)
+  dispatchTicketUnassignedMock.mockReset()
+  dispatchTicketUnassignedMock.mockResolvedValue(undefined)
+  dispatchTicketStatusChangedMock.mockReset()
+  dispatchTicketStatusChangedMock.mockResolvedValue(undefined)
 })
 
 const FIXED_NOW = new Date('2026-05-01T10:00:00.000Z')
@@ -264,6 +333,21 @@ describe('createTicket', () => {
     await expect(createTicket({ subject: '   ' })).rejects.toThrow(/subject is required/i)
   })
 
+  it('rejects invalid priority, channel, and visibility values', async () => {
+    const { createTicket } = await import('../ticket.service')
+    await expect(createTicket({ subject: 'Hi', priority: 'bad' as never })).rejects.toMatchObject({
+      code: 'TICKET_PRIORITY_INVALID',
+    })
+    await expect(createTicket({ subject: 'Hi', channel: 'bad' as never })).rejects.toMatchObject({
+      code: 'TICKET_CHANNEL_INVALID',
+    })
+    await expect(
+      createTicket({ subject: 'Hi', visibilityScope: 'bad' as never })
+    ).rejects.toMatchObject({
+      code: 'TICKET_VISIBILITY_INVALID',
+    })
+  })
+
   it('uses the workspace default status when statusId omitted', async () => {
     statusFindFirstMock.mockResolvedValueOnce({
       id: 'ticket_status_open',
@@ -282,6 +366,98 @@ describe('createTicket', () => {
     statusFindFirstMock.mockResolvedValueOnce(undefined)
     const { createTicket } = await import('../ticket.service')
     await expect(createTicket({ subject: 'Hi' })).rejects.toThrow(/default ticket status/i)
+  })
+
+  it('applies routing decisions, bumps match stats, subscribes principals, and dispatches creation side effects', async () => {
+    statusFindFirstMock.mockResolvedValueOnce({
+      id: 'ticket_status_open',
+      category: 'open',
+    })
+    routeMock.mockResolvedValueOnce({
+      matchedRuleId: 'routing_rule_1',
+      inboxId: 'inbox_routed',
+      primaryTeamId: 'team_primary',
+      assigneePrincipalId: 'principal_assignee',
+      assigneeTeamId: 'team_assignee',
+      priority: 'high',
+      visibilityScope: 'shared',
+    })
+    const created = baseTicket({
+      id: 'ticket_created',
+      subject: 'Routed ticket',
+      inboxId: 'inbox_routed',
+      assigneePrincipalId: 'principal_assignee',
+    })
+    insertTicketsReturningMock.mockResolvedValueOnce([created])
+
+    const { createTicket } = await import('../ticket.service')
+    await expect(
+      createTicket({
+        subject: '  Routed ticket  ',
+        descriptionText: '  body  ',
+        requesterPrincipalId: 'principal_requester' as never,
+        createdByPrincipalId: 'principal_actor' as never,
+        channel: 'email',
+        syncSourceIntegrationId: 'github_1',
+      })
+    ).resolves.toBe(created)
+
+    expect(routeMock).toHaveBeenCalledWith({
+      subject: 'Routed ticket',
+      descriptionText: 'body',
+      channel: 'email',
+      priority: undefined,
+      candidateInboxId: null,
+    })
+    expect(ticketInsertValuesCalls[0]).toMatchObject({
+      subject: 'Routed ticket',
+      descriptionText: 'body',
+      priority: 'high',
+      channel: 'email',
+      visibilityScope: 'shared',
+      statusId: 'ticket_status_open',
+      primaryTeamId: 'team_primary',
+      assigneePrincipalId: 'principal_assignee',
+      assigneeTeamId: 'team_assignee',
+      requesterPrincipalId: 'principal_requester',
+      inboxId: 'inbox_routed',
+    })
+    expect(bumpMatchStatsMock).toHaveBeenCalledWith('routing_rule_1')
+    expect(attachClocksOnCreateMock).toHaveBeenCalledWith(created, 'principal_actor')
+    expect(safeSubscribeMock).toHaveBeenCalledWith({
+      ticketId: 'ticket_created',
+      principalId: 'principal_requester',
+      source: 'manual',
+    })
+    expect(safeSubscribeMock).toHaveBeenCalledWith({
+      ticketId: 'ticket_created',
+      principalId: 'principal_assignee',
+      source: 'auto_assigned',
+    })
+    expect(notifyTicketCreatedMock).toHaveBeenCalledWith(created, {
+      actorPrincipalId: 'principal_actor',
+    })
+    expect(dispatchTicketCreatedMock).toHaveBeenCalledWith(
+      expect.objectContaining({ principalId: 'principal_actor' }),
+      created,
+      { syncSourceIntegrationId: 'github_1' }
+    )
+  })
+
+  it('does not route when caller supplies an inbox explicitly', async () => {
+    statusFindFirstMock.mockResolvedValueOnce({
+      id: 'ticket_status_open',
+      category: 'open',
+    })
+    insertTicketsReturningMock.mockResolvedValueOnce([
+      baseTicket({ id: 'ticket_explicit', inboxId: 'inbox_explicit' }),
+    ])
+
+    const { createTicket } = await import('../ticket.service')
+    await createTicket({ subject: 'Explicit', inboxId: 'inbox_explicit' as never })
+
+    expect(routeMock).not.toHaveBeenCalled()
+    expect(ticketInsertValuesCalls[0]?.inboxId).toBe('inbox_explicit')
   })
 
   describe('requesterContactId resolution', () => {
@@ -473,9 +649,132 @@ describe('updateTicket — webhook dispatch', () => {
     })
     expect(dispatchTicketUpdatedMock).not.toHaveBeenCalled()
   })
+
+  it('merges stale field-only updates when explicitly allowed', async () => {
+    const staleTicket = baseTicket({
+      subject: 'Old subject',
+      updatedAt: new Date('2026-04-30T09:00:00.000Z'),
+    })
+    const latestTicket = baseTicket({
+      subject: 'Latest subject',
+      updatedAt: new Date('2026-05-01T09:00:00.000Z'),
+    })
+    const updated = { ...latestTicket, subject: 'Merged subject' }
+    ticketFindFirstMock.mockResolvedValueOnce(staleTicket).mockResolvedValueOnce(latestTicket)
+    updateTicketsReturningMock.mockResolvedValueOnce([updated])
+
+    const { updateTicket } = await import('../ticket.service')
+    await expect(
+      updateTicket('ticket_1' as never, {
+        expectedUpdatedAt: new Date('2026-04-29T09:00:00.000Z'),
+        actorPrincipalId: 'principal_actor' as never,
+        subject: 'Merged subject',
+        allowStaleFieldUpdate: true,
+      })
+    ).resolves.toEqual(updated)
+  })
+})
+
+describe('assignTicket', () => {
+  it('returns unchanged when assignment is identical', async () => {
+    const ticket = baseTicket({ assigneePrincipalId: 'principal_a', assigneeTeamId: 'team_a' })
+    ticketFindFirstMock.mockResolvedValueOnce(ticket)
+
+    const { assignTicket } = await import('../ticket.service')
+    await expect(
+      assignTicket('ticket_1' as never, {
+        expectedUpdatedAt: ticket.updatedAt,
+        actorPrincipalId: 'principal_actor' as never,
+        assigneePrincipalId: 'principal_a' as never,
+        assigneeTeamId: 'team_a' as never,
+      })
+    ).resolves.toBe(ticket)
+    expect(updateTicketsReturningMock).not.toHaveBeenCalled()
+  })
+
+  it('assigns a new principal, subscribes them, and emits assign/unassign webhook events', async () => {
+    const ticket = baseTicket({ assigneePrincipalId: 'principal_old', assigneeTeamId: null })
+    const updated = { ...ticket, assigneePrincipalId: 'principal_new', assigneeTeamId: 'team_new' }
+    ticketFindFirstMock.mockResolvedValueOnce(ticket)
+    updateTicketsReturningMock.mockResolvedValueOnce([updated])
+
+    const { assignTicket } = await import('../ticket.service')
+    await expect(
+      assignTicket('ticket_1' as never, {
+        expectedUpdatedAt: ticket.updatedAt,
+        actorPrincipalId: 'principal_actor' as never,
+        assigneePrincipalId: 'principal_new' as never,
+        assigneeTeamId: 'team_new' as never,
+        syncSourceIntegrationId: 'github_1',
+      })
+    ).resolves.toBe(updated)
+
+    expect(safeSubscribeMock).toHaveBeenCalledWith({
+      ticketId: 'ticket_1',
+      principalId: 'principal_new',
+      source: 'auto_assigned',
+    })
+    expect(notifyTicketAssignedMock).toHaveBeenCalledWith(updated, 'principal_old', {
+      actorPrincipalId: 'principal_actor',
+    })
+    expect(dispatchTicketAssignedMock).toHaveBeenCalledWith(
+      expect.objectContaining({ principalId: 'principal_actor' }),
+      updated,
+      'principal_old',
+      'principal_new',
+      { syncSourceIntegrationId: 'github_1' }
+    )
+    expect(dispatchTicketUnassignedMock).toHaveBeenCalledWith(
+      expect.objectContaining({ principalId: 'principal_actor' }),
+      updated,
+      'principal_old',
+      { syncSourceIntegrationId: 'github_1' }
+    )
+  })
+
+  it('rejects missing, stale, and concurrently modified assignments', async () => {
+    const ticket = baseTicket()
+    const { assignTicket } = await import('../ticket.service')
+
+    ticketFindFirstMock.mockResolvedValueOnce(undefined)
+    await expect(
+      assignTicket('missing' as never, {
+        expectedUpdatedAt: ticket.updatedAt,
+        actorPrincipalId: null,
+        assigneePrincipalId: 'principal_new' as never,
+      })
+    ).rejects.toMatchObject({ code: 'TICKET_NOT_FOUND' })
+
+    ticketFindFirstMock.mockResolvedValueOnce(ticket)
+    await expect(
+      assignTicket('ticket_1' as never, {
+        expectedUpdatedAt: new Date('2025-01-01T00:00:00.000Z'),
+        actorPrincipalId: null,
+        assigneePrincipalId: 'principal_new' as never,
+      })
+    ).rejects.toMatchObject({ code: 'TICKET_STALE' })
+
+    ticketFindFirstMock.mockResolvedValueOnce(ticket)
+    updateTicketsReturningMock.mockResolvedValueOnce([])
+    await expect(
+      assignTicket('ticket_1' as never, {
+        expectedUpdatedAt: ticket.updatedAt,
+        actorPrincipalId: null,
+        assigneePrincipalId: 'principal_new' as never,
+      })
+    ).rejects.toMatchObject({ code: 'TICKET_STALE' })
+  })
 })
 
 describe('softDeleteTicket — webhook dispatch', () => {
+  it('rejects missing tickets', async () => {
+    ticketFindFirstMock.mockResolvedValueOnce(undefined)
+    const { softDeleteTicket } = await import('../ticket.service')
+    await expect(softDeleteTicket('missing' as never, null)).rejects.toMatchObject({
+      code: 'TICKET_NOT_FOUND',
+    })
+  })
+
   it('dispatches ticket.deleted with the actor principal', async () => {
     const ticket = baseTicket()
     ticketFindFirstMock.mockResolvedValueOnce(ticket)
@@ -491,6 +790,20 @@ describe('softDeleteTicket — webhook dispatch', () => {
 })
 
 describe('restoreTicket — webhook dispatch', () => {
+  it('rejects missing and not-deleted tickets', async () => {
+    const { restoreTicket } = await import('../ticket.service')
+
+    ticketFindFirstMock.mockResolvedValueOnce(undefined)
+    await expect(restoreTicket('missing' as never, null)).rejects.toMatchObject({
+      code: 'TICKET_NOT_FOUND',
+    })
+
+    ticketFindFirstMock.mockResolvedValueOnce(baseTicket({ deletedAt: null }))
+    await expect(restoreTicket('ticket_1' as never, null)).rejects.toMatchObject({
+      code: 'TICKET_NOT_DELETED',
+    })
+  })
+
   it('dispatches ticket.restored with the actor principal', async () => {
     const ticket = baseTicket({ deletedAt: FIXED_NOW, deletedByPrincipalId: 'principal_other' })
     ticketFindFirstMock.mockResolvedValueOnce(ticket)
@@ -515,5 +828,24 @@ describe('restoreTicket — webhook dispatch', () => {
     expect(result.deletedAt).toBeNull()
     expect(warnSpy).toHaveBeenCalled()
     warnSpy.mockRestore()
+  })
+})
+
+describe('ticket service query helpers', () => {
+  it('loads tickets by id and returns early for empty inputs', async () => {
+    const ticket = baseTicket({ id: 'ticket_1' })
+    const { loadTicketsByIds } = await import('../ticket.service')
+
+    await expect(loadTicketsByIds([])).resolves.toEqual([])
+
+    selectTicketsWhereMock.mockResolvedValueOnce([ticket])
+    await expect(loadTicketsByIds(['ticket_1' as never])).resolves.toEqual([ticket])
+    expect(selectTicketsWhereMock).toHaveBeenCalled()
+  })
+
+  it('bumps last activity without writing a timeline row', async () => {
+    const { bumpLastActivity } = await import('../ticket.service')
+    await bumpLastActivity('ticket_1' as never)
+    expect(insertActivityReturningMock).not.toHaveBeenCalled()
   })
 })

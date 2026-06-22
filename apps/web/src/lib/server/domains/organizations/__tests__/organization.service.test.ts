@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 const findFirstMock = vi.fn()
 const insertReturningMock = vi.fn()
 const updateReturningMock = vi.fn()
+const selectMock = vi.fn()
 
 vi.mock('@/lib/server/db', () => {
   const insertChain = {
@@ -24,7 +25,7 @@ vi.mock('@/lib/server/db', () => {
       query: { organizations: { findFirst: findFirstMock } },
       insert: vi.fn(() => insertChain),
       update: vi.fn(() => updateChain),
-      select: vi.fn(),
+      select: selectMock,
     },
     eq: vi.fn(),
     and: vi.fn(),
@@ -70,7 +71,23 @@ beforeEach(() => {
   findFirstMock.mockReset()
   insertReturningMock.mockReset()
   updateReturningMock.mockReset()
+  selectMock.mockReset()
 })
+
+function makeListChain(rows: unknown[]) {
+  const promise = Promise.resolve(rows)
+  const chain = {
+    from: vi.fn(() => chain),
+    where: vi.fn(() => chain),
+    orderBy: vi.fn(() => chain),
+    limit: vi.fn(() => chain),
+    offset: vi.fn(() => chain),
+    then: promise.then.bind(promise),
+    catch: promise.catch.bind(promise),
+    finally: promise.finally.bind(promise),
+  }
+  return chain
+}
 
 describe('createOrganization', () => {
   it('throws ValidationError when name is empty', async () => {
@@ -123,5 +140,31 @@ describe('findOrCreateByDomain', () => {
   it('rejects invalid domain inputs', async () => {
     const { findOrCreateByDomain } = await import('../organization.service')
     await expect(findOrCreateByDomain('garbage')).rejects.toThrow(/invalid/i)
+  })
+})
+
+describe('listOrganizations', () => {
+  it('applies search, archived filtering, capped limits, and clamped offsets', async () => {
+    const rows = [{ id: 'org_1', name: 'Acme', domain: 'acme.com' }]
+    const chain = makeListChain(rows)
+    selectMock.mockReturnValueOnce(chain)
+
+    const { listOrganizations } = await import('../organization.service')
+    await expect(listOrganizations({ search: ' acme ', limit: 500, offset: -50 })).resolves.toEqual(
+      rows
+    )
+
+    expect(chain.limit).toHaveBeenCalledWith(200)
+    expect(chain.offset).toHaveBeenCalledWith(0)
+  })
+
+  it('can list archived organizations without a where clause', async () => {
+    const chain = makeListChain([])
+    selectMock.mockReturnValueOnce(chain)
+
+    const { listOrganizations } = await import('../organization.service')
+    await expect(listOrganizations({ includeArchived: true })).resolves.toEqual([])
+
+    expect(chain.where).toHaveBeenCalledWith(undefined)
   })
 })
