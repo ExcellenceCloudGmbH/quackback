@@ -78,6 +78,7 @@ const DEFAULT_CONFIG: PortalTabConfig = {
   myTickets: true,
   helpCenter: true,
   support: true,
+  defaultTab: 'feedback',
 }
 
 // Helper builders for the various drizzle chain shapes.

@@ -1,0 +1,22 @@
+# Keep the Cloud Build upload lean — exclude everything the Dockerfile rebuilds.
+.git
+node_modules
+**/node_modules
+.output
+**/.output
+dist
+**/dist
+.turbo
+**/.turbo
+coverage
+**/coverage
+test-results
+**/test-results
+playwright-report
+**/playwright-report
+e2e
+*.tsbuildinfo
+*.log
+.idea
+.vscode
+.DS_Store

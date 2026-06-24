@@ -573,6 +573,12 @@ export const DEFAULT_WIDGET_CONFIG: WidgetConfig = {
   ticketing: {
     enabled: false,
   },
+  // Image (and ticket-attachment) uploads are enabled by default. This mirrors
+  // the public widget config projection (`imageUploadsInWidget ?? true`) so the
+  // server-side upload gate (getWidgetConfig) agrees with what the widget
+  // client is told — otherwise an unset value reads as `false` server-side and
+  // every upload 403s with "Image uploads are disabled".
+  imageUploadsInWidget: true,
   chat: DEFAULT_LIVE_CHAT_CONFIG,
 }
 

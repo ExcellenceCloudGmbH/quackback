@@ -37,6 +37,16 @@ export const Route = createFileRoute('/_portal/')({
       throw redirect({ to: '/onboarding' })
     }
 
+    // Honor the configured default landing tab. When feedback is disabled (or
+    // another tab is chosen as the default), route visitors there instead of
+    // rendering the feedback "Coming Soon" empty state. Only redirect away from
+    // the root — landing.path === '/' means feedback is the intended landing.
+    const { getPortalLandingTabFn } = await import('@/lib/server/functions/portal')
+    const landing = await getPortalLandingTabFn()
+    if (landing.path !== '/') {
+      throw redirect({ to: landing.path })
+    }
+
     // Parse search params for initial SSR (not using loaderDeps to avoid re-execution)
     const searchParams = location.search as z.infer<typeof searchSchema>
 

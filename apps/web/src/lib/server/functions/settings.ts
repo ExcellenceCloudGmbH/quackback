@@ -1036,7 +1036,18 @@ export const getPortalTabConfigFn = createServerFn({ method: 'GET' }).handler(as
 export const updatePortalTabConfigFn = createServerFn({ method: 'POST' })
   .validator((data: unknown) => {
     const schema = z.object({
-      config: z.record(z.string(), z.boolean().optional()),
+      config: z.object({
+        feedback: z.boolean().optional(),
+        roadmap: z.boolean().optional(),
+        changelog: z.boolean().optional(),
+        myTickets: z.boolean().optional(),
+        helpCenter: z.boolean().optional(),
+        support: z.boolean().optional(),
+        // Landing tab the portal root opens on. Org-level only.
+        defaultTab: z
+          .enum(['feedback', 'roadmap', 'changelog', 'myTickets', 'helpCenter', 'support'])
+          .optional(),
+      }),
     })
     return schema.parse(data)
   })

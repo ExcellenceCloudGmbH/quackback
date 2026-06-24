@@ -22,6 +22,13 @@ export interface PortalTabConfig {
   myTickets?: boolean
   helpCenter?: boolean
   support?: boolean
+  /**
+   * Which tab the portal opens on when a visitor lands on the root (`/`).
+   * Defaults to `feedback`. When the chosen tab is disabled (or unset) the
+   * portal falls back to the first enabled public tab — so disabling feedback
+   * no longer strands visitors on the "Coming Soon" empty state.
+   */
+  defaultTab?: PortalTab
 }
 
 /**
@@ -34,6 +41,9 @@ export const portalTabConfigSchema = z.object({
   myTickets: z.boolean().optional(),
   helpCenter: z.boolean().optional(),
   support: z.boolean().optional(),
+  defaultTab: z
+    .enum(['feedback', 'roadmap', 'changelog', 'myTickets', 'helpCenter', 'support'])
+    .optional(),
 })
 
 /**
@@ -68,7 +78,43 @@ export function getDefaultPortalTabConfig(): PortalTabConfig {
     myTickets: true,
     helpCenter: true,
     support: true,
+    defaultTab: 'feedback',
   }
+}
+
+/**
+ * Route path each portal tab lands on. `feedback` is the portal root.
+ */
+export const PORTAL_TAB_PATHS: Record<PortalTab, string> = {
+  feedback: '/',
+  roadmap: '/roadmap',
+  changelog: '/changelog',
+  myTickets: '/tickets',
+  helpCenter: '/hc',
+  support: '/support',
+}
+
+// Fallback order when the configured default tab is disabled/unset. Restricted
+// to public tabs (myTickets/support require auth, so they make poor automatic
+// landing targets — but are still honored when explicitly chosen as defaultTab).
+const LANDING_FALLBACK_ORDER: PortalTab[] = ['feedback', 'helpCenter', 'roadmap', 'changelog']
+
+/**
+ * Resolve which tab the portal should open on for a given (effective) tab
+ * config. Honors an explicit, enabled `defaultTab`; otherwise falls back to the
+ * first enabled public tab (feedback first). A tab is "enabled" unless set to
+ * `false` (undefined = enabled, matching the nav/merge semantics).
+ */
+export function resolvePortalLandingTab(config: PortalTabConfig): {
+  tab: PortalTab
+  path: string
+} {
+  const isEnabled = (tab: PortalTab): boolean => config[tab] !== false
+  if (config.defaultTab && isEnabled(config.defaultTab)) {
+    return { tab: config.defaultTab, path: PORTAL_TAB_PATHS[config.defaultTab] }
+  }
+  const fallback = LANDING_FALLBACK_ORDER.find(isEnabled) ?? 'feedback'
+  return { tab: fallback, path: PORTAL_TAB_PATHS[fallback] }
 }
 
 /**
@@ -93,6 +139,10 @@ export function mergeTabConfigs(...configs: PortalTabConfig[]): PortalTabConfig 
     const enabled = configs.some((config) => config[tab] !== false)
     result[tab] = enabled
   }
+
+  // defaultTab is an org-level (not segment) choice — carry the first defined
+  // value (org config is passed first) so it survives the per-user merge.
+  result.defaultTab = configs.map((c) => c.defaultTab).find((v): v is PortalTab => Boolean(v))
 
   return result
 }
@@ -121,6 +171,8 @@ export function intersectTabConfigs(...configs: PortalTabConfig[]): PortalTabCon
     const enabled = configs.every((config) => config[tab] !== false)
     result[tab] = enabled
   }
+
+  result.defaultTab = configs.map((c) => c.defaultTab).find((v): v is PortalTab => Boolean(v))
 
   return result
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   getTopLevelCategories,
+  getWidgetVisibleCategories,
   getActiveCategory,
   getSubcategories,
   buildCategoryBreadcrumbs,
@@ -39,6 +40,42 @@ describe('getTopLevelCategories', () => {
 
   it('returns empty array for empty input', () => {
     expect(getTopLevelCategories([])).toEqual([])
+  })
+})
+
+describe('getWidgetVisibleCategories', () => {
+  it('shows a selected child category whose parent is not in the visible set', () => {
+    // Admin selected only the sub-category "install" for the widget; the server
+    // returns just that child (its parent "getting-started" is filtered out).
+    // It must still be shown — previously getTopLevelCategories dropped it.
+    const categories: TestCategory[] = [
+      { id: '2', parentId: '1', slug: 'install', name: 'Install' },
+    ]
+    const result = getWidgetVisibleCategories(categories)
+    expect(result.map((c) => c.slug)).toEqual(['install'])
+  })
+
+  it('shows a mix of selected parents and orphaned children', () => {
+    const categories: TestCategory[] = [
+      { id: '3', parentId: null, slug: 'faq', name: 'FAQ' },
+      { id: '2', parentId: '1', slug: 'install', name: 'Install' }, // parent '1' absent
+    ]
+    const result = getWidgetVisibleCategories(categories)
+    expect(result.map((c) => c.slug).sort()).toEqual(['faq', 'install'])
+  })
+
+  it('collapses to top-level when the full tree is present (no selection)', () => {
+    const categories: TestCategory[] = [
+      { id: '1', parentId: null, slug: 'getting-started', name: 'Getting Started' },
+      { id: '2', parentId: '1', slug: 'install', name: 'Install' },
+      { id: '3', parentId: null, slug: 'faq', name: 'FAQ' },
+    ]
+    const result = getWidgetVisibleCategories(categories)
+    expect(result.map((c) => c.slug)).toEqual(['getting-started', 'faq'])
+  })
+
+  it('returns empty array for empty input', () => {
+    expect(getWidgetVisibleCategories([])).toEqual([])
   })
 })
 

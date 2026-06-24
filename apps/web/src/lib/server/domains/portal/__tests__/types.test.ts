@@ -5,6 +5,8 @@ import {
   getDefaultPortalTabConfig,
   mergeTabConfigs,
   intersectTabConfigs,
+  resolvePortalLandingTab,
+  PORTAL_TAB_PATHS,
   type PortalTabConfig,
 } from '../types'
 
@@ -65,6 +67,7 @@ describe('PortalTabConfig utilities', () => {
         myTickets: true,
         helpCenter: true,
         support: true,
+        defaultTab: 'feedback',
       })
     })
   })
@@ -149,6 +152,65 @@ describe('PortalTabConfig utilities', () => {
       const parsed = parsePortalTabConfig(serialized)
 
       expect(parsed).toEqual(original)
+    })
+  })
+})
+
+describe('default landing tab', () => {
+  it('getDefaultPortalTabConfig defaults the landing tab to feedback', () => {
+    expect(getDefaultPortalTabConfig().defaultTab).toBe('feedback')
+  })
+
+  it('parses and round-trips a defaultTab field', () => {
+    const parsed = parsePortalTabConfig('{"feedback": false, "defaultTab": "helpCenter"}')
+    expect(parsed.defaultTab).toBe('helpCenter')
+    expect(parsePortalTabConfig(serializePortalTabConfig(parsed)).defaultTab).toBe('helpCenter')
+  })
+
+  it('drops an invalid defaultTab value (lenient parse)', () => {
+    expect(parsePortalTabConfig('{"defaultTab": "bogus"}')).toEqual({})
+  })
+
+  describe('mergeTabConfigs carries defaultTab', () => {
+    it('keeps the org-level (first) defaultTab through the per-user merge', () => {
+      const org: PortalTabConfig = { feedback: false, defaultTab: 'helpCenter' }
+      const segment: PortalTabConfig = { feedback: true }
+      expect(mergeTabConfigs(org, segment).defaultTab).toBe('helpCenter')
+    })
+
+    it('is undefined when no config sets it', () => {
+      expect(mergeTabConfigs({ feedback: true }).defaultTab).toBeUndefined()
+    })
+  })
+
+  describe('resolvePortalLandingTab', () => {
+    it('honors an explicit, enabled default tab', () => {
+      expect(resolvePortalLandingTab({ defaultTab: 'helpCenter' })).toEqual({
+        tab: 'helpCenter',
+        path: PORTAL_TAB_PATHS.helpCenter,
+      })
+    })
+
+    it('defaults to feedback (root) when nothing is configured', () => {
+      expect(resolvePortalLandingTab({})).toEqual({ tab: 'feedback', path: '/' })
+    })
+
+    it('falls back to the first enabled public tab when feedback is disabled', () => {
+      // The reported scenario: admin disabled feedback → must NOT land on the
+      // feedback "Coming Soon" empty state.
+      const result = resolvePortalLandingTab({ feedback: false })
+      expect(result.tab).toBe('helpCenter')
+      expect(result.path).toBe('/hc')
+    })
+
+    it('falls back past a disabled default tab to the next enabled tab', () => {
+      const result = resolvePortalLandingTab({
+        feedback: false,
+        helpCenter: false,
+        defaultTab: 'feedback',
+      })
+      expect(result.tab).toBe('roadmap')
+      expect(result.path).toBe('/roadmap')
     })
   })
 })

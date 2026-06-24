@@ -14,7 +14,7 @@ import { Spinner } from '@/components/shared/spinner'
 import { toast } from 'sonner'
 import { adminQueries } from '@/lib/client/queries/admin'
 import { useRouteContext } from '@tanstack/react-router'
-import type { PortalTabConfig } from '@/lib/server/domains/portal/types'
+import type { PortalTab, PortalTabConfig } from '@/lib/server/domains/portal/types'
 import type { FeatureFlags } from '@/lib/shared/types/settings'
 
 export const Route = createFileRoute('/admin/settings/portal-tabs')({
@@ -213,6 +213,36 @@ function PortalTabsSettingsPage() {
             </div>
           ))}
         </div>
+
+        {/* Default landing tab — which tab the portal root opens on. */}
+        <div className="mt-6 pt-4 border-t border-border/50">
+          <Label htmlFor="portal-default-tab" className="text-sm font-medium">
+            Default landing tab
+          </Label>
+          <p className="text-xs text-muted-foreground mt-1 mb-2">
+            Which tab opens when visitors land on the portal home page. Only enabled tabs can be
+            selected; if the chosen tab is later disabled, the portal falls back to the first
+            enabled tab.
+          </p>
+          <select
+            id="portal-default-tab"
+            className="w-full sm:w-72 rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-50"
+            value={orgConfig.defaultTab ?? 'feedback'}
+            onChange={(e) =>
+              setOrgConfig((prev) => ({ ...prev, defaultTab: e.target.value as PortalTab }))
+            }
+            disabled={saving}
+          >
+            {Object.entries(TAB_LABELS)
+              .filter(([tabKey]) => orgConfig[tabKey as keyof PortalTabConfig] !== false)
+              .map(([tabKey, { label }]) => (
+                <option key={tabKey} value={tabKey}>
+                  {label}
+                </option>
+              ))}
+          </select>
+        </div>
+
         <Button onClick={handleOrgConfigSave} disabled={saving} className="mt-6">
           {saving ? (
             <Spinner className="mr-2 h-4 w-4" />

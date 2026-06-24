@@ -7,6 +7,7 @@ import {
   type PublicWidgetConfig,
 } from '../settings.types'
 import { generateWidgetSecret, publicLiveChatConfig } from '../settings.widget'
+import { parseJsonConfig } from '../settings.helpers'
 
 describe('Widget Config Types', () => {
   describe('DEFAULT_LIVE_CHAT_CONFIG', () => {
@@ -31,6 +32,29 @@ describe('Widget Config Types', () => {
 
     it('should have ticketing.enabled set to false (opt-in)', () => {
       expect(DEFAULT_WIDGET_CONFIG.ticketing?.enabled).toBe(false)
+    })
+
+    it('enables image (and ticket-attachment) uploads by default', () => {
+      // The server-side upload gate reads getWidgetConfig() (raw, default-merged).
+      // Defaulting to true keeps it consistent with the public config projection
+      // (imageUploadsInWidget ?? true) so widget/ticket uploads are not 403'd.
+      expect(DEFAULT_WIDGET_CONFIG.imageUploadsInWidget).toBe(true)
+    })
+  })
+
+  describe('imageUploadsInWidget default merge (upload gate)', () => {
+    it('resolves to true for a stored config that omits imageUploadsInWidget', () => {
+      // Regression: getWidgetConfig() previously returned undefined here, which
+      // read as falsy in the upload route → "Image uploads are disabled" (403).
+      const stored = JSON.stringify({ enabled: true })
+      const config = parseJsonConfig(stored, DEFAULT_WIDGET_CONFIG)
+      expect(config.imageUploadsInWidget).toBe(true)
+    })
+
+    it('still honors an explicit imageUploadsInWidget: false', () => {
+      const stored = JSON.stringify({ enabled: true, imageUploadsInWidget: false })
+      const config = parseJsonConfig(stored, DEFAULT_WIDGET_CONFIG)
+      expect(config.imageUploadsInWidget).toBe(false)
     })
   })
 

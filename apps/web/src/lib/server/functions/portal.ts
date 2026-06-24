@@ -517,6 +517,22 @@ export const getEffectivePortalTabConfigForCurrentUserFn = createServerFn({
   return await getEffectiveTabConfigForUser(auth.user.id as UserId)
 })
 
+/**
+ * Resolve which tab the portal root (`/`) should open on for the current
+ * visitor. Uses the per-user effective config when signed in, otherwise the
+ * org-level config (so anonymous visitors are routed too). Returns the target
+ * tab and its route path; the portal index redirects when the path isn't `/`.
+ */
+export const getPortalLandingTabFn = createServerFn({ method: 'GET' }).handler(async () => {
+  const auth = await getOptionalAuth()
+  const { getEffectiveTabConfigForUser, getOrgPortalTabConfig, resolvePortalLandingTab } =
+    await import('@/lib/server/domains/portal/index.server')
+  const config = auth?.user?.id
+    ? await getEffectiveTabConfigForUser(auth.user.id as UserId)
+    : await getOrgPortalTabConfig()
+  return resolvePortalLandingTab(config)
+})
+
 export const fetchAvatars = createServerFn({ method: 'GET' })
   .validator(z.array(z.string()))
   .handler(async ({ data }) => {

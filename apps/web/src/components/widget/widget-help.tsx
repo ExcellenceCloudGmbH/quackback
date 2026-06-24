@@ -5,7 +5,7 @@ import { contentPreview } from '@/lib/shared/utils/string'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MagnifyingGlassIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline'
 import { publicHelpCenterQueries } from '@/lib/client/queries/help-center'
-import { getTopLevelCategories } from '@/components/help-center/help-center-utils'
+import { getWidgetVisibleCategories } from '@/components/help-center/help-center-utils'
 import { CategoryIcon } from '@/components/help-center/category-icon'
 import { WidgetMessagesSection } from './widget-messages-section'
 import { WidgetSupportCard } from './widget-support-card'
@@ -49,7 +49,12 @@ export function WidgetHelp({
   const cacheRef = useRef(new Map<string, WidgetHelpArticle[]>())
 
   const categoriesQuery = useQuery(publicHelpCenterQueries.categories(getWidgetAuthHeaders()))
-  const topLevelCategories = categoriesQuery.data ? getTopLevelCategories(categoriesQuery.data) : []
+  // Show every category the admin curated for the widget — including selected
+  // sub-categories. Filtering to top-level only would hide a child category
+  // that was selected without its parent. See getWidgetVisibleCategories.
+  const visibleCategories = categoriesQuery.data
+    ? getWidgetVisibleCategories(categoriesQuery.data)
+    : []
 
   const doSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -134,7 +139,7 @@ export function WidgetHelp({
                 </div>
               )}
 
-              {!categoriesQuery.isLoading && topLevelCategories.length === 0 && (
+              {!categoriesQuery.isLoading && visibleCategories.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-8 text-center px-4">
                   <QuestionMarkCircleIcon className="w-8 h-8 text-muted-foreground/30 mb-2" />
                   <p className="text-sm font-medium text-muted-foreground/70">
@@ -152,9 +157,9 @@ export function WidgetHelp({
                 </div>
               )}
 
-              {!categoriesQuery.isLoading && topLevelCategories.length > 0 && (
+              {!categoriesQuery.isLoading && visibleCategories.length > 0 && (
                 <div className="grid grid-cols-2 gap-2 pt-1">
-                  {topLevelCategories.map((cat) => (
+                  {visibleCategories.map((cat) => (
                     <button
                       key={cat.id}
                       type="button"

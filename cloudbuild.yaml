@@ -1,0 +1,21 @@
+# Native linux/amd64 build of the Quackback ("hub") image on Cloud Build.
+# Used instead of local buildx/QEMU emulation, which produces a bun bundle whose
+# threaded SSR render path deadlocks at runtime (API routes work, every server-
+# rendered page hangs). Cloud Build runs on amd64 natively, so no emulation.
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - build
+      - '-f'
+      - 'apps/web/Dockerfile'
+      - '-t'
+      - 'europe-docker.pkg.dev/superb-blend-305320/lex-prod-registry/hub:v1.0.0'
+      - '-t'
+      - 'europe-docker.pkg.dev/superb-blend-305320/lex-prod-registry/hub:latest'
+      - '.'
+images:
+  - 'europe-docker.pkg.dev/superb-blend-305320/lex-prod-registry/hub:v1.0.0'
+  - 'europe-docker.pkg.dev/superb-blend-305320/lex-prod-registry/hub:latest'
+options:
+  machineType: 'E2_HIGHCPU_8'
+timeout: '2400s'
