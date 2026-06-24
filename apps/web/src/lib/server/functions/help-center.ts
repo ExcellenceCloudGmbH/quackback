@@ -96,12 +96,20 @@ async function getWidgetContextFromServerFnHeaders(): Promise<WidgetRequestConte
 }
 
 function categoryAllowedByWidgetContext(
-  category: { id: string },
+  category: { id: string; parentId?: string | null },
   context: WidgetRequestContext
 ): boolean {
+  // Non-widget callers (e.g. the public Help Center, which builds the full
+  // category tree client-side) always see every category.
   if (!context.profileId) return true
   const allowedCategoryIds = new Set(context.contentFilters.help?.categoryIds ?? [])
-  if (allowedCategoryIds.size === 0) return true
+  // No curation for this widget profile → default to the top-level categories
+  // (the widget renders a flat grid, so showing the whole tree flat would be
+  // noisy). The widget displays exactly what this function returns.
+  if (allowedCategoryIds.size === 0) return category.parentId == null
+  // Curated → show exactly the selected categories, parent OR child. Selecting
+  // a sub-category surfaces it as its own card even when its parent is also
+  // selected (the widget no longer collapses children under selected parents).
   return allowedCategoryIds.has(category.id as HelpCenterCategoryId)
 }
 

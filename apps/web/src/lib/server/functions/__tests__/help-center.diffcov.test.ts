@@ -177,12 +177,15 @@ describe('listPublicCategoriesFn — categoryAllowedByWidgetContext', () => {
     expect(typeof result[0].createdAt).toBe('string')
   })
 
-  it('returns all categories when profile has an empty category filter', async () => {
+  it('returns only top-level categories when the widget profile has no selection', async () => {
+    // Uncurated widget → flat grid of top-level categories (children are reached
+    // by opening their parent), so a child must NOT appear at the top level.
     hoisted.mockGetWidgetRequestContext.mockResolvedValue(
       makeContext({ profileId: 'wp_1', categoryIds: [] })
     )
     hoisted.mockListPublicCategories.mockResolvedValue([
-      { id: 'cat_a', createdAt: NOW, updatedAt: NOW },
+      { id: 'cat_a', parentId: null, createdAt: NOW, updatedAt: NOW },
+      { id: 'cat_child', parentId: 'cat_a', createdAt: NOW, updatedAt: NOW },
     ])
 
     const result = (await handlerFor('listPublicCategoriesFn')({ data: {} })) as Array<{
@@ -196,14 +199,32 @@ describe('listPublicCategoriesFn — categoryAllowedByWidgetContext', () => {
       makeContext({ profileId: 'wp_1', categoryIds: ['cat_a'] })
     )
     hoisted.mockListPublicCategories.mockResolvedValue([
-      { id: 'cat_a', createdAt: NOW, updatedAt: NOW },
-      { id: 'cat_b', createdAt: NOW, updatedAt: NOW },
+      { id: 'cat_a', parentId: null, createdAt: NOW, updatedAt: NOW },
+      { id: 'cat_b', parentId: null, createdAt: NOW, updatedAt: NOW },
     ])
 
     const result = (await handlerFor('listPublicCategoriesFn')({ data: {} })) as Array<{
       id: string
     }>
     expect(result.map((c) => c.id)).toEqual(['cat_a'])
+  })
+
+  it('includes a selected sub-category even when its parent is also selected', async () => {
+    // The reported bug: admin selected a parent AND its child; the child must
+    // still be returned (and rendered as its own card) — not collapsed away.
+    hoisted.mockGetWidgetRequestContext.mockResolvedValue(
+      makeContext({ profileId: 'wp_1', categoryIds: ['cat_parent', 'cat_child'] })
+    )
+    hoisted.mockListPublicCategories.mockResolvedValue([
+      { id: 'cat_parent', parentId: null, createdAt: NOW, updatedAt: NOW },
+      { id: 'cat_child', parentId: 'cat_parent', createdAt: NOW, updatedAt: NOW },
+      { id: 'cat_other', parentId: null, createdAt: NOW, updatedAt: NOW },
+    ])
+
+    const result = (await handlerFor('listPublicCategoriesFn')({ data: {} })) as Array<{
+      id: string
+    }>
+    expect(result.map((c) => c.id).sort()).toEqual(['cat_child', 'cat_parent'])
   })
 })
 

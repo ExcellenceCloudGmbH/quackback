@@ -5,7 +5,6 @@ import { contentPreview } from '@/lib/shared/utils/string'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { MagnifyingGlassIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline'
 import { publicHelpCenterQueries } from '@/lib/client/queries/help-center'
-import { getWidgetVisibleCategories } from '@/components/help-center/help-center-utils'
 import { CategoryIcon } from '@/components/help-center/category-icon'
 import { WidgetMessagesSection } from './widget-messages-section'
 import { WidgetSupportCard } from './widget-support-card'
@@ -49,12 +48,12 @@ export function WidgetHelp({
   const cacheRef = useRef(new Map<string, WidgetHelpArticle[]>())
 
   const categoriesQuery = useQuery(publicHelpCenterQueries.categories(getWidgetAuthHeaders()))
-  // Show every category the admin curated for the widget — including selected
-  // sub-categories. Filtering to top-level only would hide a child category
-  // that was selected without its parent. See getWidgetVisibleCategories.
-  const visibleCategories = categoriesQuery.data
-    ? getWidgetVisibleCategories(categoriesQuery.data)
-    : []
+  // Render exactly what the server returns. The widget-context filter
+  // (categoryAllowedByWidgetContext) already curates this list: the admin's
+  // selected categories (parent AND child), or the top-level categories when no
+  // selection is configured. Do NOT re-filter by hierarchy here — that would
+  // drop explicitly-selected sub-categories whose parent is also selected.
+  const visibleCategories = categoriesQuery.data ?? []
 
   const doSearch = useCallback(async (query: string) => {
     if (!query.trim()) {

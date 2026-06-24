@@ -7,35 +7,11 @@ interface CategoryLike {
   parentId?: string | null
 }
 
-interface CategoryWithId {
-  id: string
-  parentId?: string | null
-}
-
 /**
  * Filters categories to only top-level ones (parentId is null or undefined).
  */
 export function getTopLevelCategories<T extends CategoryLike>(categories: T[]): T[] {
   return categories.filter((c) => c.parentId == null)
-}
-
-/**
- * Categories to surface as cards in the widget.
- *
- * The widget receives the categories an admin curated via the widget profile's
- * content filters (selected category IDs — parent and/or child). Unlike the
- * public Help Center we must NOT hide selected sub-categories: showing only
- * `parentId == null` would drop a child category that was explicitly selected
- * while its parent was not, leaving the grid empty.
- *
- * A category is shown when it is top-level OR when its parent is not present in
- * the visible set (i.e. an explicitly-surfaced child whose parent isn't shown).
- * When the full tree is present (no selection) this collapses to the
- * top-level-only behaviour, so the default view is unchanged.
- */
-export function getWidgetVisibleCategories<T extends CategoryWithId>(categories: T[]): T[] {
-  const presentIds = new Set(categories.map((c) => c.id))
-  return categories.filter((c) => c.parentId == null || !presentIds.has(c.parentId))
 }
 
 /**
