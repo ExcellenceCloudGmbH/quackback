@@ -23,7 +23,7 @@ export const postActivity = pgTable(
     }),
     type: text('type').notNull(),
     metadata: jsonb('metadata').notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     index('post_activity_post_id_created_idx').on(t.postId, t.createdAt),

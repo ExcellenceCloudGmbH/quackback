@@ -54,17 +54,19 @@ export const conversations = pgTable(
     // Denormalized last-message preview + timestamp drive the inbox feed
     // (sort + at-a-glance) without a per-row subquery.
     lastMessagePreview: text('last_message_preview'),
-    lastMessageAt: timestamp('last_message_at', { withTimezone: true }).defaultNow().notNull(),
+    lastMessageAt: timestamp('last_message_at', { withTimezone: true, precision: 3 })
+      .defaultNow()
+      .notNull(),
     // Read receipts power unread badges on each side independently.
-    visitorLastReadAt: timestamp('visitor_last_read_at', { withTimezone: true }),
-    agentLastReadAt: timestamp('agent_last_read_at', { withTimezone: true }),
+    visitorLastReadAt: timestamp('visitor_last_read_at', { withTimezone: true, precision: 3 }),
+    agentLastReadAt: timestamp('agent_last_read_at', { withTimezone: true, precision: 3 }),
     // Post-conversation CSAT rating (1-5), submitted by the visitor.
     csatRating: integer('csat_rating'),
     csatComment: text('csat_comment'),
-    csatSubmittedAt: timestamp('csat_submitted_at', { withTimezone: true }),
+    csatSubmittedAt: timestamp('csat_submitted_at', { withTimezone: true, precision: 3 }),
     // When the conversation was resolved/closed (set on close, cleared on
     // reopen). Drives resolution reporting and the resolved-vs-active split.
-    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, precision: 3 }),
     // Why the conversation was ended + an optional free-text note. The taxonomy
     // is enforced at the app layer (CONVERSATION_END_REASONS). Stored to power
     // resolution-rate reporting: resolved-rate = count(end_reason IN
@@ -74,8 +76,8 @@ export const conversations = pgTable(
     // Optional contact email captured from an anonymous visitor for offline
     // follow-up. Agent-only; the principal itself stays anonymous.
     visitorEmail: text('visitor_email'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     // Inbox feed: list by status, newest activity first.
@@ -116,10 +118,10 @@ export const chatMessages = pgTable(
     // Channel provenance (e.g. inbound email message-id for retry dedupe); null
     // for ordinary in-app live-chat messages.
     metadata: jsonb('metadata').$type<ChatMessageMetadata>(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }),
     // Soft delete support, mirroring comments.
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
     deletedByPrincipalId: typeIdColumnNullable('principal')('deleted_by_principal_id').references(
       () => principal.id,
       { onDelete: 'set null' }
@@ -151,9 +153,9 @@ export const chatTags = pgTable(
     name: text('name').notNull().unique(),
     color: text('color').default('#6b7280').notNull(),
     description: text('description'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     // Soft delete: a removed tag detaches from conversations but keeps history.
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [index('chat_tags_deleted_at_idx').on(table.deletedAt)]
 )
@@ -195,8 +197,8 @@ export const chatMessageMentions = pgTable(
     principalId: typeIdColumn('principal')('principal_id')
       .notNull()
       .references(() => principal.id, { onDelete: 'cascade' }),
-    notifiedAt: timestamp('notified_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    notifiedAt: timestamp('notified_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (table) => [
     uniqueIndex('chat_message_mentions_message_principal_uq').on(
@@ -225,7 +227,7 @@ export const chatMessageReactions = pgTable(
       .notNull()
       .references(() => principal.id, { onDelete: 'cascade' }),
     emoji: text('emoji').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('chat_message_reactions_message_idx').on(table.chatMessageId),
@@ -253,7 +255,7 @@ export const chatMessageFlags = pgTable(
     principalId: typeIdColumn('principal')('principal_id')
       .notNull()
       .references(() => principal.id, { onDelete: 'cascade' }),
-    flaggedAt: timestamp('flagged_at', { withTimezone: true }).defaultNow().notNull(),
+    flaggedAt: timestamp('flagged_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     primaryKey({ columns: [table.chatMessageId, table.principalId] }),

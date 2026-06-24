@@ -40,8 +40,8 @@ export const changelogCategories = pgTable(
     slug: text('slug').notNull(),
     description: text('description'),
     color: text('color'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [uniqueIndex('changelog_categories_slug_idx').on(table.slug)]
 )
@@ -53,8 +53,8 @@ export const changelogProducts = pgTable(
     name: text('name').notNull(),
     slug: text('slug').notNull(),
     description: text('description'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [uniqueIndex('changelog_products_slug_idx').on(table.slug)]
 )
@@ -79,11 +79,11 @@ export const changelogEntries = pgTable(
       () => changelogProducts.id,
       { onDelete: 'set null' }
     ),
-    publishedAt: timestamp('published_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    publishedAt: timestamp('published_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     // Soft delete support
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
     // View count for analytics (incremented on public/widget page load)
     viewCount: integer('view_count').default(0).notNull(),
   },
@@ -106,7 +106,7 @@ export const changelogEntryPosts = pgTable(
     postId: typeIdColumn('post')('post_id')
       .notNull()
       .references(() => posts.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('changelog_entry_posts_pk').on(table.changelogEntryId, table.postId),
@@ -182,8 +182,8 @@ export const changelogSegmentVisibility = pgTable(
     restrictProducts: boolean('restrict_products').notNull().default(false),
     /** Product IDs allowed when restrictProducts=true */
     allowedProductIds: jsonb('allowed_product_ids').$type<string[]>().notNull().default([]),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),

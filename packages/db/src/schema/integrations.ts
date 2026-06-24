@@ -46,17 +46,17 @@ export const integrations = pgTable(
     principalId: typeIdColumnNullable('principal')('principal_id').references(() => principal.id, {
       onDelete: 'set null',
     }),
-    connectedAt: timestamp('connected_at', { withTimezone: true }),
-    lastSyncAt: timestamp('last_sync_at', { withTimezone: true }),
+    connectedAt: timestamp('connected_at', { withTimezone: true, precision: 3 }),
+    lastSyncAt: timestamp('last_sync_at', { withTimezone: true, precision: 3 }),
     lastError: text('last_error'),
-    lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
+    lastErrorAt: timestamp('last_error_at', { withTimezone: true, precision: 3 }),
     errorCount: integer('error_count').notNull().default(0),
 
     /** User-friendly label for multi-instance integrations (e.g. repo name for GitHub) */
     label: varchar('label', { length: 100 }),
 
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     // NOTE: unique('integration_type_unique') was removed in migration 0057
@@ -82,8 +82,8 @@ export const integrationPlatformCredentials = pgTable(
     configuredByPrincipalId: typeIdColumnNullable('principal')(
       'configured_by_principal_id'
     ).references(() => principal.id, { onDelete: 'set null' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [unique('platform_cred_type_unique').on(table.integrationType)]
 )
@@ -114,8 +114,8 @@ export const integrationEventMappings = pgTable(
     /** Discriminator for multiple mappings of the same event+action (e.g. per-board targets) */
     targetKey: varchar('target_key', { length: 100 }).notNull().default('default'),
     enabled: boolean('enabled').notNull().default(true),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     foreignKey({
@@ -148,8 +148,8 @@ export const slackChannelMonitors = pgTable(
       onDelete: 'set null',
     }),
     enabled: boolean('enabled').notNull().default(true),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     foreignKey({

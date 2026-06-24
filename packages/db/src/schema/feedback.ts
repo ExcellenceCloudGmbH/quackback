@@ -46,12 +46,12 @@ export const feedbackSources = pgTable(
     config: jsonb('config').$type<Record<string, unknown>>().notNull().default({}),
     secrets: text('secrets'), // encrypted via 'feedback-source-secrets' purpose (AES-256-GCM + HKDF)
     cursor: text('cursor'),
-    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
-    lastSuccessAt: timestamp('last_success_at', { withTimezone: true }),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true, precision: 3 }),
+    lastSuccessAt: timestamp('last_success_at', { withTimezone: true, precision: 3 }),
     lastError: text('last_error'),
     errorCount: integer('error_count').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     index('feedback_sources_type_idx').on(t.sourceType),
@@ -75,7 +75,7 @@ export const rawFeedbackItems = pgTable(
     externalId: text('external_id').notNull(),
     dedupeKey: text('dedupe_key').notNull(),
     externalUrl: text('external_url'),
-    sourceCreatedAt: timestamp('source_created_at', { withTimezone: true }).notNull(),
+    sourceCreatedAt: timestamp('source_created_at', { withTimezone: true, precision: 3 }).notNull(),
     author: jsonb('author').$type<RawFeedbackAuthor>().notNull(),
     content: jsonb('content').$type<RawFeedbackContent>().notNull(),
     contextEnvelope: jsonb('context_envelope')
@@ -85,17 +85,19 @@ export const rawFeedbackItems = pgTable(
     processingState: varchar('processing_state', { length: 30 })
       .notNull()
       .default('pending_context'),
-    stateChangedAt: timestamp('state_changed_at', { withTimezone: true }).notNull().defaultNow(),
+    stateChangedAt: timestamp('state_changed_at', { withTimezone: true, precision: 3 })
+      .notNull()
+      .defaultNow(),
     attemptCount: integer('attempt_count').notNull().default(0),
     lastError: text('last_error'),
-    processedAt: timestamp('processed_at', { withTimezone: true }),
+    processedAt: timestamp('processed_at', { withTimezone: true, precision: 3 }),
     principalId: typeIdColumnNullable('principal')('principal_id').references(() => principal.id, {
       onDelete: 'set null',
     }),
     extractionInputTokens: integer('extraction_input_tokens'),
     extractionOutputTokens: integer('extraction_output_tokens'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex('raw_feedback_dedupe_idx').on(t.sourceId, t.dedupeKey),
@@ -130,7 +132,7 @@ export const feedbackSignals = pgTable(
     interpretationConfidence: real('interpretation_confidence'),
     embedding: vector1536('embedding'),
     embeddingModel: text('embedding_model'),
-    embeddingUpdatedAt: timestamp('embedding_updated_at', { withTimezone: true }),
+    embeddingUpdatedAt: timestamp('embedding_updated_at', { withTimezone: true, precision: 3 }),
     processingState: varchar('processing_state', { length: 30 })
       .notNull()
       .default('pending_interpretation'),
@@ -140,8 +142,8 @@ export const feedbackSignals = pgTable(
     interpretationPromptVersion: varchar('interpretation_prompt_version', { length: 20 }),
     inputTokens: integer('input_tokens'),
     outputTokens: integer('output_tokens'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     index('feedback_signals_raw_idx').on(t.rawFeedbackItemId),
@@ -185,13 +187,13 @@ export const feedbackSuggestions = pgTable(
     resultPostId: typeIdColumnNullable('post')('result_post_id').references(() => posts.id, {
       onDelete: 'set null',
     }),
-    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, precision: 3 }),
     resolvedByPrincipalId: typeIdColumnNullable('principal')('resolved_by_principal_id').references(
       () => principal.id,
       { onDelete: 'set null' }
     ),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     index('feedback_suggestions_status_idx').on(t.status),
@@ -218,8 +220,8 @@ export const externalUserMappings = pgTable(
       .references(() => principal.id, { onDelete: 'cascade' }),
     externalName: text('external_name'),
     externalEmail: text('external_email'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex('external_user_source_idx').on(t.sourceType, t.externalUserId),

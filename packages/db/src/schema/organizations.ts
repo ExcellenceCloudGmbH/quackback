@@ -43,12 +43,12 @@ export const organizations = pgTable(
     website: text('website'),
     notes: text('notes'),
     metadata: jsonb('metadata').$type<OrgMetadata>().notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    archivedAt: timestamp('archived_at', { withTimezone: true, precision: 3 }),
   },
   (t) => [
     uniqueIndex('organizations_domain_idx')
@@ -78,12 +78,12 @@ export const contacts = pgTable(
     ),
     avatarUrl: text('avatar_url'),
     metadata: jsonb('metadata').$type<OrgMetadata>().notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    archivedAt: timestamp('archived_at', { withTimezone: true, precision: 3 }),
   },
   (t) => [
     uniqueIndex('contacts_email_idx')
@@ -120,7 +120,7 @@ export const contactUserLinks = pgTable(
       () => principal.id,
       { onDelete: 'set null' }
     ),
-    linkedAt: timestamp('linked_at', { withTimezone: true }).defaultNow().notNull(),
+    linkedAt: timestamp('linked_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (t) => [
     uniqueIndex('contact_user_links_contact_user_idx').on(t.contactId, t.userId),

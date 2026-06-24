@@ -34,13 +34,13 @@ export const apiKeys = pgTable(
       .notNull()
       .references(() => principal.id, { onDelete: 'cascade' }),
     /** Last time the key was used for authentication */
-    lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+    lastUsedAt: timestamp('last_used_at', { withTimezone: true, precision: 3 }),
     /** Optional expiration date */
-    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true, precision: 3 }),
     /** When the key was created */
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     /** When the key was revoked (soft delete) */
-    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, precision: 3 }),
     /**
      * Allowed permission scopes (dotted permission keys, e.g. ['ticket.view_all']).
      * Empty array + compatLegacyFullAccess=true means "all permissions" (legacy).
@@ -64,14 +64,14 @@ export const apiKeys = pgTable(
     /** Last user-agent (truncated to 500 chars). */
     lastUserAgent: text('last_user_agent'),
     /** When the key was last rotated. */
-    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+    rotatedAt: timestamp('rotated_at', { withTimezone: true, precision: 3 }),
     /**
      * If true, an empty `scopes` array grants all permissions (legacy behavior).
      * Cleared automatically the first time `scopes` becomes non-empty.
      */
     compatLegacyFullAccess: boolean('compat_legacy_full_access').notNull().default(true),
     /** When an admin acknowledged the legacy compat warning for this key. */
-    compatAcknowledgedAt: timestamp('compat_acknowledged_at', { withTimezone: true }),
+    compatAcknowledgedAt: timestamp('compat_acknowledged_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     // Index for listing keys by creator

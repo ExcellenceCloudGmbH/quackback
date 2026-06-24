@@ -17,8 +17,8 @@ export const integrationUserMappings = pgTable(
     externalUsername: varchar('external_username', { length: 255 }).notNull(),
     externalDisplayName: text('external_display_name'),
     principalId: typeIdColumnNullable('principal')('principal_id'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     foreignKey({

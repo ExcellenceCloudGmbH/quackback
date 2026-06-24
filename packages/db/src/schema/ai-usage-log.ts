@@ -25,7 +25,7 @@ export const aiUsageLog = pgTable(
 
     metadata: jsonb('metadata').$type<Record<string, unknown>>(),
 
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     index('ai_usage_log_step_idx').on(t.pipelineStep),

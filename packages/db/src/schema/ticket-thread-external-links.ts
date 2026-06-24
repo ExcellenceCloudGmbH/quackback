@@ -21,9 +21,9 @@ export const ticketThreadExternalLinks = pgTable(
     externalUrl: text('external_url'),
     status: varchar('status', { length: 20 }).notNull().default('active'),
     syncDirection: varchar('sync_direction', { length: 20 }).notNull().default('outbound'),
-    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),

@@ -27,7 +27,9 @@ export const hookDeliveries = pgTable(
      *  for debugging + retention sweeps that target one hook type. */
     hookType: text('hook_type').notNull(),
     /** Wall-clock time the row was inserted. Used by retention pruning. */
-    processedAt: timestamp('processed_at', { withTimezone: true }).defaultNow().notNull(),
+    processedAt: timestamp('processed_at', { withTimezone: true, precision: 3 })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [
     // Prune query: DELETE WHERE processed_at < now() - interval '7 days'

@@ -34,10 +34,10 @@ export const routingRules = pgTable(
     inboxIdScope: typeIdColumnNullable('inbox')('inbox_id_scope').references(() => inboxes.id, {
       onDelete: 'set null',
     }),
-    lastMatchedAt: timestamp('last_matched_at', { withTimezone: true }),
+    lastMatchedAt: timestamp('last_matched_at', { withTimezone: true, precision: 3 }),
     matchCount: integer('match_count').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),

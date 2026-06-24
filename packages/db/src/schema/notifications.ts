@@ -39,8 +39,8 @@ export const postSubscriptions = pgTable(
     reason: varchar('reason', { length: 20 }).notNull(), // 'author' | 'vote' | 'comment' | 'manual'
     notifyComments: boolean('notify_comments').default(true).notNull(),
     notifyStatusChanges: boolean('notify_status_changes').default(true).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     // Unique constraint: one subscription per principal per post
@@ -80,8 +80,8 @@ export const notificationPreferences = pgTable(
     emailTicketParticipants: boolean('email_ticket_participants').default(false).notNull(),
     emailTicketShares: boolean('email_ticket_shares').default(false).notNull(),
     emailTicketSla: boolean('email_ticket_sla').default(true).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   // Note: notification_preferences_member_id_unique constraint already provides the index; no separate index needed
   () => []
@@ -103,9 +103,9 @@ export const unsubscribeTokens = pgTable(
       onDelete: 'cascade',
     }), // null = global unsubscribe
     action: varchar('action', { length: 30 }).notNull(), // 'unsubscribe_post' | 'unsubscribe_all' | 'mute_post'
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    usedAt: timestamp('used_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, precision: 3 }).notNull(),
+    usedAt: timestamp('used_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     // Note: unsubscribe_tokens_token_unique constraint already provides the index; no separate index needed
@@ -167,9 +167,9 @@ export const inAppNotifications = pgTable(
       onDelete: 'set null',
     }),
     metadata: jsonb('metadata').$type<Record<string, unknown>>(),
-    readAt: timestamp('read_at', { withTimezone: true }),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    readAt: timestamp('read_at', { withTimezone: true, precision: 3 }),
+    archivedAt: timestamp('archived_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     // Primary lookup: member's notifications ordered by date

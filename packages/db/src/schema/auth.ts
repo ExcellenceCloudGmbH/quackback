@@ -36,8 +36,8 @@ export const user = pgTable(
     image: text('image'),
     // Profile image - S3 storage key (e.g., "avatars/2026/02/abc123-avatar.png")
     imageKey: text('image_key'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
@@ -109,7 +109,7 @@ export const twoFactor = pgTable('two_factor', {
   secret: text('secret').notNull(),
   backupCodes: text('backup_codes').notNull(),
   verified: boolean('verified').notNull().default(true),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
 })
 
 export const session = pgTable(
@@ -117,10 +117,10 @@ export const session = pgTable(
   {
     // Better-Auth generates session IDs internally, so we use text instead of TypeID
     id: text('id').primaryKey(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    expiresAt: timestamp('expires_at', { withTimezone: true, precision: 3 }).notNull(),
     token: text('token').notNull().unique(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .$onUpdate(() => new Date())
       .notNull(),
     ipAddress: text('ip_address'),
@@ -155,12 +155,18 @@ export const account = pgTable(
     accessToken: text('access_token'),
     refreshToken: text('refresh_token'),
     idToken: text('id_token'),
-    accessTokenExpiresAt: timestamp('access_token_expires_at', { withTimezone: true }),
-    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
+    accessTokenExpiresAt: timestamp('access_token_expires_at', {
+      withTimezone: true,
+      precision: 3,
+    }),
+    refreshTokenExpiresAt: timestamp('refresh_token_expires_at', {
+      withTimezone: true,
+      precision: 3,
+    }),
     scope: text('scope'),
     password: text('password'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .$onUpdate(() => new Date())
       .notNull(),
   },
@@ -181,9 +187,9 @@ export const verification = pgTable(
     id: text('id').primaryKey(),
     identifier: text('identifier').notNull(),
     value: text('value').notNull(),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    expiresAt: timestamp('expires_at', { withTimezone: true, precision: 3 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
@@ -201,8 +207,8 @@ export const oneTimeToken = pgTable('one_time_token', {
   userId: typeIdColumn('user')('user_id')
     .notNull()
     .references(() => user.id, { onDelete: 'cascade' }),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, precision: 3 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
 })
 
 /**
@@ -222,7 +228,7 @@ export const settings = pgTable('settings', {
   faviconKey: text('favicon_key'),
   // Header logo - S3 storage key
   headerLogoKey: text('header_logo_key'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull(),
   metadata: text('metadata'),
   /**
    * Team authentication configuration (JSON)
@@ -365,10 +371,10 @@ export const ssoVerifiedDomain = pgTable(
     /** Random base32-ish token; intentionally public via DNS TXT. */
     verificationToken: text('verification_token').notNull(),
     /** Null until DNS lookup confirms the TXT record. */
-    verifiedAt: timestamp('verified_at', { withTimezone: true }),
+    verifiedAt: timestamp('verified_at', { withTimezone: true, precision: 3 }),
     /** When true: emails at this domain are hard-bound to SSO. */
     enforced: boolean('enforced').notNull().default(false),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => ({
     nameUnique: uniqueIndex('sso_verified_domain_name_unique').on(t.name),
@@ -418,7 +424,7 @@ export const principal = pgTable(
     avatarKey: text('avatar_key'),
     // Metadata for service principals (discriminated union by kind)
     serviceMetadata: jsonb('service_metadata').$type<ServiceMetadata | null>(),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull(),
     /**
      * Last time this principal completed an SSO sign-in (Better-Auth
      * generic-OAuth callback with providerId='sso' creating a new
@@ -428,7 +434,7 @@ export const principal = pgTable(
      * out. Null = never signed in via SSO. Written by the
      * /oauth2/callback/:providerId hooks.after middleware.
      */
-    lastSsoSignInAt: timestamp('last_sso_sign_in_at', { withTimezone: true }),
+    lastSsoSignInAt: timestamp('last_sso_sign_in_at', { withTimezone: true, precision: 3 }),
     // Contact email for an anonymous visitor (captured in live chat) so an
     // offline reply can reach them across conversations. Agent-only — the
     // principal stays anonymous; never exposed to the visitor.
@@ -476,9 +482,9 @@ export const invitation = pgTable(
      * invite for an email never leaks into the team-invite UI and vice versa.
      */
     kind: text('kind').$type<'team' | 'portal'>().notNull().default('team'),
-    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true, precision: 3 }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    lastSentAt: timestamp('last_sent_at', { withTimezone: true, precision: 3 }),
     /**
      * The set of `verification.identifier` magic-link tokens minted for this
      * invite (one per send/resend/copy). Cancel revokes every token in the set,
@@ -519,8 +525,8 @@ export const jwks = pgTable('jwks', {
   id: text('id').primaryKey(),
   publicKey: text('public_key').notNull(),
   privateKey: text('private_key').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull(),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, precision: 3 }),
 })
 
 /**
@@ -536,8 +542,8 @@ export const oauthClient = pgTable('oauth_client', {
   enableEndSession: boolean('enable_end_session'),
   scopes: text('scopes').array(),
   userId: typeIdColumn('user')('user_id').references(() => user.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at', { withTimezone: true }),
-  updatedAt: timestamp('updated_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }),
   // Client metadata
   name: text('name'),
   uri: text('uri'),
@@ -577,10 +583,10 @@ export const oauthRefreshToken = pgTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     referenceId: text('reference_id'),
-    expiresAt: timestamp('expires_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }),
-    revoked: timestamp('revoked', { withTimezone: true }),
-    authTime: timestamp('auth_time', { withTimezone: true }),
+    expiresAt: timestamp('expires_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }),
+    revoked: timestamp('revoked', { withTimezone: true, precision: 3 }),
+    authTime: timestamp('auth_time', { withTimezone: true, precision: 3 }),
     scopes: text('scopes').array().notNull(),
   },
   (table) => [
@@ -607,8 +613,8 @@ export const oauthAccessToken = pgTable('oauth_access_token', {
   userId: typeIdColumn('user')('user_id').references(() => user.id, { onDelete: 'cascade' }),
   referenceId: text('reference_id'),
   refreshId: text('refresh_id').references(() => oauthRefreshToken.id, { onDelete: 'cascade' }),
-  expiresAt: timestamp('expires_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }),
+  expiresAt: timestamp('expires_at', { withTimezone: true, precision: 3 }),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }),
   scopes: text('scopes').array().notNull(),
 })
 
@@ -623,8 +629,8 @@ export const oauthConsent = pgTable('oauth_consent', {
   userId: typeIdColumn('user')('user_id').references(() => user.id, { onDelete: 'cascade' }),
   referenceId: text('reference_id'),
   scopes: text('scopes').array().notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }),
-  updatedAt: timestamp('updated_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }),
+  updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }),
 })
 
 // Relations for Drizzle relational queries (enables experimental joins)
@@ -749,7 +755,7 @@ export const widgetOriginSession = pgTable(
   {
     sessionId: text('session_id').primaryKey(),
     userId: text('user_id').notNull(),
-    markedAt: timestamp('marked_at', { withTimezone: true }).defaultNow().notNull(),
+    markedAt: timestamp('marked_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [index('widget_origin_session_user_id_idx').on(table.userId)]
 )
@@ -779,5 +785,7 @@ export const widgetOriginSession = pgTable(
 export const widgetIdentifiedSession = pgTable('widget_identified_session', {
   sessionId: text('session_id').primaryKey(),
   hmacVerified: boolean('hmac_verified').notNull(),
-  identifiedAt: timestamp('identified_at', { withTimezone: true }).defaultNow().notNull(),
+  identifiedAt: timestamp('identified_at', { withTimezone: true, precision: 3 })
+    .defaultNow()
+    .notNull(),
 })

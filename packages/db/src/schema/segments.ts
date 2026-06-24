@@ -139,12 +139,12 @@ export const segments = pgTable(
     evaluationSchedule: jsonb('evaluation_schedule').$type<EvaluationSchedule | null>(),
     /** Weighting config for segment-level analytics (e.g. weight by MRR) */
     weightConfig: jsonb('weight_config').$type<SegmentWeightConfig | null>(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     index('segments_type_idx').on(table.type),
@@ -183,7 +183,7 @@ export const userSegments = pgTable(
     addedBy: text('added_by', { enum: ['manual', 'dynamic', 'sso', 'widget', 'api'] })
       .notNull()
       .default('manual'),
-    addedAt: timestamp('added_at', { withTimezone: true }).defaultNow().notNull(),
+    addedAt: timestamp('added_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('user_segments_pk').on(table.principalId, table.segmentId),
@@ -255,8 +255,8 @@ export const portalTabSegmentOverrides = pgTable(
      * Null/absent fields inherit from org-level defaults.
      */
     overrides: jsonb('overrides').$type<PortalTabConfig>().notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),

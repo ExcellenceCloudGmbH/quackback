@@ -26,8 +26,8 @@ export const ticketExternalLinks = pgTable(
     /** Direction this link was created from: outbound (ticket→issue), inbound (issue→ticket), bidirectional */
     syncDirection: varchar('sync_direction', { length: 20 }).notNull().default('outbound'),
     /** Last time this link's data was verified/synced with the external system */
-    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    lastSyncedAt: timestamp('last_synced_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     foreignKey({

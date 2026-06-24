@@ -18,7 +18,9 @@ export const auditLog = pgTable(
   'audit_log',
   {
     id: typeIdWithDefault('audit')('id').primaryKey(),
-    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true, precision: 3 })
+      .notNull()
+      .defaultNow(),
     /** Null when the actor's user row has been deleted. */
     actorUserId: typeIdColumnNullable('user')('actor_user_id').references(() => user.id, {
       onDelete: 'set null',

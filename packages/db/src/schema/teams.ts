@@ -26,12 +26,12 @@ export const teams = pgTable(
     shortLabel: text('short_label'),
     /** Hex colour for UI chips. Optional; UI falls back to a hash of the id. */
     color: text('color'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    archivedAt: timestamp('archived_at', { withTimezone: true, precision: 3 }),
   },
   (t) => [uniqueIndex('teams_slug_idx').on(t.slug), index('teams_archived_at_idx').on(t.archivedAt)]
 )
@@ -56,7 +56,7 @@ export const teamMemberships = pgTable(
     role: text('role', { enum: ['lead', 'member'] })
       .default('member')
       .notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (t) => [
     uniqueIndex('team_memberships_team_principal_idx').on(t.teamId, t.principalId),

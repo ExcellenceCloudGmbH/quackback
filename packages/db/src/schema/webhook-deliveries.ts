@@ -47,8 +47,10 @@ export const webhookDeliveries = pgTable(
     responseBodySnippet: text('response_body_snippet'),
     latencyMs: integer('latency_ms'),
     signatureTimestamp: bigint('signature_timestamp', { mode: 'number' }).notNull(),
-    attemptedAt: timestamp('attempted_at', { withTimezone: true }).defaultNow().notNull(),
-    nextRetryAt: timestamp('next_retry_at', { withTimezone: true }),
+    attemptedAt: timestamp('attempted_at', { withTimezone: true, precision: 3 })
+      .defaultNow()
+      .notNull(),
+    nextRetryAt: timestamp('next_retry_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     index('webhook_deliveries_webhook_attempted_idx').on(table.webhookId, table.attemptedAt),

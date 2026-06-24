@@ -32,8 +32,8 @@ export const roles = pgTable(
     description: text('description'),
     /** Seeded by migrations; not deletable from the UI. */
     isSystem: boolean('is_system').default(false).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
@@ -51,7 +51,7 @@ export const permissions = pgTable(
     category: text('category').notNull(),
     description: text('description'),
     isSystem: boolean('is_system').default(true).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (t) => [
     uniqueIndex('permissions_key_idx').on(t.key),
@@ -69,7 +69,7 @@ export const rolePermissions = pgTable(
     permissionId: typeIdColumn('perm')('permission_id')
       .notNull()
       .references(() => permissions.id, { onDelete: 'cascade' }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (t) => [
     uniqueIndex('role_permissions_role_permission_idx').on(t.roleId, t.permissionId),
@@ -102,7 +102,7 @@ export const principalRoleAssignments = pgTable(
       () => principal.id,
       { onDelete: 'set null' }
     ),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (t) => [
     // Same role can't be granted twice for the same scope.

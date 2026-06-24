@@ -16,9 +16,9 @@ export const postStatuses = pgTable(
     position: integer('position').notNull().default(0),
     showOnRoadmap: boolean('show_on_roadmap').notNull().default(false),
     isDefault: boolean('is_default').notNull().default(false),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     // Soft delete support
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     // Note: post_statuses_slug_unique constraint already provides uniqueness; no separate index needed

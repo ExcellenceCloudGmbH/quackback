@@ -18,7 +18,7 @@ export const analyticsDailyStats = pgTable('analytics_daily_stats', {
   postsByBoard: jsonb('posts_by_board').$type<Record<string, number>>().default({}).notNull(),
   /** New posts created on this date by source: { "portal": n, "widget": n, "api": n } */
   postsBySource: jsonb('posts_by_source').$type<Record<string, number>>().default({}).notNull(),
-  computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),
+  computedAt: timestamp('computed_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
 })
 
 /**
@@ -36,7 +36,9 @@ export const analyticsTopPosts = pgTable(
     commentCount: integer('comment_count').default(0).notNull(),
     boardName: text('board_name'),
     statusName: text('status_name'),
-    computedAt: timestamp('computed_at', { withTimezone: true }).defaultNow().notNull(),
+    computedAt: timestamp('computed_at', { withTimezone: true, precision: 3 })
+      .defaultNow()
+      .notNull(),
   },
   (table) => [primaryKey({ columns: [table.period, table.rank] })]
 )

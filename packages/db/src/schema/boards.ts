@@ -15,10 +15,10 @@ export const boards = pgTable(
     // `is_public` boolean before that.
     access: jsonb('access').$type<BoardAccess>().default(DEFAULT_BOARD_ACCESS).notNull(),
     settings: jsonb('settings').$type<BoardSettings>().default({}).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     // Soft delete support
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     // Note: boards_slug_unique constraint already provides uniqueness; no separate index needed
@@ -35,10 +35,10 @@ export const roadmaps = pgTable(
     description: text('description'),
     isPublic: boolean('is_public').default(true).notNull(),
     position: integer('position').notNull().default(0),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     // Soft delete support
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     // Note: roadmaps_slug_unique constraint already provides uniqueness; no separate index needed
@@ -55,9 +55,9 @@ export const tags = pgTable(
     name: text('name').notNull().unique(),
     color: text('color').default('#6b7280').notNull(),
     description: text('description'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     // Soft delete support
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [index('tags_deleted_at_idx').on(table.deletedAt)]
 )

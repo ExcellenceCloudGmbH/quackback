@@ -26,8 +26,8 @@ export const ssoRecoveryCode = pgTable(
     /** argon2id digest of the user-facing code. Never stored plaintext. */
     codeHash: text('code_hash').notNull(),
     /** Set when the code is consumed. Null = active. */
-    usedAt: timestamp('used_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    usedAt: timestamp('used_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (table) => [
     index('sso_recovery_code_user_id_idx').on(table.userId),

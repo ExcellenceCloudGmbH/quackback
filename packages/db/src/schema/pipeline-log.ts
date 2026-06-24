@@ -24,7 +24,7 @@ export const pipelineLog = pgTable(
       onDelete: 'set null',
     }),
     detail: jsonb('detail').$type<Record<string, unknown>>().notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     index('pipeline_log_raw_item_idx').on(t.rawFeedbackItemId),

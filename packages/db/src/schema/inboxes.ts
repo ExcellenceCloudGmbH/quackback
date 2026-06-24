@@ -54,9 +54,9 @@ export const inboxes = pgTable(
     ),
     color: text('color'),
     icon: text('icon'),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    archivedAt: timestamp('archived_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
@@ -89,9 +89,9 @@ export const inboxChannels = pgTable(
     /** External provider identifier (mailbox address, webhook id, etc.). */
     externalId: text('external_id'),
     enabled: boolean('enabled').notNull().default(true),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    archivedAt: timestamp('archived_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
@@ -119,7 +119,7 @@ export const inboxMemberships = pgTable(
       .notNull()
       .references(() => principal.id, { onDelete: 'cascade' }),
     role: text('role', { enum: INBOX_MEMBERSHIP_ROLES }).notNull().default('agent'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (t) => [
     uniqueIndex('inbox_memberships_inbox_principal_idx').on(t.inboxId, t.principalId),

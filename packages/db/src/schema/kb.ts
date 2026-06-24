@@ -48,9 +48,9 @@ export const helpCenterCategories = pgTable(
     allowedSegmentIds: jsonb('allowed_segment_ids').$type<string[]>().notNull().default([]),
     allowedPrincipalIds: jsonb('allowed_principal_ids').$type<string[]>().notNull().default([]),
     position: integer('position').default(0).notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     uniqueIndex('kb_categories_slug_idx').on(table.slug),
@@ -80,7 +80,7 @@ export const helpCenterArticles = pgTable(
     principalId: typeIdColumn('principal')('principal_id')
       .notNull()
       .references(() => principal.id, { onDelete: 'restrict' }),
-    publishedAt: timestamp('published_at', { withTimezone: true }),
+    publishedAt: timestamp('published_at', { withTimezone: true, precision: 3 }),
     viewCount: integer('view_count').default(0).notNull(),
     helpfulCount: integer('helpful_count').default(0).notNull(),
     notHelpfulCount: integer('not_helpful_count').default(0).notNull(),
@@ -89,10 +89,10 @@ export const helpCenterArticles = pgTable(
     ),
     embedding: vector('embedding'),
     embeddingModel: text('embedding_model'),
-    embeddingUpdatedAt: timestamp('embedding_updated_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    embeddingUpdatedAt: timestamp('embedding_updated_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     uniqueIndex('kb_articles_slug_idx').on(table.slug),
@@ -121,7 +121,7 @@ export const helpCenterArticleFeedback = pgTable(
       onDelete: 'set null',
     }),
     helpful: boolean('helpful').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('kb_article_feedback_article_id_idx').on(table.articleId),

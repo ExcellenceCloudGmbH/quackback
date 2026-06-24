@@ -22,8 +22,8 @@ export const postMentions = pgTable(
     principalId: typeIdColumn('principal')('principal_id')
       .notNull()
       .references(() => principal.id, { onDelete: 'cascade' }),
-    notifiedAt: timestamp('notified_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    notifiedAt: timestamp('notified_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex('post_mentions_post_principal_uq').on(t.postId, t.principalId),

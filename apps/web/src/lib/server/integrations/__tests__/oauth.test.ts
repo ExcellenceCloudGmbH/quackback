@@ -22,11 +22,11 @@ describe('OAuth public origin resolution', () => {
     const headers = new Headers({
       host: 'localhost:3000',
       referer:
-        'https://vacation-tests-takes-personnel.trycloudflare.com/admin/settings/integrations/github',
+        'https://graphic-prepaid-tool-andy.trycloudflare.com/admin/settings/integrations/github',
     })
 
     expect(getPublicOriginFromHeaders(headers, 'http://localhost:3000/oauth/github/connect')).toBe(
-      'https://vacation-tests-takes-personnel.trycloudflare.com'
+      'https://graphic-prepaid-tool-andy.trycloudflare.com'
     )
   })
 
@@ -43,12 +43,12 @@ describe('OAuth public origin resolution', () => {
       headers: {
         host: 'localhost:3000',
         referer:
-          'https://vacation-tests-takes-personnel.trycloudflare.com/admin/settings/integrations/github',
+          'https://graphic-prepaid-tool-andy.trycloudflare.com/admin/settings/integrations/github',
       },
     })
 
     expect(buildCallbackUri('github', request)).toBe(
-      'https://vacation-tests-takes-personnel.trycloudflare.com/oauth/github/callback'
+      'https://graphic-prepaid-tool-andy.trycloudflare.com/oauth/github/callback'
     )
   })
 })

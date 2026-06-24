@@ -75,10 +75,10 @@ export const posts = pgTable(
     // Pinned comment as official response
     // References a team member's root-level comment that serves as the official response
     pinnedCommentId: typeIdColumnNullable('comment')('pinned_comment_id'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     // Soft delete support
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
     deletedByPrincipalId: typeIdColumnNullable('principal')('deleted_by_principal_id').references(
       () => principal.id,
       { onDelete: 'set null' }
@@ -95,7 +95,7 @@ export const posts = pgTable(
     widgetMetadata: jsonb('widget_metadata').$type<Record<string, string>>(),
     // Merge/deduplication: points to the canonical post this was merged into
     canonicalPostId: typeIdColumnNullable('post')('canonical_post_id'),
-    mergedAt: timestamp('merged_at', { withTimezone: true }),
+    mergedAt: timestamp('merged_at', { withTimezone: true, precision: 3 }),
     mergedByPrincipalId: typeIdColumnNullable('principal')('merged_by_principal_id').references(
       () => principal.id,
       { onDelete: 'set null' }
@@ -109,7 +109,7 @@ export const posts = pgTable(
     embedding: vector('embedding'),
     // Track model version for future upgrades (allows re-embedding without data loss)
     embeddingModel: text('embedding_model'),
-    embeddingUpdatedAt: timestamp('embedding_updated_at', { withTimezone: true }),
+    embeddingUpdatedAt: timestamp('embedding_updated_at', { withTimezone: true, precision: 3 }),
     // AI-generated post summary (structured JSON for PM triage)
     summaryJson: jsonb('summary_json').$type<{
       summary: string
@@ -117,10 +117,10 @@ export const posts = pgTable(
       nextSteps: string[]
     }>(),
     summaryModel: text('summary_model'),
-    summaryUpdatedAt: timestamp('summary_updated_at', { withTimezone: true }),
+    summaryUpdatedAt: timestamp('summary_updated_at', { withTimezone: true, precision: 3 }),
     summaryCommentCount: integer('summary_comment_count'),
     // Merge suggestion staleness tracking
-    mergeCheckedAt: timestamp('merge_checked_at', { withTimezone: true }),
+    mergeCheckedAt: timestamp('merge_checked_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     index('posts_board_id_idx').on(table.boardId),
@@ -218,8 +218,8 @@ export const votes = pgTable(
       () => principal.id,
       { onDelete: 'set null' }
     ),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('votes_post_id_idx').on(table.postId),
@@ -258,10 +258,10 @@ export const comments = pgTable(
       () => postStatuses.id,
       { onDelete: 'set null' }
     ),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }),
     // Soft delete support
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
     // Who initiated the deletion (self-delete vs team-removed)
     deletedByPrincipalId: typeIdColumnNullable('principal')('deleted_by_principal_id').references(
       () => principal.id,
@@ -303,7 +303,7 @@ export const commentReactions = pgTable(
       .notNull()
       .references(() => principal.id, { onDelete: 'cascade' }),
     emoji: text('emoji').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('comment_reactions_comment_id_idx').on(table.commentId),
@@ -326,7 +326,7 @@ export const postEditHistory = pgTable(
     previousTitle: text('previous_title').notNull(),
     previousContent: text('previous_content').notNull(),
     previousContentJson: jsonb('previous_content_json').$type<TiptapContent>(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('post_edit_history_post_id_idx').on(table.postId),
@@ -346,7 +346,7 @@ export const commentEditHistory = pgTable(
       .references(() => principal.id, { onDelete: 'set null' }),
     previousContent: text('previous_content').notNull(),
     previousContentJson: jsonb('previous_content_json').$type<TiptapContent>(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('comment_edit_history_comment_id_idx').on(table.commentId),
@@ -367,7 +367,7 @@ export const postNotes = pgTable(
       .notNull()
       .references(() => principal.id, { onDelete: 'restrict' }),
     content: text('content').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     index('post_notes_post_id_idx').on(table.postId),

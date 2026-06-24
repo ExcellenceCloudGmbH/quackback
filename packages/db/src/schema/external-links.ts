@@ -23,7 +23,7 @@ export const postExternalLinks = pgTable(
     externalDisplayId: text('external_display_id'),
     externalUrl: text('external_url'),
     status: varchar('status', { length: 20 }).notNull().default('active'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     foreignKey({

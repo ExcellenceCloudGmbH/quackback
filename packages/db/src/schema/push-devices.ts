@@ -25,8 +25,10 @@ export const pushDevices = pgTable(
     token: text('token').notNull(),
     platform: text('platform', { enum: ['ios', 'android'] }).notNull(),
     // Bumped on every re-register so stale tokens can be pruned later.
-    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).defaultNow().notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true, precision: 3 })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('push_devices_token_idx').on(table.token),

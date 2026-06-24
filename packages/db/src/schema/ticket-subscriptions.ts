@@ -31,11 +31,11 @@ export const ticketSubscriptions = pgTable(
     notifyParticipants: boolean('notify_participants').default(false).notNull(),
     notifyShares: boolean('notify_shares').default(false).notNull(),
     notifySla: boolean('notify_sla').default(true).notNull(),
-    mutedUntil: timestamp('muted_until', { withTimezone: true }),
+    mutedUntil: timestamp('muted_until', { withTimezone: true, precision: 3 }),
     // CHECK ∈ ('auto_assigned','auto_participant','auto_team_member','manual')
     source: text('source').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     uniqueIndex('ticket_subscriptions_unique').on(table.ticketId, table.principalId),

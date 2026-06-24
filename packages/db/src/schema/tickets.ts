@@ -109,22 +109,24 @@ export const tickets = pgTable(
     /** SLA policy bound at creation time (Phase 5). FK added by migration 0052. */
     slaPolicyId: typeIdColumnNullable('sla_pol')('sla_policy_id'),
     /** Lifecycle timestamps. */
-    firstResponseAt: timestamp('first_response_at', { withTimezone: true }),
-    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
-    reopenedAt: timestamp('reopened_at', { withTimezone: true }),
-    closedAt: timestamp('closed_at', { withTimezone: true }),
+    firstResponseAt: timestamp('first_response_at', { withTimezone: true, precision: 3 }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, precision: 3 }),
+    reopenedAt: timestamp('reopened_at', { withTimezone: true, precision: 3 }),
+    closedAt: timestamp('closed_at', { withTimezone: true, precision: 3 }),
     createdByPrincipalId: typeIdColumnNullable('principal')('created_by_principal_id').references(
       () => principal.id,
       { onDelete: 'set null' }
     ),
     /** Bumped on every meaningful change; powers queue ordering. */
-    lastActivityAt: timestamp('last_activity_at', { withTimezone: true }).defaultNow().notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    lastActivityAt: timestamp('last_activity_at', { withTimezone: true, precision: 3 })
+      .defaultNow()
+      .notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
     deletedByPrincipalId: typeIdColumnNullable('principal')('deleted_by_principal_id').references(
       () => principal.id,
       { onDelete: 'set null' }
@@ -174,13 +176,13 @@ export const ticketThreads = pgTable(
       () => teams.id,
       { onDelete: 'set null' }
     ),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    editedAt: timestamp('edited_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    editedAt: timestamp('edited_at', { withTimezone: true, precision: 3 }),
     editedByPrincipalId: typeIdColumnNullable('principal')('edited_by_principal_id').references(
       () => principal.id,
       { onDelete: 'set null' }
     ),
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (t) => [
     index('ticket_threads_ticket_id_created_at_idx').on(t.ticketId, t.createdAt),
@@ -213,7 +215,7 @@ export const ticketAttachments = pgTable(
     /** S3-style storage key (set by the existing upload pipeline). */
     storageKey: text('storage_key').notNull(),
     publicUrl: text('public_url'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (t) => [index('ticket_attachments_thread_idx').on(t.threadId)]
 )
@@ -240,7 +242,7 @@ export const ticketParticipants = pgTable(
       () => principal.id,
       { onDelete: 'set null' }
     ),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (t) => [
     uniqueIndex('ticket_participants_ticket_principal_idx')
@@ -275,8 +277,8 @@ export const ticketShares = pgTable(
       () => principal.id,
       { onDelete: 'set null' }
     ),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true, precision: 3 }),
     revokedByPrincipalId: typeIdColumnNullable('principal')('revoked_by_principal_id').references(
       () => principal.id,
       { onDelete: 'set null' }
@@ -306,7 +308,7 @@ export const ticketActivity = pgTable(
     }),
     type: text('type').notNull(),
     metadata: jsonb('metadata').notNull().default({}),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (t) => [
     index('ticket_activity_ticket_id_created_idx').on(t.ticketId, t.createdAt),

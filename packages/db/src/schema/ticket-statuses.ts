@@ -29,8 +29,8 @@ export const ticketStatuses = pgTable(
     position: integer('position').notNull().default(0),
     isDefault: boolean('is_default').notNull().default(false),
     isSystem: boolean('is_system').notNull().default(false),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (t) => [
     index('ticket_statuses_position_idx').on(t.category, t.position),

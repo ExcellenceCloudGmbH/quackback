@@ -28,13 +28,13 @@ export const mergeSuggestions = pgTable(
     llmReasoning: text('llm_reasoning'),
     llmModel: text('llm_model'),
     // Resolution
-    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true, precision: 3 }),
     resolvedByPrincipalId: typeIdColumnNullable('principal')('resolved_by_principal_id').references(
       () => principal.id,
       { onDelete: 'set null' }
     ),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).notNull().defaultNow(),
   },
   (t) => [
     index('merge_suggestions_source_post_idx').on(t.sourcePostId),

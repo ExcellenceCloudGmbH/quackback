@@ -42,13 +42,13 @@ export const webhooks = pgTable(
     /** Last error message from failed delivery */
     lastError: text('last_error'),
     /** When the webhook was last triggered */
-    lastTriggeredAt: timestamp('last_triggered_at', { withTimezone: true }),
+    lastTriggeredAt: timestamp('last_triggered_at', { withTimezone: true, precision: 3 }),
     /** When the webhook was created */
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     /** When the webhook was last updated */
-    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     /** Soft delete support */
-    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+    deletedAt: timestamp('deleted_at', { withTimezone: true, precision: 3 }),
   },
   (table) => [
     // Index for finding active webhooks

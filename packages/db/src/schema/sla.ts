@@ -99,9 +99,9 @@ export const businessHours = pgTable(
     schedule: jsonb('schedule').$type<BusinessHoursWeek>().notNull(),
     /** Holiday dates (closed all-day). */
     holidays: jsonb('holidays').$type<BusinessHoursHoliday[]>().notNull().default([]),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    archivedAt: timestamp('archived_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
@@ -146,9 +146,9 @@ export const slaPolicies = pgTable(
     ),
     pauseOnPending: boolean('pause_on_pending').notNull().default(true),
     pauseOnOnHold: boolean('pause_on_on_hold').notNull().default(true),
-    archivedAt: timestamp('archived_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    archivedAt: timestamp('archived_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
@@ -186,7 +186,7 @@ export const slaTargets = pgTable(
       .references(() => slaPolicies.id, { onDelete: 'cascade' }),
     kind: text('kind', { enum: SLA_TARGET_KINDS }).notNull(),
     minutes: integer('minutes').notNull(),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (t) => [
     uniqueIndex('sla_targets_policy_kind_idx').on(t.policyId, t.kind),
@@ -216,17 +216,17 @@ export const ticketSlaClocks = pgTable(
     state: text('state', { enum: SLA_CLOCK_STATES }).notNull().default('running'),
     /** Original target duration captured at clock-creation time. */
     targetMinutes: integer('target_minutes').notNull(),
-    startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
-    dueAt: timestamp('due_at', { withTimezone: true }).notNull(),
-    pausedAt: timestamp('paused_at', { withTimezone: true }),
+    startedAt: timestamp('started_at', { withTimezone: true, precision: 3 }).notNull(),
+    dueAt: timestamp('due_at', { withTimezone: true, precision: 3 }).notNull(),
+    pausedAt: timestamp('paused_at', { withTimezone: true, precision: 3 }),
     /** Cumulative ms spent paused across all pause/resume cycles. */
     accumulatedPausedMs: bigint('accumulated_paused_ms', { mode: 'number' }).notNull().default(0),
-    breachedAt: timestamp('breached_at', { withTimezone: true }),
-    metAt: timestamp('met_at', { withTimezone: true }),
+    breachedAt: timestamp('breached_at', { withTimezone: true, precision: 3 }),
+    metAt: timestamp('met_at', { withTimezone: true, precision: 3 }),
     /** Anti-spam anchor for escalations. */
-    lastEscalatedAt: timestamp('last_escalated_at', { withTimezone: true }),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    lastEscalatedAt: timestamp('last_escalated_at', { withTimezone: true, precision: 3 }),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
@@ -270,8 +270,8 @@ export const escalationRules = pgTable(
       .notNull()
       .default(sql`'{in_app}'::text[]`),
     enabled: boolean('enabled').notNull().default(true),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
-    updatedAt: timestamp('updated_at', { withTimezone: true })
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true, precision: 3 })
       .defaultNow()
       .$onUpdate(() => new Date())
       .notNull(),
@@ -304,7 +304,7 @@ export const slaEscalationLog = pgTable(
     ruleId: typeIdColumnNullable('esc_rule')('rule_id').references(() => escalationRules.id, {
       onDelete: 'set null',
     }),
-    firedAt: timestamp('fired_at', { withTimezone: true }).defaultNow().notNull(),
+    firedAt: timestamp('fired_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
     recipientPrincipalIds: text('recipient_principal_ids')
       .array()
       .notNull()

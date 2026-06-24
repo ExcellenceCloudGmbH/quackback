@@ -36,7 +36,7 @@ export const integrationSyncLog = pgTable(
     errorMessage: text('error_message'),
     durationMs: integer('duration_ms'),
     metadata: jsonb('metadata'),
-    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true, precision: 3 }).defaultNow().notNull(),
   },
   (table) => [
     foreignKey({

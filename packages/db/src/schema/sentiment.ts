@@ -17,7 +17,9 @@ export const postSentiment = pgTable(
     sentiment: text('sentiment', { enum: ['positive', 'neutral', 'negative'] }).notNull(),
     confidence: real('confidence').notNull(),
     model: text('model').notNull(),
-    processedAt: timestamp('processed_at', { withTimezone: true }).defaultNow().notNull(),
+    processedAt: timestamp('processed_at', { withTimezone: true, precision: 3 })
+      .defaultNow()
+      .notNull(),
     inputTokens: integer('input_tokens'),
     outputTokens: integer('output_tokens'),
   },
