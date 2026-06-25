@@ -164,6 +164,10 @@ export const consumeRecoveryCodeFn = createServerFn({ method: 'POST' })
       callbackPath: '/admin',
       errorCallbackPath: '/admin/login',
       portalUrl: resolvePublicBaseUrl(headers),
+      // Unified login with the `/admin` callback (team break-glass form).
+      // Better-Auth merges its `error` param via `URL.searchParams`, so the
+      // `?callbackUrl=` query survives on a failed verify (joined with `&`).
+      errorCallbackPath: '/auth/login?callbackUrl=/admin',
     })
 
     await recordAuditEvent({
