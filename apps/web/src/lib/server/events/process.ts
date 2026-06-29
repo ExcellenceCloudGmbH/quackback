@@ -322,7 +322,15 @@ async function handleDelayedChangelogPublish(hookConfig: Record<string, unknown>
   })
 
   if (!entry || !entry.publishedAt || entry.publishedAt > new Date()) {
-    log.debug({ changelog_id: changelogId }, 'skipping delayed changelog publish, no longer published')
+    log.debug(
+      { changelog_id: changelogId },
+      'skipping delayed changelog publish, no longer published'
+    )
+    return
+  }
+
+  if (entry.notifiedAt) {
+    log.debug({ changelog_id: changelogId }, 'skipping delayed changelog publish, already notified')
     return
   }
 
@@ -349,6 +357,12 @@ async function handleDelayedChangelogPublish(hookConfig: Record<string, unknown>
     publishedAt: entry.publishedAt,
     linkedPostCount: linkedPosts.length,
   })
+
+  // Record that the announcement went out so re-runs and the reconciler skip it.
+  await db
+    .update(changelogEntries)
+    .set({ notifiedAt: new Date() })
+    .where(eq(changelogEntries.id, entry.id))
 }
 
 /**

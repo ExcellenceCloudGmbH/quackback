@@ -103,6 +103,7 @@ export async function createChangelog(
       principalId: author.principalId,
       publishedAt,
       ...(displayDate != null && { displayDate }),
+      ...(input.publishState.type === 'published' && { notifiedAt: new Date() }),
     })
     .returning()
 
@@ -171,6 +172,11 @@ export async function updateChangelog(
     }
   }
 
+  // A publish notification fires (and notifiedAt is stamped) only the first
+  // time an entry goes live. Re-saves of an already-announced entry never
+  // re-notify, and the reconciler skips anything that already has notifiedAt.
+  const willNotify = input.publishState?.type === 'published' && existing.notifiedAt == null
+
   // Build update data
   const updateData: Record<string, unknown> = {
     updatedAt: new Date(),
@@ -200,6 +206,10 @@ export async function updateChangelog(
     updateData.publishedAt = getPublishedAtFromState(input.publishState)
   }
 
+  if (willNotify) {
+    updateData.notifiedAt = new Date()
+  }
+
   // Update the entry
   await db.update(changelogEntries).set(updateData).where(eq(changelogEntries.id, id))
 
@@ -222,16 +232,19 @@ export async function updateChangelog(
       : { type: 'service' as const, displayName: 'system' }
 
     if (input.publishState.type === 'published') {
-      // Cancel any pending scheduled job, then dispatch immediately
+      // Cancel any pending scheduled job, then dispatch immediately, but only
+      // on the first publish so re-saves of a live entry don't re-notify.
       cancelScheduledDispatch(jobId).catch(() => {})
-      const updated = await getChangelogById(id)
-      dispatchChangelogPublished(actor, {
-        id,
-        title: updated.title,
-        contentPreview: updated.content.slice(0, 200),
-        publishedAt: new Date(),
-        linkedPostCount: updated.linkedPosts.length,
-      }).catch((err) => log.error({ err }, 'failed to dispatch changelog published event'))
+      if (willNotify) {
+        const updated = await getChangelogById(id)
+        dispatchChangelogPublished(actor, {
+          id,
+          title: updated.title,
+          contentPreview: updated.content.slice(0, 200),
+          publishedAt: new Date(),
+          linkedPostCount: updated.linkedPosts.length,
+        }).catch((err) => log.error({ err }, 'failed to dispatch changelog published event'))
+      }
     } else if (input.publishState.type === 'scheduled') {
       const newPublishedAt = getPublishedAtFromState(input.publishState)
       if (newPublishedAt) {
