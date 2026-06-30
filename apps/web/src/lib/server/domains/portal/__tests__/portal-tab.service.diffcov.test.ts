@@ -8,7 +8,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { UserId, SegmentId } from '@quackback/ids'
-import type { PortalTabConfig } from '../types'
+import type { PortalTabConfig } from '@/lib/shared/portal-tabs'
 
 const mockLoggerError = vi.fn()
 

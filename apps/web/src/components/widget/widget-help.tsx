@@ -6,6 +6,10 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { MagnifyingGlassIcon, QuestionMarkCircleIcon } from '@heroicons/react/24/outline'
 import { publicHelpCenterQueries } from '@/lib/client/queries/help-center'
 import { CategoryIcon } from '@/components/help-center/category-icon'
+import {
+  buildCategoryTree,
+  type CategoryTreeNode,
+} from '@/components/help-center/help-center-utils'
 import { WidgetMessagesSection } from './widget-messages-section'
 import { WidgetSupportCard } from './widget-support-card'
 import type { WidgetSupportCategory } from '@/lib/client/widget/tickets-api'
@@ -17,6 +21,83 @@ interface WidgetHelpArticle {
   title: string
   content: string
   category: { id: string; slug: string; name: string }
+}
+
+interface WidgetHelpCategory {
+  id: string
+  parentId?: string | null
+  name: string
+  icon: string | null
+  description?: string | null
+  articleCount: number
+}
+
+/**
+ * Renders one category and its sub-categories recursively. Root categories
+ * (depth 0) render as cards; nested children render as lighter, indented rows
+ * with a connecting guide line so the hierarchy is visually clear. Works for
+ * any depth.
+ */
+function WidgetCategoryNode({
+  node,
+  depth,
+  onSelect,
+}: {
+  node: CategoryTreeNode<WidgetHelpCategory>
+  depth: number
+  onSelect?: (categoryId: string, categoryName: string, categoryIcon: string | null) => void
+}) {
+  const { category: cat, children } = node
+  const isRoot = depth === 0
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => onSelect?.(cat.id, cat.name, cat.icon)}
+        className={
+          'group w-full text-start flex items-start gap-2.5 rounded-lg cursor-pointer transition-all ' +
+          (isRoot
+            ? 'border border-border/50 bg-card p-3 hover:border-border hover:bg-muted/30'
+            : 'px-2.5 py-1.5 hover:bg-muted/30')
+        }
+      >
+        <CategoryIcon
+          icon={cat.icon}
+          className={isRoot ? 'w-5 h-5 shrink-0 mt-0.5' : 'w-4 h-4 shrink-0 mt-0.5'}
+        />
+        <div className="min-w-0 flex-1">
+          <h3
+            className={
+              'text-foreground group-hover:text-primary transition-colors line-clamp-1 ' +
+              (isRoot ? 'text-sm font-semibold' : 'text-[13px] font-medium')
+            }
+          >
+            {cat.name}
+          </h3>
+          {isRoot && cat.description && (
+            <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-2 leading-relaxed break-words">
+              {cat.description}
+            </p>
+          )}
+          <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+            {cat.articleCount} {cat.articleCount === 1 ? 'article' : 'articles'}
+          </p>
+        </div>
+      </button>
+      {children.length > 0 && (
+        <div className="mt-1 ms-3.5 ps-2 border-s border-border/40 space-y-0.5">
+          {children.map((child) => (
+            <WidgetCategoryNode
+              key={child.category.id}
+              node={child}
+              depth={depth + 1}
+              onSelect={onSelect}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 interface WidgetHelpProps {
@@ -54,6 +135,11 @@ export function WidgetHelp({
   // selection is configured. Do NOT re-filter by hierarchy here — that would
   // drop explicitly-selected sub-categories whose parent is also selected.
   const visibleCategories = categoriesQuery.data ?? []
+  // Build the parent/child tree so the widget represents the category hierarchy
+  // instead of a flat list. Orphaned children (a selected sub-category whose
+  // parent isn't in the set) are promoted to roots, so nothing is hidden.
+  const categoryTree = buildCategoryTree<WidgetHelpCategory>(visibleCategories)
+  const hasHierarchy = categoryTree.some((node) => node.children.length > 0)
 
   const doSearch = useCallback(async (query: string) => {
     if (!query.trim()) {
@@ -156,9 +242,12 @@ export function WidgetHelp({
                 </div>
               )}
 
-              {!categoriesQuery.isLoading && visibleCategories.length > 0 && (
+              {/* Flat (no hierarchy present) → keep the compact 2-column grid.
+                  Hierarchy present → render a nested tree so parent/child
+                  relationships are visible. */}
+              {!categoriesQuery.isLoading && categoryTree.length > 0 && !hasHierarchy && (
                 <div className="grid grid-cols-2 gap-2 pt-1">
-                  {visibleCategories.map((cat) => (
+                  {categoryTree.map(({ category: cat }) => (
                     <button
                       key={cat.id}
                       type="button"
@@ -170,7 +259,7 @@ export function WidgetHelp({
                         {cat.name}
                       </h3>
                       {cat.description && (
-                        <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-2 leading-relaxed">
+                        <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-2 leading-relaxed break-words">
                           {cat.description}
                         </p>
                       )}
@@ -178,6 +267,19 @@ export function WidgetHelp({
                         {cat.articleCount} {cat.articleCount === 1 ? 'article' : 'articles'}
                       </p>
                     </button>
+                  ))}
+                </div>
+              )}
+
+              {!categoriesQuery.isLoading && categoryTree.length > 0 && hasHierarchy && (
+                <div className="space-y-2 pt-1">
+                  {categoryTree.map((node) => (
+                    <WidgetCategoryNode
+                      key={node.category.id}
+                      node={node}
+                      depth={0}
+                      onSelect={onCategorySelect}
+                    />
                   ))}
                 </div>
               )}

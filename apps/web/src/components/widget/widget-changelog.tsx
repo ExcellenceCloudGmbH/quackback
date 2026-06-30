@@ -70,15 +70,31 @@ export function WidgetChangelog({ onEntrySelect }: WidgetChangelogProps) {
               onClick={() => onEntrySelect?.(entry.id)}
               className="w-full text-start rounded-lg hover:bg-muted/30 transition-colors px-2.5 py-2.5 cursor-pointer"
             >
-              <div className="flex items-center gap-2 mb-1">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mb-1">
                 <time className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wide">
                   {formatDate(entry.publishedAt)}
                 </time>
+                {/* Surface the changelog taxonomy (category + product) — these
+                    were returned by the server but never shown in the widget. */}
+                {entry.category && (
+                  <span className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    <span
+                      className="h-1.5 w-1.5 shrink-0 rounded-full"
+                      style={{ backgroundColor: entry.category.color ?? 'var(--muted-foreground)' }}
+                    />
+                    <span className="truncate">{entry.category.name}</span>
+                  </span>
+                )}
+                {entry.product && (
+                  <span className="inline-flex max-w-full items-center rounded-full border border-border/60 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground/80">
+                    <span className="truncate">{entry.product.name}</span>
+                  </span>
+                )}
               </div>
-              <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug">
+              <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug break-words">
                 {entry.title}
               </h3>
-              <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2 leading-relaxed">
+              <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2 leading-relaxed break-words">
                 {contentPreview(entry.content, 120)}
               </p>
             </button>

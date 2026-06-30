@@ -4,6 +4,7 @@ import { FormattedMessage } from 'react-intl'
 import { z } from 'zod'
 import { RoadmapBoard } from '@/components/public/roadmap-board'
 import { portalQueries } from '@/lib/client/queries/portal'
+import { resolvePortalLandingTab, type PortalTabConfig } from '@/lib/shared/portal-tabs'
 
 const searchSchema = z.object({
   roadmap: z.string().optional(),
@@ -16,12 +17,12 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute('/_portal/roadmap/')({
   validateSearch: searchSchema,
-  beforeLoad: async ({ context }) => {
-    // Check if roadmap tab is enabled for the user
-    const parentData = context as any
-    const enabledTabs = parentData.enabledTabs || {}
+  beforeLoad: ({ context }) => {
+    // Disabled tab → bounce to the resolved landing tab (NOT a hardcoded '/',
+    // which would loop when feedback itself is disabled).
+    const enabledTabs = (context as { enabledTabs?: PortalTabConfig }).enabledTabs ?? {}
     if (enabledTabs.roadmap === false) {
-      throw redirect({ to: '/' })
+      throw redirect({ to: resolvePortalLandingTab(enabledTabs).path })
     }
   },
   loader: async ({ context }) => {

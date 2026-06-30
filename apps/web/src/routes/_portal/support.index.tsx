@@ -9,18 +9,18 @@ import { TimeAgo } from '@/components/ui/time-ago'
 import { useAuthPopoverSafe } from '@/components/auth/auth-popover-context'
 import { getMyConversationsFn, getSupportSurfaceAccessFn } from '@/lib/server/functions/chat'
 import { PORTAL_MY_CONVERSATIONS_QUERY_KEY } from '@/lib/client/queries/portal-support'
+import { resolvePortalLandingTab, type PortalTabConfig } from '@/lib/shared/portal-tabs'
 
 export const Route = createFileRoute('/_portal/support/')({
   beforeLoad: async ({ context }) => {
-    // Check if support tab is enabled for the user
-    const parentData = context as any
-    const enabledTabs = parentData.enabledTabs || {}
+    const enabledTabs = (context as { enabledTabs?: PortalTabConfig }).enabledTabs ?? {}
+    const landingPath = resolvePortalLandingTab(enabledTabs).path
     if (enabledTabs.support === false) {
-      throw redirect({ to: '/' })
+      throw redirect({ to: landingPath })
     }
 
     const access = await getSupportSurfaceAccessFn({ data: { surface: 'portal' } })
-    if (!access.granted) throw redirect({ to: '/' })
+    if (!access.granted) throw redirect({ to: landingPath })
   },
   component: SupportListPage,
 })

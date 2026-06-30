@@ -1,14 +1,13 @@
 import { describe, it, expect } from 'vitest'
+import { parsePortalTabConfig, serializePortalTabConfig } from '../types'
 import {
-  parsePortalTabConfig,
-  serializePortalTabConfig,
   getDefaultPortalTabConfig,
   mergeTabConfigs,
   intersectTabConfigs,
   resolvePortalLandingTab,
   PORTAL_TAB_PATHS,
   type PortalTabConfig,
-} from '../types'
+} from '@/lib/shared/portal-tabs'
 
 describe('PortalTabConfig utilities', () => {
   describe('parsePortalTabConfig', () => {

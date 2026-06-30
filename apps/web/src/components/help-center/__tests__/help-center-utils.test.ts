@@ -4,6 +4,7 @@ import {
   getActiveCategory,
   getSubcategories,
   buildCategoryBreadcrumbs,
+  buildCategoryTree,
 } from '../help-center-utils'
 
 interface TestCategory {
@@ -12,6 +13,68 @@ interface TestCategory {
   slug: string
   name: string
 }
+
+describe('buildCategoryTree', () => {
+  const flatten = (
+    nodes: ReturnType<typeof buildCategoryTree<TestCategory>>
+  ): Array<{ id: string; childIds: string[] }> =>
+    nodes.map((n) => ({ id: n.category.id, childIds: n.children.map((c) => c.category.id) }))
+
+  it('nests children under their parent (real tree)', () => {
+    const cats: TestCategory[] = [
+      { id: 'p', parentId: null, slug: 'p', name: 'Parent' },
+      { id: 'c1', parentId: 'p', slug: 'c1', name: 'Child 1' },
+      { id: 'c2', parentId: 'p', slug: 'c2', name: 'Child 2' },
+      { id: 'root2', parentId: null, slug: 'r2', name: 'Root 2' },
+    ]
+    expect(flatten(buildCategoryTree(cats))).toEqual([
+      { id: 'p', childIds: ['c1', 'c2'] },
+      { id: 'root2', childIds: [] },
+    ])
+  })
+
+  it('promotes an orphaned child (parent not in the set) to a root', () => {
+    // Curated widget: only a sub-category was selected; its parent is absent.
+    const cats: TestCategory[] = [{ id: 'c', parentId: 'missing', slug: 'c', name: 'Child' }]
+    expect(flatten(buildCategoryTree(cats))).toEqual([{ id: 'c', childIds: [] }])
+  })
+
+  it('keeps a selected parent AND its selected child (the reported case)', () => {
+    const cats: TestCategory[] = [
+      { id: 'p', parentId: null, slug: 'p', name: 'Parent' },
+      { id: 'c', parentId: 'p', slug: 'c', name: 'Child' },
+    ]
+    expect(flatten(buildCategoryTree(cats))).toEqual([{ id: 'p', childIds: ['c'] }])
+  })
+
+  it('handles arbitrary depth', () => {
+    const cats: TestCategory[] = [
+      { id: 'a', parentId: null, slug: 'a', name: 'A' },
+      { id: 'b', parentId: 'a', slug: 'b', name: 'B' },
+      { id: 'c', parentId: 'b', slug: 'c', name: 'C' },
+    ]
+    const tree = buildCategoryTree(cats)
+    expect(tree[0].category.id).toBe('a')
+    expect(tree[0].children[0].category.id).toBe('b')
+    expect(tree[0].children[0].children[0].category.id).toBe('c')
+  })
+
+  it('terminates on cyclic data (no root) instead of looping forever', () => {
+    const cats: TestCategory[] = [
+      { id: 'x', parentId: 'y', slug: 'x', name: 'X' },
+      { id: 'y', parentId: 'x', slug: 'y', name: 'Y' },
+    ]
+    // Both reference each other and neither is a root (each parent is present),
+    // so there is no entry point — the result is empty but, crucially, the call
+    // returns (no infinite recursion). Cycles are DB-impossible; this is just a
+    // defensive guarantee.
+    expect(buildCategoryTree(cats)).toEqual([])
+  })
+
+  it('returns empty array for empty input', () => {
+    expect(buildCategoryTree([])).toEqual([])
+  })
+})
 
 describe('getTopLevelCategories', () => {
   it('filters out categories with a parentId', () => {

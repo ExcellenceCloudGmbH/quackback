@@ -18,11 +18,10 @@ import type { UserId, SegmentId } from '@quackback/ids'
 import { logger } from '@/lib/server/logger'
 import {
   type PortalTabConfig,
-  parsePortalTabConfig,
-  serializePortalTabConfig,
   getDefaultPortalTabConfig,
   mergeTabConfigs,
-} from './types'
+} from '@/lib/shared/portal-tabs'
+import { parsePortalTabConfig, serializePortalTabConfig } from './types'
 
 const log = logger.child({ component: 'portal-tabs' })
 

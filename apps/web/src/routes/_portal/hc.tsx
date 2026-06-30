@@ -1,13 +1,12 @@
 import { createFileRoute, notFound, Outlet, redirect } from '@tanstack/react-router'
 import type { FeatureFlags, HelpCenterConfig } from '@/lib/shared/types/settings'
+import { resolvePortalLandingTab, type PortalTabConfig } from '@/lib/shared/portal-tabs'
 
 export const Route = createFileRoute('/_portal/hc')({
   beforeLoad: ({ context }) => {
-    // Check if helpCenter tab is enabled for the user
-    const parentData = context as any
-    const enabledTabs = parentData.enabledTabs || {}
+    const enabledTabs = (context as { enabledTabs?: PortalTabConfig }).enabledTabs ?? {}
     if (enabledTabs.helpCenter === false) {
-      throw redirect({ to: '/' })
+      throw redirect({ to: resolvePortalLandingTab(enabledTabs).path })
     }
 
     const { settings } = context

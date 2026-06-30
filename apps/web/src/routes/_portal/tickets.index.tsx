@@ -28,6 +28,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import { resolvePortalLandingTab, type PortalTabConfig } from '@/lib/shared/portal-tabs'
 
 const searchSchema = z.object({
   status: z.enum(['open', 'pending', 'solved', 'closed', 'all']).optional().default('open'),
@@ -52,12 +53,10 @@ function plainTextFromJson(json: JSONContent | null): string {
 export const Route = createFileRoute('/_portal/tickets/')({
   validateSearch: searchSchema,
   loaderDeps: ({ search }) => ({ status: search.status }),
-  beforeLoad: async ({ context }) => {
-    // Check if myTickets tab is enabled for the user
-    const parentData = context as any
-    const enabledTabs = parentData.enabledTabs || {}
+  beforeLoad: ({ context }) => {
+    const enabledTabs = (context as { enabledTabs?: PortalTabConfig }).enabledTabs ?? {}
     if (enabledTabs.myTickets === false) {
-      throw redirect({ to: '/' })
+      throw redirect({ to: resolvePortalLandingTab(enabledTabs).path })
     }
   },
   loader: async ({ context, deps }) => {

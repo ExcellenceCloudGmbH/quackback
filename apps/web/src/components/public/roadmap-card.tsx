@@ -24,10 +24,18 @@ export function RoadmapCard({ id, title, voteCount, board }: RoadmapCardProps): 
         <span className="text-sm font-semibold text-foreground">{voteCount}</span>
       </div>
       <div className="roadmap-card__content flex-1 min-w-0 p-3">
-        <p className="text-sm font-medium text-foreground line-clamp-2">{title}</p>
-        <Badge variant="secondary" className="mt-2 text-[11px] inline-flex items-center gap-0.5">
-          <Squares2X2Icon className="h-3 w-3 text-muted-foreground/40" />
-          {board.name}
+        {/* break-words so a long, space-less title wraps within the fixed-width
+            column instead of overflowing horizontally (no inner scroll exists);
+            line-clamp keeps the card compact — the full title opens on click. */}
+        <p className="text-sm font-medium text-foreground line-clamp-2 break-words [overflow-wrap:anywhere]">
+          {title}
+        </p>
+        <Badge
+          variant="secondary"
+          className="mt-2 max-w-full text-[11px] inline-flex items-center gap-0.5"
+        >
+          <Squares2X2Icon className="h-3 w-3 shrink-0 text-muted-foreground/40" />
+          <span className="truncate">{board.name}</span>
         </Badge>
       </div>
     </Link>

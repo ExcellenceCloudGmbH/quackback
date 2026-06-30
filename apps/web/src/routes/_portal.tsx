@@ -19,9 +19,18 @@ import {
 } from '@/lib/server/functions/portal-access'
 import { getSupportSurfaceAccessFn } from '@/lib/server/functions/chat'
 import { redactSettingsForClient } from '@/lib/shared/redact-portal-config'
-import type { PortalTabConfig } from '@/lib/server/domains/portal/types'
+import type { PortalTabConfig } from '@/lib/shared/portal-tabs'
 
 export const Route = createFileRoute('/_portal')({
+  // Resolve the effective portal tab config ONCE and stash it in router
+  // context, so every child route's beforeLoad guard can read it (and the
+  // layout loader/header reuse it). Anonymous visitors get the org config; this
+  // makes the org tab settings authoritative everywhere instead of leaking all
+  // tabs to the public nav.
+  beforeLoad: async (): Promise<{ enabledTabs: PortalTabConfig }> => {
+    const enabledTabs = (await getEffectivePortalTabConfigForCurrentUserFn()) as PortalTabConfig
+    return { enabledTabs }
+  },
   loader: async ({ context }) => {
     const { session, settings, userRole, baseUrl } = context
 
@@ -120,10 +129,10 @@ export const Route = createFileRoute('/_portal')({
     const { locale, messages } = await loadPortalIntl()
     const supportAccess = await getSupportSurfaceAccessFn({ data: { surface: 'portal' } })
 
-    // Fetch effective portal tab configuration for the current user
-    const enabledTabs: PortalTabConfig = session?.user
-      ? await getEffectivePortalTabConfigForCurrentUserFn()
-      : {}
+    // Resolved once in beforeLoad and threaded through context (shared with
+    // every child route guard).
+    const enabledTabs: PortalTabConfig =
+      (context as { enabledTabs?: PortalTabConfig }).enabledTabs ?? {}
 
     return {
       org: redactSettingsForClient(org),

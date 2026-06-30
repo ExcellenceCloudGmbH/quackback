@@ -8,6 +8,7 @@ import { Spinner } from '@/components/shared/spinner'
 import { FeedbackContainer } from '@/components/public/feedback/feedback-container'
 import { portalQueries } from '@/lib/client/queries/portal'
 import { votedPostsKeys } from '@/lib/client/hooks/use-portal-posts-query'
+import { resolvePortalLandingTab, type PortalTabConfig } from '@/lib/shared/portal-tabs'
 
 const searchSchema = z.object({
   board: z.string().optional(),
@@ -26,6 +27,22 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute('/_portal/')({
   validateSearch: searchSchema,
+  // Honor the configured default landing tab AND a disabled feedback tab. The
+  // tab config lives in router context (set by the _portal layout beforeLoad),
+  // so this resolves consistently for anon + authed. When the resolved landing
+  // tab isn't feedback (root), redirect there — this both implements the
+  // "default tab" setting and stops a disabled feedback tab from stranding
+  // visitors on the "Coming Soon" empty state. Runs in beforeLoad so we never
+  // load feedback data when we're going to redirect away.
+  beforeLoad: ({ context }) => {
+    const enabledTabs = (context as { enabledTabs?: PortalTabConfig }).enabledTabs
+    if (enabledTabs) {
+      const landing = resolvePortalLandingTab(enabledTabs)
+      if (landing.path !== '/') {
+        throw redirect({ to: landing.path })
+      }
+    }
+  },
   // Note: No loaderDeps - loader only runs on initial route load for SSR.
   // Client-side filter changes are handled by FeedbackContainer's usePublicPosts.
   // We access search params via location.search for initial SSR without triggering
@@ -35,16 +52,6 @@ export const Route = createFileRoute('/_portal/')({
 
     if (!org) {
       throw redirect({ to: '/onboarding' })
-    }
-
-    // Honor the configured default landing tab. When feedback is disabled (or
-    // another tab is chosen as the default), route visitors there instead of
-    // rendering the feedback "Coming Soon" empty state. Only redirect away from
-    // the root — landing.path === '/' means feedback is the intended landing.
-    const { getPortalLandingTabFn } = await import('@/lib/server/functions/portal')
-    const landing = await getPortalLandingTabFn()
-    if (landing.path !== '/') {
-      throw redirect({ to: landing.path })
     }
 
     // Parse search params for initial SSR (not using loaderDeps to avoid re-execution)

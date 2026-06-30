@@ -5,6 +5,7 @@ import { RssIcon } from '@heroicons/react/24/outline'
 import { Button } from '@/components/ui/button'
 import { PageHeader } from '@/components/shared/page-header'
 import { ChangelogListPublic } from '@/components/portal/changelog'
+import { resolvePortalLandingTab, type PortalTabConfig } from '@/lib/shared/portal-tabs'
 
 const searchSchema = z.object({
   category: z.string().optional(),
@@ -13,12 +14,10 @@ const searchSchema = z.object({
 
 export const Route = createFileRoute('/_portal/changelog/')({
   validateSearch: searchSchema,
-  beforeLoad: async ({ context }) => {
-    // Check if changelog tab is enabled for the user
-    const parentData = context as any
-    const enabledTabs = parentData.enabledTabs || {}
+  beforeLoad: ({ context }) => {
+    const enabledTabs = (context as { enabledTabs?: PortalTabConfig }).enabledTabs ?? {}
     if (enabledTabs.changelog === false) {
-      throw redirect({ to: '/' })
+      throw redirect({ to: resolvePortalLandingTab(enabledTabs).path })
     }
   },
   loader: async ({ context }) => {

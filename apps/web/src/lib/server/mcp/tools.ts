@@ -101,7 +101,7 @@ import {
   deleteSegmentTabOverrides,
   getAllSegmentTabOverrides,
 } from '@/lib/server/domains/portal/portal-tab.service'
-import type { PortalTabConfig } from '@/lib/server/domains/portal/types'
+import type { PortalTabConfig } from '@/lib/shared/portal-tabs'
 import {
   listWidgetApplications,
   upsertWidgetApplication,

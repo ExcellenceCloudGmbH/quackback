@@ -509,12 +509,15 @@ export const getEffectivePortalTabConfigForCurrentUserFn = createServerFn({
   method: 'GET',
 }).handler(async () => {
   const auth = await getOptionalAuth()
-  if (!auth?.user?.id) {
-    return {}
-  }
-
-  const { getEffectiveTabConfigForUser } = await import('@/lib/server/domains/portal/index.server')
-  return await getEffectiveTabConfigForUser(auth.user.id as UserId)
+  const { getEffectiveTabConfigForUser, getOrgPortalTabConfig } =
+    await import('@/lib/server/domains/portal/index.server')
+  // Anonymous visitors must still get the ORG-level tab config (not an empty
+  // object) — otherwise disabled tabs leak into the public nav and the route
+  // guards (which read this) never fire. Authenticated users get the per-user
+  // effective config (org defaults merged with their segment overrides).
+  return auth?.user?.id
+    ? await getEffectiveTabConfigForUser(auth.user.id as UserId)
+    : await getOrgPortalTabConfig()
 })
 
 /**
