@@ -148,7 +148,7 @@ export async function bulkChangeInbox(input: BulkChangeInboxInput): Promise<Bulk
       const [updated] = await db
         .update(tickets)
         .set({ inboxId: input.inboxId, lastActivityAt: new Date() })
-        .where(and(eq(tickets.id, ticketId), eq(tickets.updatedAt, t.updatedAt)))
+        .where(and(eq(tickets.id, ticketId), isNull(tickets.deletedAt)))
         .returning()
       if (!updated) {
         result.failed.push({ ticketId, reason: 'TICKET_STALE' })

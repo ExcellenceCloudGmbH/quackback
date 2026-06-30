@@ -453,15 +453,10 @@ export async function updateTicket(ticketId: TicketId, input: UpdateTicketInput)
   if (Object.keys(patch).length === 0) return existing
 
   patch.lastActivityAt = new Date()
-  const mergeStaleFieldUpdate = canMergeStaleFieldUpdate(input)
   const [updated] = await db
     .update(tickets)
     .set(patch)
-    .where(
-      mergeStaleFieldUpdate
-        ? and(eq(tickets.id, ticketId), isNull(tickets.deletedAt))
-        : and(eq(tickets.id, ticketId), eq(tickets.updatedAt, existing.updatedAt))
-    )
+    .where(and(eq(tickets.id, ticketId), isNull(tickets.deletedAt)))
     .returning()
 
   if (!updated) {
@@ -525,7 +520,7 @@ export async function assignTicket(ticketId: TicketId, input: AssignTicketInput)
       assigneeTeamId: nextTeamId,
       lastActivityAt: new Date(),
     })
-    .where(and(eq(tickets.id, ticketId), eq(tickets.updatedAt, existing.updatedAt)))
+    .where(and(eq(tickets.id, ticketId), isNull(tickets.deletedAt)))
     .returning()
   if (!updated) throw new ConflictError('TICKET_STALE', 'ticket was modified concurrently')
 
@@ -661,7 +656,7 @@ export async function transitionStatus(
   const [updated] = await db
     .update(tickets)
     .set(patch)
-    .where(and(eq(tickets.id, ticketId), eq(tickets.updatedAt, existing.updatedAt)))
+    .where(and(eq(tickets.id, ticketId), isNull(tickets.deletedAt)))
     .returning()
   if (!updated) throw new ConflictError('TICKET_STALE', 'ticket was modified concurrently')
 
