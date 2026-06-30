@@ -35,6 +35,7 @@ const mocks = vi.hoisted(() => ({
   } as InfiniteResult,
   fetchNextPage: vi.fn(),
   sendToHost: vi.fn(),
+  changelogList: vi.fn((_params?: unknown) => ({ queryKey: ['changelog-list'] })),
 }))
 
 vi.mock('@tanstack/react-query', () => ({
@@ -97,7 +98,7 @@ vi.mock('@/components/help-center/category-icon', () => ({
 
 vi.mock('@/lib/client/queries/changelog', () => ({
   publicChangelogQueries: {
-    list: () => ({ queryKey: ['changelog-list'] }),
+    list: (params?: unknown) => mocks.changelogList(params),
     detail: (entryId: string) => ({ queryKey: ['changelog-detail', entryId] }),
   },
 }))
@@ -231,6 +232,14 @@ describe('WidgetSupportList', () => {
 })
 
 describe('widget changelog views', () => {
+  it('passes widget auth headers through the public changelog list query params', () => {
+    render(<WidgetChangelog onEntrySelect={vi.fn()} />)
+
+    expect(mocks.changelogList).toHaveBeenCalledWith({
+      headers: { Authorization: 'Bearer widget' },
+    })
+  })
+
   it('renders changelog empty and populated states', () => {
     const onEntrySelect = vi.fn()
     const { rerender } = render(<WidgetChangelog onEntrySelect={onEntrySelect} />)

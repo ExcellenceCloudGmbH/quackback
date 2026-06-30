@@ -66,6 +66,14 @@ const log = logger.child({ component: 'help-center' })
 // Helper: serialize article dates
 // ============================================================================
 
+function hasOwnFilter(filters: unknown, key: string): boolean {
+  return (
+    typeof filters === 'object' &&
+    filters !== null &&
+    Object.prototype.hasOwnProperty.call(filters, key)
+  )
+}
+
 function serializeArticle<
   T extends { createdAt: Date; updatedAt: Date; publishedAt: Date | null; deletedAt?: Date | null },
 >(article: T) {
@@ -102,11 +110,11 @@ function categoryAllowedByWidgetContext(
   // Non-widget callers (e.g. the public Help Center, which builds the full
   // category tree client-side) always see every category.
   if (!context.profileId) return true
-  const allowedCategoryIds = new Set(context.contentFilters.help?.categoryIds ?? [])
-  // No curation for this widget profile → default to the top-level categories
-  // (the widget renders a flat grid, so showing the whole tree flat would be
-  // noisy). The widget displays exactly what this function returns.
-  if (allowedCategoryIds.size === 0) return category.parentId == null
+  const helpFilters = context.contentFilters.help
+  if (!hasOwnFilter(helpFilters, 'categoryIds')) {
+    return false
+  }
+  const allowedCategoryIds = new Set(helpFilters?.categoryIds ?? [])
   // Curated → show exactly the selected categories, parent OR child. Selecting
   // a sub-category surfaces it as its own card even when its parent is also
   // selected (the widget no longer collapses children under selected parents).
@@ -119,17 +127,20 @@ function articleAllowedByWidgetContext(
 ): boolean {
   if (!context.profileId) return true
   const helpFilters = context.contentFilters.help
+  const hasCategoryFilter = hasOwnFilter(helpFilters, 'categoryIds')
+  const hasArticleFilter = hasOwnFilter(helpFilters, 'articleIds')
+  if (!hasCategoryFilter && !hasArticleFilter) return false
   const allowedCategoryIds = new Set(helpFilters?.categoryIds ?? [])
   const allowedArticleIds = new Set(helpFilters?.articleIds ?? [])
   if (
-    allowedCategoryIds.size > 0 &&
+    hasCategoryFilter &&
     !allowedCategoryIds.has(
       (article.categoryId ?? article.category?.id ?? '') as HelpCenterCategoryId
     )
   ) {
     return false
   }
-  if (allowedArticleIds.size > 0 && !allowedArticleIds.has(article.id as HelpCenterArticleId)) {
+  if (hasArticleFilter && !allowedArticleIds.has(article.id as HelpCenterArticleId)) {
     return false
   }
   return true

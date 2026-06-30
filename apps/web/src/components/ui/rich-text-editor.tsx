@@ -2165,6 +2165,9 @@ interface RichTextContentProps {
   className?: string
 }
 
+const RICH_TEXT_CONTENT_CLASSNAME =
+  'prose prose-neutral dark:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere] [&_a]:break-words [&_code]:break-words [&_img]:max-w-full [&_img]:h-auto [&_iframe]:max-w-full [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_pre_code]:whitespace-pre [&_table]:max-w-full'
+
 // ============================================================================
 // HTML Sanitization Utilities (XSS Prevention)
 // ============================================================================
@@ -2281,7 +2284,7 @@ export function generateContentHTML(content: JSONContent): string {
         return '<hr class="my-4 border-border" />'
 
       case 'table':
-        return `<table class="w-full border-collapse">${node.content?.map(renderNode).join('') ?? ''}</table>`
+        return `<div class="max-w-full overflow-x-auto"><table class="w-max min-w-full border-collapse">${node.content?.map(renderNode).join('') ?? ''}</table></div>`
 
       case 'tableRow':
         return `<tr>${node.content?.map(renderNode).join('') ?? ''}</tr>`
@@ -2461,7 +2464,7 @@ export function RichTextContent({ content, className }: RichTextContentProps) {
     const html = sanitizeRenderedHtml(rawHtml)
     return (
       <div
-        className={cn('prose prose-neutral dark:prose-invert max-w-none', className)}
+        className={cn(RICH_TEXT_CONTENT_CLASSNAME, className)}
         dangerouslySetInnerHTML={{ __html: html }}
       />
     )
@@ -2470,8 +2473,8 @@ export function RichTextContent({ content, className }: RichTextContentProps) {
   // For string content (HTML or plain text)
   if (typeof content === 'string') {
     return (
-      <div className={cn('prose prose-neutral dark:prose-invert max-w-none', className)}>
-        <p className="whitespace-pre-wrap">{content}</p>
+      <div className={cn(RICH_TEXT_CONTENT_CLASSNAME, className)}>
+        <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{content}</p>
       </div>
     )
   }

@@ -32,6 +32,7 @@ const hoisted = vi.hoisted(() => ({
   mockUpdateWhere: vi.fn(),
   mockEq: vi.fn((a: unknown, b: unknown) => ({ a, b })),
   mockDecryptSecrets: vi.fn(),
+  mockGetGitHubAccessTokenForIntegration: vi.fn(),
   mockEnsureGitHubWebhookEvents: vi.fn(),
   mockEnsureGitHubWebhookForIntegration: vi.fn(),
   mockEnsureGitHubEventMappings: vi.fn(),
@@ -71,6 +72,10 @@ vi.mock('@/lib/server/integrations/encryption', () => ({
   decryptSecrets: hoisted.mockDecryptSecrets,
 }))
 
+vi.mock('@/lib/server/integrations/github/token', () => ({
+  getGitHubAccessTokenForIntegration: hoisted.mockGetGitHubAccessTokenForIntegration,
+}))
+
 vi.mock('@/lib/server/integrations/github/webhook-registration', () => ({
   ensureGitHubWebhookEvents: hoisted.mockEnsureGitHubWebhookEvents,
   ensureGitHubWebhookForIntegration: hoisted.mockEnsureGitHubWebhookForIntegration,
@@ -98,6 +103,7 @@ describe('fetchGitHubIntegrationsFn -> repairGitHubSyncConfiguration', () => {
     hoisted.mockHasPlatformCredentials.mockResolvedValue(true)
     hoisted.mockGetIntegration.mockReturnValue({ platformCredentials: [{ key: 'clientId' }] })
     hoisted.mockDecryptSecrets.mockReturnValue({ accessToken: 'gh_token' })
+    hoisted.mockGetGitHubAccessTokenForIntegration.mockResolvedValue('gh_token')
     hoisted.mockEnsureGitHubEventMappings.mockResolvedValue(false)
     hoisted.mockEnsureGitHubWebhookEvents.mockResolvedValue(undefined)
     hoisted.mockEnsureGitHubWebhookForIntegration.mockResolvedValue(undefined)
@@ -171,8 +177,8 @@ describe('fetchGitHubIntegrationsFn -> repairGitHubSyncConfiguration', () => {
     expect(hoisted.mockEnsureGitHubWebhookEvents).not.toHaveBeenCalled()
   })
 
-  it('returns early when the decrypted secrets have no access token', async () => {
-    hoisted.mockDecryptSecrets.mockReturnValue({})
+  it('returns early when the token resolver has no access token', async () => {
+    hoisted.mockGetGitHubAccessTokenForIntegration.mockResolvedValue(null)
     hoisted.mockFindMany.mockResolvedValue([
       {
         id: 'int_no_token',

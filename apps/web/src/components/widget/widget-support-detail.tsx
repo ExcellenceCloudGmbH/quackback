@@ -9,6 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { TicketThreadFeed, type ThreadRow } from '@/components/admin/tickets/ticket-thread-feed'
 import {
   getWidgetTicket,
+  listWidgetThreadAttachments,
   replyToWidgetTicket,
   reopenWidgetTicket,
   resolveWidgetTicket,
@@ -279,6 +280,8 @@ export function WidgetSupportDetail({ ticketId }: WidgetSupportDetailProps) {
             }
             onDescriptionUpdate={!isResolved ? handleDescriptionUpdate : undefined}
             isDescriptionSaving={savingDescription}
+            loadAttachments={listWidgetThreadAttachments}
+            attachmentsQueryScope={['widget', sessionVersion]}
           />
         </div>
       </ScrollArea>

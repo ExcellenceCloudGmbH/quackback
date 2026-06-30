@@ -137,6 +137,14 @@ async function getWidgetContextFromServerFnHeaders(): Promise<WidgetRequestConte
   return getWidgetRequestContext(request)
 }
 
+function hasOwnFilter(filters: unknown, key: string): boolean {
+  return (
+    typeof filters === 'object' &&
+    filters !== null &&
+    Object.prototype.hasOwnProperty.call(filters, key)
+  )
+}
+
 function postAllowedByWidgetFeedbackFilters(
   post: {
     board?: { id?: string; slug?: string } | null
@@ -152,9 +160,11 @@ function postAllowedByWidgetFeedbackFilters(
   const allowedStatusIds = new Set(feedbackFilters?.statusIds ?? [])
   const allowedTagIds = new Set(feedbackFilters?.tagIds ?? [])
   const allowedTagSlugs = new Set(feedbackFilters?.tagSlugs ?? [])
-  const hasBoardFilter = allowedBoardIds.size > 0 || allowedBoardSlugs.size > 0
-  const hasStatusFilter = allowedStatusIds.size > 0
-  const hasTagFilter = allowedTagIds.size > 0 || allowedTagSlugs.size > 0
+  const hasBoardFilter =
+    hasOwnFilter(feedbackFilters, 'boardIds') || hasOwnFilter(feedbackFilters, 'boardSlugs')
+  const hasStatusFilter = hasOwnFilter(feedbackFilters, 'statusIds')
+  const hasTagFilter =
+    hasOwnFilter(feedbackFilters, 'tagIds') || hasOwnFilter(feedbackFilters, 'tagSlugs')
 
   if (
     hasBoardFilter &&
@@ -189,7 +199,9 @@ function boardAllowedByWidgetFeedbackFilters(
   const feedbackFilters = context.contentFilters.feedback
   const allowedBoardIds = new Set(feedbackFilters?.boardIds ?? [])
   const allowedBoardSlugs = new Set(feedbackFilters?.boardSlugs ?? [])
-  if (allowedBoardIds.size === 0 && allowedBoardSlugs.size === 0) return true
+  if (!hasOwnFilter(feedbackFilters, 'boardIds') && !hasOwnFilter(feedbackFilters, 'boardSlugs')) {
+    return true
+  }
   return allowedBoardIds.has(board.id as BoardId) || allowedBoardSlugs.has(board.slug)
 }
 

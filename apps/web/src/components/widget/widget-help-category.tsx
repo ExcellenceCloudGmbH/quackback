@@ -27,9 +27,11 @@ export function WidgetHelpCategory({
     <div className="flex flex-col h-full">
       {/* Category header */}
       <div className="px-3 pt-2 pb-2 shrink-0 border-b border-border/30">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           {categoryIcon && <CategoryIcon icon={categoryIcon} className="w-5 h-5 shrink-0" />}
-          <h3 className="text-sm font-semibold text-foreground">{categoryName}</h3>
+          <h3 className="min-w-0 break-words text-sm font-semibold text-foreground [overflow-wrap:anywhere]">
+            {categoryName}
+          </h3>
         </div>
       </div>
 
@@ -64,11 +66,11 @@ export function WidgetHelpCategory({
                   className="w-full text-start flex items-center gap-2 rounded-lg hover:bg-muted/30 transition-colors px-2.5 py-2.5 cursor-pointer group"
                 >
                   <div className="flex-1 min-w-0">
-                    <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug">
+                    <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug break-words [overflow-wrap:anywhere]">
                       {article.title}
                     </h3>
                     {article.description && (
-                      <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-2 leading-relaxed">
+                      <p className="text-xs text-muted-foreground/70 mt-0.5 line-clamp-2 leading-relaxed break-words [overflow-wrap:anywhere]">
                         {article.description}
                       </p>
                     )}

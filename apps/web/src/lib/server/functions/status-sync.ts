@@ -65,7 +65,16 @@ export const enableStatusSyncFn = createServerFn({ method: 'POST' })
 
       // Decrypt secrets for API calls
       let accessToken: string | undefined
-      if (integration.secrets) {
+      if (integration.secrets && data.integrationType === 'github') {
+        const { getGitHubAccessTokenForIntegration } =
+          await import('@/lib/server/integrations/github/token')
+        accessToken =
+          (await getGitHubAccessTokenForIntegration({
+            id: integrationId,
+            secrets: integration.secrets,
+            config,
+          })) ?? undefined
+      } else if (integration.secrets) {
         const secrets = decryptSecrets<{ accessToken?: string }>(integration.secrets)
         accessToken = secrets.accessToken
       }
@@ -188,13 +197,26 @@ export const disableStatusSyncFn = createServerFn({ method: 'POST' })
       // Clean up external webhook if one was registered
       if (externalWebhookId && integration.secrets) {
         try {
-          const secrets = decryptSecrets<{ accessToken?: string }>(integration.secrets)
-          if (secrets.accessToken) {
+          let accessToken: string | undefined
+          if (data.integrationType === 'github') {
+            const { getGitHubAccessTokenForIntegration } =
+              await import('@/lib/server/integrations/github/token')
+            accessToken =
+              (await getGitHubAccessTokenForIntegration({
+                id: integrationId,
+                secrets: integration.secrets,
+                config,
+              })) ?? undefined
+          } else {
+            const secrets = decryptSecrets<{ accessToken?: string }>(integration.secrets)
+            accessToken = secrets.accessToken
+          }
+          if (accessToken) {
             switch (data.integrationType) {
               case 'linear': {
                 const { deleteLinearWebhook } =
                   await import('@/lib/server/integrations/linear/webhook-registration')
-                await deleteLinearWebhook(secrets.accessToken, externalWebhookId)
+                await deleteLinearWebhook(accessToken, externalWebhookId)
                 break
               }
               case 'github': {
@@ -202,7 +224,7 @@ export const disableStatusSyncFn = createServerFn({ method: 'POST' })
                   await import('@/lib/server/integrations/github/webhook-registration')
                 const ownerRepo = config.channelId as string
                 if (ownerRepo) {
-                  await deleteGitHubWebhook(secrets.accessToken, ownerRepo, externalWebhookId)
+                  await deleteGitHubWebhook(accessToken, ownerRepo, externalWebhookId)
                 }
                 break
               }
@@ -211,20 +233,20 @@ export const disableStatusSyncFn = createServerFn({ method: 'POST' })
                   await import('@/lib/server/integrations/jira/webhook-registration')
                 const cloudId = config.cloudId as string
                 if (cloudId) {
-                  await deleteJiraWebhook(secrets.accessToken, cloudId, externalWebhookId)
+                  await deleteJiraWebhook(accessToken, cloudId, externalWebhookId)
                 }
                 break
               }
               case 'clickup': {
                 const { deleteClickUpWebhook } =
                   await import('@/lib/server/integrations/clickup/webhook-registration')
-                await deleteClickUpWebhook(secrets.accessToken, externalWebhookId)
+                await deleteClickUpWebhook(accessToken, externalWebhookId)
                 break
               }
               case 'asana': {
                 const { deleteAsanaWebhook } =
                   await import('@/lib/server/integrations/asana/webhook-registration')
-                await deleteAsanaWebhook(secrets.accessToken, externalWebhookId)
+                await deleteAsanaWebhook(accessToken, externalWebhookId)
                 break
               }
             }

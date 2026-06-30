@@ -68,7 +68,7 @@ function WidgetCategoryNode({
         <div className="min-w-0 flex-1">
           <h3
             className={
-              'text-foreground group-hover:text-primary transition-colors line-clamp-1 ' +
+              'text-foreground group-hover:text-primary transition-colors line-clamp-2 break-words [overflow-wrap:anywhere] ' +
               (isRoot ? 'text-sm font-semibold' : 'text-[13px] font-medium')
             }
           >
@@ -130,10 +130,10 @@ export function WidgetHelp({
 
   const categoriesQuery = useQuery(publicHelpCenterQueries.categories(getWidgetAuthHeaders()))
   // Render exactly what the server returns. The widget-context filter
-  // (categoryAllowedByWidgetContext) already curates this list: the admin's
-  // selected categories (parent AND child), or the top-level categories when no
-  // selection is configured. Do NOT re-filter by hierarchy here — that would
-  // drop explicitly-selected sub-categories whose parent is also selected.
+  // (categoryAllowedByWidgetContext) already curates this list to the admin's
+  // selected categories (parent AND child). Do NOT re-filter by hierarchy here
+  // because that would drop explicitly-selected sub-categories whose parent is
+  // also selected.
   const visibleCategories = categoriesQuery.data ?? []
   // Build the parent/child tree so the widget represents the category hierarchy
   // instead of a flat list. Orphaned children (a selected sub-category whose
@@ -255,7 +255,7 @@ export function WidgetHelp({
                       className="group text-start rounded-lg border border-border/50 bg-card p-3 hover:border-border hover:bg-muted/30 transition-all cursor-pointer"
                     >
                       <CategoryIcon icon={cat.icon} className="w-6 h-6 mb-1" />
-                      <h3 className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors line-clamp-1">
+                      <h3 className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors line-clamp-2 break-words [overflow-wrap:anywhere]">
                         {cat.name}
                       </h3>
                       {cat.description && (
@@ -322,15 +322,15 @@ export function WidgetHelp({
                   onClick={() => onArticleSelect?.(article.slug)}
                   className="w-full text-start rounded-lg hover:bg-muted/30 transition-colors px-2.5 py-2.5 cursor-pointer"
                 >
-                  <div className="flex items-center gap-2 mb-0.5">
-                    <span className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wide">
+                  <div className="flex min-w-0 items-center gap-2 mb-0.5">
+                    <span className="min-w-0 break-words text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wide [overflow-wrap:anywhere]">
                       {article.category.name}
                     </span>
                   </div>
-                  <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug">
+                  <h3 className="text-sm font-medium text-foreground line-clamp-2 leading-snug break-words [overflow-wrap:anywhere]">
                     {article.title}
                   </h3>
-                  <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2 leading-relaxed">
+                  <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2 leading-relaxed break-words [overflow-wrap:anywhere]">
                     {contentPreview(article.content)}
                   </p>
                 </button>

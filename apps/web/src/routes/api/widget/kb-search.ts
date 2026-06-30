@@ -7,6 +7,15 @@ import type { HelpCenterArticleId, HelpCenterCategoryId } from '@quackback/ids'
 
 import { logger } from '@/lib/server/logger'
 const log = logger.child({ component: 'widget-kb-search' })
+
+function hasOwnFilter(filters: unknown, key: string): boolean {
+  return (
+    typeof filters === 'object' &&
+    filters !== null &&
+    Object.prototype.hasOwnProperty.call(filters, key)
+  )
+}
+
 export const Route = createFileRoute('/api/widget/kb-search')({
   server: {
     handlers: {
@@ -29,22 +38,24 @@ export const Route = createFileRoute('/api/widget/kb-search')({
         try {
           const widgetContext = await getWidgetRequestContext(request)
           const helpFilters = widgetContext.contentFilters.help
+          const hasCategoryFilter = hasOwnFilter(helpFilters, 'categoryIds')
+          const hasArticleFilter = hasOwnFilter(helpFilters, 'articleIds')
           const allowedCategoryIds = new Set(helpFilters?.categoryIds ?? [])
           const allowedArticleIds = new Set(helpFilters?.articleIds ?? [])
           const results = await hybridSearch(q, limit)
 
           const articles = results
             .filter((a) => {
+              if (widgetContext.profileId && !hasCategoryFilter && !hasArticleFilter) {
+                return false
+              }
               if (
-                allowedCategoryIds.size > 0 &&
+                hasCategoryFilter &&
                 !allowedCategoryIds.has(a.categoryId as HelpCenterCategoryId)
               ) {
                 return false
               }
-              if (
-                allowedArticleIds.size > 0 &&
-                !allowedArticleIds.has(a.id as HelpCenterArticleId)
-              ) {
+              if (hasArticleFilter && !allowedArticleIds.has(a.id as HelpCenterArticleId)) {
                 return false
               }
               return true

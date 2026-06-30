@@ -183,6 +183,23 @@ describe('GET /api/widget/kb-search', () => {
     const json = (await res.json()) as { data: { articles: Array<{ id: string }> } }
     expect(json.data.articles.map((a) => a.id)).toEqual(['hca_ok'])
   })
+
+  it('returns no search results when a widget profile has an empty help category selection', async () => {
+    vi.mocked(isFeatureEnabled).mockResolvedValueOnce(true)
+    getWidgetRequestContextMock.mockResolvedValueOnce({
+      claims: null,
+      profileId: 'wp_1',
+      contentFilters: { help: { categoryIds: [] } },
+      supportConfig: {},
+    })
+    hybridSearchMock.mockResolvedValueOnce([
+      { id: 'hca_a', slug: 'a', title: 'A', content: 'a', categoryId: 'hcc_a' },
+    ])
+
+    const res = await handlers.GET({ request: makeReq('?q=q') })
+    const json = (await res.json()) as { data: { articles: Array<{ id: string }> } }
+    expect(json.data.articles).toEqual([])
+  })
 })
 
 describe('GET /api/widget/kb-search — error handling', () => {

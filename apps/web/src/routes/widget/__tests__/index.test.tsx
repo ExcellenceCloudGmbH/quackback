@@ -540,6 +540,41 @@ describe('widget route loader', () => {
     expect(mocks.setQueryData).toHaveBeenCalledWith(['voted-posts', 0], expect.any(Set))
     expect(mocks.setQueryData).toHaveBeenCalledWith(['chat-presence'], { state: 'online' })
   })
+
+  it('disables only the surfaces whose explicit widget filters have no selectable content', async () => {
+    mocks.resolveWidgetContextFn.mockResolvedValueOnce(
+      widgetContext({
+        publicConfig: {
+          enabled: true,
+          tabs: { home: true, feedback: true, changelog: true, help: true, chat: false },
+          chat: { enabled: false },
+          imageUploadsInWidget: true,
+          ticketing: { enabled: false },
+        },
+        contentFilters: {
+          feedback: { boardIds: [] },
+          changelog: { mode: 'all_published', categoryIds: [] },
+          help: { categoryIds: [] },
+        },
+        supportConfig: { categories: [] },
+      })
+    )
+
+    const result = await routeOptions().loader({
+      context: loaderContext(),
+      location: { search: { app: 'app', env: 'production' } },
+    })
+
+    expect(result.boards).toEqual([])
+    expect(result.posts).toEqual([])
+    expect(result.tabs).toMatchObject({
+      home: true,
+      feedback: false,
+      changelog: false,
+      help: true,
+      chat: false,
+    })
+  })
 })
 
 describe('widget route component', () => {

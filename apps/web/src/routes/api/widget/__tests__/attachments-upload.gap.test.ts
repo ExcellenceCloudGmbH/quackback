@@ -18,7 +18,11 @@ const m = vi.hoisted(() => ({
   generateStorageKey: vi.fn(() => 'key/1'),
   uploadObject: vi.fn(() => Promise.resolve('https://cdn/x')),
   attachToThread: vi.fn(),
+  listForThread: vi.fn(),
   principalFindFirst: vi.fn(),
+  getPublicOriginFromRequest: vi.fn(() => 'https://widget.example.test'),
+  getWidgetRequestContext: vi.fn(() => Promise.resolve({})),
+  assertTicketMatchesWidgetContext: vi.fn(),
   mapErr: vi.fn((..._a: unknown[]): Response | null => null),
 }))
 vi.mock('@/lib/server/db', () => ({
@@ -33,6 +37,7 @@ vi.mock('@/lib/server/domains/tickets/ticket.portal-query', () => ({
 vi.mock('@/lib/server/domains/tickets', () => ({
   getThread: m.getThread,
   attachToThread: m.attachToThread,
+  listForThread: m.listForThread,
 }))
 vi.mock('@/lib/server/domains/settings/settings.widget', () => ({
   getWidgetConfig: m.getWidgetConfig,
@@ -44,6 +49,9 @@ vi.mock('@/lib/server/storage/s3', () => ({
   generateStorageKey: m.generateStorageKey,
   uploadObject: m.uploadObject,
 }))
+vi.mock('@/lib/server/integrations/oauth', () => ({
+  getPublicOriginFromRequest: m.getPublicOriginFromRequest,
+}))
 vi.mock('@/lib/server/widget/cors', () => ({
   widgetCorsHeaders: () => new Headers(),
   widgetJsonError: (code: string, message: string, status: number) =>
@@ -51,8 +59,17 @@ vi.mock('@/lib/server/widget/cors', () => ({
   mapDomainErrorToResponse: (e: unknown) => m.mapErr(e),
 }))
 vi.mock('@/lib/server/widget/ticketing-gate', () => ({ widgetTicketingGate: () => m.gate() }))
+vi.mock('@/lib/server/widget/context', () => ({
+  getWidgetRequestContext: m.getWidgetRequestContext,
+}))
+vi.mock('@/lib/server/widget/ticket-scope', () => ({
+  assertTicketMatchesWidgetContext: m.assertTicketMatchesWidgetContext,
+}))
 
-import { handleWidgetThreadAttachmentUpload } from '../tickets.$ticketId.threads.$threadId.attachments'
+import {
+  handleWidgetThreadAttachmentList,
+  handleWidgetThreadAttachmentUpload,
+} from '../tickets.$ticketId.threads.$threadId.attachments'
 
 const params = { ticketId: 'ticket_1', threadId: 'thread_1' }
 const fileReq = (file?: File) => {
@@ -62,6 +79,8 @@ const fileReq = (file?: File) => {
 }
 const call = (request: unknown = fileReq(new File(['x'], 'a.png', { type: 'image/png' }))) =>
   handleWidgetThreadAttachmentUpload({ request, params } as never)
+const callList = (request: unknown = {}) =>
+  handleWidgetThreadAttachmentList({ request, params } as never)
 
 beforeEach(() => {
   vi.clearAllMocks()
@@ -88,6 +107,18 @@ beforeEach(() => {
     publicUrl: 'https://cdn/x',
     createdAt: new Date('2026-01-01'),
   })
+  m.listForThread.mockResolvedValue([
+    {
+      id: 'att_1',
+      threadId: 'thread_1',
+      uploadedByPrincipalId: 'p_viewer',
+      filename: 'a.png',
+      mimeType: 'image/png',
+      sizeBytes: 1,
+      publicUrl: 'https://cdn/x',
+      createdAt: new Date('2026-01-01'),
+    },
+  ])
   vi.spyOn(console, 'error').mockImplementation(() => {})
 })
 
@@ -156,7 +187,12 @@ describe('file validation + happy path', () => {
   it('uploads and returns 201', async () => {
     const res = await call()
     expect(res.status).toBe(201)
-    expect(m.uploadObject).toHaveBeenCalled()
+    expect(m.uploadObject).toHaveBeenCalledWith(
+      'key/1',
+      expect.any(Buffer),
+      'image/png',
+      'https://widget.example.test'
+    )
     expect(m.attachToThread).toHaveBeenCalled()
   })
   it('maps a domain error, else 500', async () => {
@@ -167,5 +203,36 @@ describe('file validation + happy path', () => {
     expect((await call()).status).toBe(404)
     m.getTicketForPortalUser.mockRejectedValueOnce(new Error('boom'))
     expect((await call()).status).toBe(500)
+  })
+})
+
+describe('attachment listing', () => {
+  it('lists public-thread attachments for the owning widget user', async () => {
+    const res = await callList()
+    expect(res.status).toBe(200)
+    const body = await res.json()
+
+    expect(m.assertTicketMatchesWidgetContext).toHaveBeenCalled()
+    expect(m.listForThread).toHaveBeenCalledWith('thread_1')
+    expect(body.data).toEqual([
+      expect.objectContaining({
+        id: 'att_1',
+        filename: 'a.png',
+        publicUrl: 'https://cdn/x',
+      }),
+    ])
+  })
+
+  it('404s attachment listing for non-public threads', async () => {
+    m.getThread.mockResolvedValueOnce({
+      id: 'thread_1',
+      ticketId: 'ticket_1',
+      deletedAt: null,
+      audience: 'internal',
+      principalId: 'p_agent',
+    })
+
+    expect((await callList()).status).toBe(404)
+    expect(m.listForThread).not.toHaveBeenCalled()
   })
 })

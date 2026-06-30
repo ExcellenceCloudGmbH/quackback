@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   updateSet: vi.fn(),
   updateWhere: vi.fn(),
   update: vi.fn(),
-  decryptSecrets: vi.fn(),
+  getGitHubAccessTokenForIntegration: vi.fn(),
   generateWebhookSecret: vi.fn(),
   buildWebhookCallbackUrl: vi.fn(),
   eq: vi.fn((a: unknown, b: unknown) => ({ a, b })),
@@ -24,8 +24,8 @@ vi.mock('@/lib/server/db', () => ({
   eq: mocks.eq,
 }))
 
-vi.mock('@/lib/server/integrations/encryption', () => ({
-  decryptSecrets: mocks.decryptSecrets,
+vi.mock('../token', () => ({
+  getGitHubAccessTokenForIntegration: mocks.getGitHubAccessTokenForIntegration,
 }))
 
 vi.mock('@/lib/server/integrations/webhook-registration', () => ({
@@ -63,6 +63,7 @@ beforeEach(() => {
   mocks.buildWebhookCallbackUrl.mockReturnValue(
     'https://app.example.com/api/integrations/github/webhook'
   )
+  mocks.getGitHubAccessTokenForIntegration.mockResolvedValue('gh_token')
 })
 
 describe('deleteGitHubWebhook', () => {
@@ -82,48 +83,54 @@ describe('deleteGitHubWebhook', () => {
 describe('deleteConfiguredGitHubWebhook', () => {
   it('returns early when secrets are missing', async () => {
     await deleteConfiguredGitHubWebhook({
+      integrationId: 'integration_1' as IntegrationId,
       secrets: null,
       config: { channelId: 'org/repo', externalWebhookId: '1' },
     })
-    expect(mocks.decryptSecrets).not.toHaveBeenCalled()
+    expect(mocks.getGitHubAccessTokenForIntegration).not.toHaveBeenCalled()
   })
 
   it('returns early when ownerRepo is missing', async () => {
     await deleteConfiguredGitHubWebhook({
+      integrationId: 'integration_1' as IntegrationId,
       secrets: 'cipher',
       config: { externalWebhookId: '1' },
     })
-    expect(mocks.decryptSecrets).not.toHaveBeenCalled()
+    expect(mocks.getGitHubAccessTokenForIntegration).not.toHaveBeenCalled()
   })
 
   it('returns early when webhookId is missing', async () => {
     await deleteConfiguredGitHubWebhook({
+      integrationId: 'integration_1' as IntegrationId,
       secrets: 'cipher',
       config: { channelId: 'org/repo' },
     })
-    expect(mocks.decryptSecrets).not.toHaveBeenCalled()
+    expect(mocks.getGitHubAccessTokenForIntegration).not.toHaveBeenCalled()
   })
 
-  it('returns early when the decrypted access token is missing', async () => {
-    mocks.decryptSecrets.mockReturnValue({})
+  it('returns early when the token resolver has no access token', async () => {
+    mocks.getGitHubAccessTokenForIntegration.mockResolvedValue(null)
     const fetchMock = mockFetch(204)
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
     await deleteConfiguredGitHubWebhook({
+      integrationId: 'integration_1' as IntegrationId,
       secrets: 'cipher',
       config: { channelId: 'org/repo', externalWebhookId: '7' },
     })
 
-    expect(mocks.decryptSecrets).toHaveBeenCalledWith('cipher')
+    expect(mocks.getGitHubAccessTokenForIntegration).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'integration_1', secrets: 'cipher' })
+    )
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
   it('deletes the configured webhook when everything is present', async () => {
-    mocks.decryptSecrets.mockReturnValue({ accessToken: 'gh_token' })
     const fetchMock = mockFetch(204)
     globalThis.fetch = fetchMock as unknown as typeof fetch
 
     await deleteConfiguredGitHubWebhook({
+      integrationId: 'integration_1' as IntegrationId,
       secrets: 'cipher',
       config: { channelId: 'org/repo', externalWebhookId: '7' },
     })
@@ -153,22 +160,24 @@ describe('ensureGitHubWebhookForIntegration', () => {
   it('returns early when ownerRepo or secrets are missing', async () => {
     mocks.findFirst.mockResolvedValue({ status: 'active', config: {}, secrets: null })
     await ensureGitHubWebhookForIntegration({ integrationId })
-    expect(mocks.decryptSecrets).not.toHaveBeenCalled()
+    expect(mocks.getGitHubAccessTokenForIntegration).not.toHaveBeenCalled()
   })
 
-  it('returns early when the decrypted access token is missing', async () => {
+  it('returns early when the token resolver has no access token', async () => {
     mocks.findFirst.mockResolvedValue({
+      id: integrationId,
       status: 'active',
       config: { channelId: 'org/repo' },
       secrets: 'cipher',
     })
-    mocks.decryptSecrets.mockReturnValue({})
+    mocks.getGitHubAccessTokenForIntegration.mockResolvedValue(null)
     await ensureGitHubWebhookForIntegration({ integrationId })
     expect(mocks.update).not.toHaveBeenCalled()
   })
 
   it('repairs an existing hook and persists the events version', async () => {
     mocks.findFirst.mockResolvedValue({
+      id: integrationId,
       status: 'active',
       config: {
         channelId: 'org/repo',
@@ -177,7 +186,6 @@ describe('ensureGitHubWebhookForIntegration', () => {
       },
       secrets: 'cipher',
     })
-    mocks.decryptSecrets.mockReturnValue({ accessToken: 'gh_token' })
     // ensureGitHubWebhookEvents -> PATCH succeeds
     const fetchMock = mockFetch(200, {})
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -202,6 +210,7 @@ describe('ensureGitHubWebhookForIntegration', () => {
 
   it('rethrows non-404 errors from the repair attempt', async () => {
     mocks.findFirst.mockResolvedValue({
+      id: integrationId,
       status: 'active',
       config: {
         channelId: 'org/repo',
@@ -210,7 +219,6 @@ describe('ensureGitHubWebhookForIntegration', () => {
       },
       secrets: 'cipher',
     })
-    mocks.decryptSecrets.mockReturnValue({ accessToken: 'gh_token' })
     // PATCH returns 500 -> ensureGitHubWebhookEvents throws "GitHub API error 500"
     const fetchMock = mockFetch(500, 'boom')
     globalThis.fetch = fetchMock as unknown as typeof fetch
@@ -223,6 +231,7 @@ describe('ensureGitHubWebhookForIntegration', () => {
 
   it('registers a replacement hook when the existing one is gone (404)', async () => {
     mocks.findFirst.mockResolvedValue({
+      id: integrationId,
       status: 'active',
       config: {
         channelId: 'org/repo',
@@ -231,7 +240,6 @@ describe('ensureGitHubWebhookForIntegration', () => {
       },
       secrets: 'cipher',
     })
-    mocks.decryptSecrets.mockReturnValue({ accessToken: 'gh_token' })
 
     let call = 0
     const fetchMock = vi.fn().mockImplementation(async () => {
@@ -272,11 +280,11 @@ describe('ensureGitHubWebhookForIntegration', () => {
 
   it('registers a fresh hook when none exists yet', async () => {
     mocks.findFirst.mockResolvedValue({
+      id: integrationId,
       status: 'active',
       config: { channelId: 'org/repo' },
       secrets: 'cipher',
     })
-    mocks.decryptSecrets.mockReturnValue({ accessToken: 'gh_token' })
     const fetchMock = mockFetch(201, { id: 777 })
     globalThis.fetch = fetchMock as unknown as typeof fetch
 

@@ -4,7 +4,7 @@ import { useInfiniteScroll } from '@/lib/client/hooks/use-infinite-scroll'
 import { RoadmapCard } from './roadmap-card'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
+import { ScrollArea } from '@/components/ui/scroll-area'
 import {
   usePublicRoadmapPosts,
   flattenRoadmapPostEntries,
@@ -40,20 +40,22 @@ export function RoadmapColumn({ roadmapId, statusId, title, color, filters }: Ro
   })
 
   return (
-    <Card className="flex-1 min-w-[300px] max-w-[350px] flex flex-col h-full">
+    <Card className="flex h-full w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden">
       <CardHeader className="pb-3 shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="h-3 w-3 rounded-full" style={{ backgroundColor: color }} />
-            <CardTitle className="text-base font-semibold">{title}</CardTitle>
+        <div className="flex min-w-0 items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <div className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: color }} />
+            <CardTitle className="min-w-0 truncate text-base font-semibold" title={title}>
+              {title}
+            </CardTitle>
           </div>
-          <Badge variant="secondary" className="text-xs">
+          <Badge variant="secondary" className="shrink-0 text-xs">
             {total}
           </Badge>
         </div>
       </CardHeader>
       <CardContent className="flex-1 min-h-0 p-0">
-        <ScrollArea className="h-full px-6 pb-6">
+        <ScrollArea className="h-full min-w-0 px-6 pb-6">
           {isLoading ? (
             <div className="h-full flex items-center justify-center py-8 animate-in fade-in duration-200">
               <ArrowPathIcon className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -68,11 +70,11 @@ export function RoadmapColumn({ roadmapId, statusId, title, color, filters }: Ro
               </p>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               {posts.map((post, index) => (
                 <div
                   key={post.id}
-                  className="animate-in fade-in duration-200 fill-mode-backwards"
+                  className="min-w-0 animate-in fade-in duration-200 fill-mode-backwards"
                   style={{ animationDelay: `${Math.min(index * 30, 150)}ms` }}
                 >
                   <RoadmapCard
@@ -92,7 +94,6 @@ export function RoadmapColumn({ roadmapId, statusId, title, color, filters }: Ro
               )}
             </div>
           )}
-          <ScrollBar />
         </ScrollArea>
       </CardContent>
     </Card>

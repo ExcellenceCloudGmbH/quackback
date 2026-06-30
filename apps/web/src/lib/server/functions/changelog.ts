@@ -53,6 +53,14 @@ async function getWidgetContextFromServerFnHeaders(): Promise<WidgetRequestConte
   return getWidgetRequestContext(request)
 }
 
+function hasOwnFilter(filters: unknown, key: string): boolean {
+  return (
+    typeof filters === 'object' &&
+    filters !== null &&
+    Object.prototype.hasOwnProperty.call(filters, key)
+  )
+}
+
 function applyWidgetChangelogFilters(
   entry: PublicChangelogEntry,
   context: WidgetRequestContext
@@ -64,7 +72,8 @@ function applyWidgetChangelogFilters(
 
   const allowedCategoryIds = new Set(changelogFilter?.categoryIds ?? [])
   const allowedCategorySlugs = new Set(changelogFilter?.categorySlugs ?? [])
-  const hasCategoryFilter = allowedCategoryIds.size > 0 || allowedCategorySlugs.size > 0
+  const hasCategoryFilter =
+    hasOwnFilter(changelogFilter, 'categoryIds') || hasOwnFilter(changelogFilter, 'categorySlugs')
   if (hasCategoryFilter) {
     const category = entry.category
     if (
@@ -77,7 +86,8 @@ function applyWidgetChangelogFilters(
 
   const allowedProductIds = new Set(changelogFilter?.productIds ?? [])
   const allowedProductSlugs = new Set(changelogFilter?.productSlugs ?? [])
-  const hasProductFilter = allowedProductIds.size > 0 || allowedProductSlugs.size > 0
+  const hasProductFilter =
+    hasOwnFilter(changelogFilter, 'productIds') || hasOwnFilter(changelogFilter, 'productSlugs')
   if (hasProductFilter) {
     const product = entry.product
     if (
@@ -99,8 +109,9 @@ function applyWidgetChangelogFilters(
   const allowedBoardIds = new Set(feedbackFilter?.boardIds ?? [])
   const allowedBoardSlugs = new Set(feedbackFilter?.boardSlugs ?? [])
   const allowedStatusIds = new Set(feedbackFilter?.statusIds ?? [])
-  const hasBoardFilter = allowedBoardIds.size > 0 || allowedBoardSlugs.size > 0
-  const hasStatusFilter = allowedStatusIds.size > 0
+  const hasBoardFilter =
+    hasOwnFilter(feedbackFilter, 'boardIds') || hasOwnFilter(feedbackFilter, 'boardSlugs')
+  const hasStatusFilter = hasOwnFilter(feedbackFilter, 'statusIds')
   const linkedPosts = entry.linkedPosts.filter((post) => {
     if (
       hasBoardFilter &&
@@ -345,14 +356,12 @@ export const listPublicChangelogsFn = createServerFn({ method: 'GET' })
         mode === 'selected_entries'
           ? ((changelogFilter?.entryIds ?? []) as ChangelogId[])
           : undefined
-      const categoryIds =
-        (changelogFilter?.categoryIds?.length ?? 0) > 0
-          ? (changelogFilter?.categoryIds as ChangelogCategoryId[])
-          : undefined
-      const productIds =
-        (changelogFilter?.productIds?.length ?? 0) > 0
-          ? (changelogFilter?.productIds as ChangelogProductId[])
-          : undefined
+      const categoryIds = hasOwnFilter(changelogFilter, 'categoryIds')
+        ? (changelogFilter?.categoryIds as ChangelogCategoryId[])
+        : undefined
+      const productIds = hasOwnFilter(changelogFilter, 'productIds')
+        ? (changelogFilter?.productIds as ChangelogProductId[])
+        : undefined
 
       // Portal user-selected filters (from filter bar — single category/product)
       // Only applied when there's no widget-level category/product filter overriding

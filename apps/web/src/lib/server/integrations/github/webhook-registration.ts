@@ -5,12 +5,12 @@
  */
 
 import { db, integrations, eq } from '@/lib/server/db'
-import { decryptSecrets } from '../encryption'
 import {
   buildWebhookCallbackUrl,
   generateWebhookSecret,
 } from '@/lib/server/integrations/webhook-registration'
 import type { IntegrationId } from '@quackback/ids'
+import { getGitHubAccessTokenForIntegration } from './token'
 
 const GITHUB_API = 'https://api.github.com'
 export const GITHUB_WEBHOOK_EVENTS = ['issues', 'issue_comment'] as const
@@ -114,6 +114,7 @@ export async function deleteGitHubWebhook(
 }
 
 export async function deleteConfiguredGitHubWebhook(args: {
+  integrationId: IntegrationId
   secrets: string | null
   config: Record<string, unknown>
 }): Promise<void> {
@@ -122,10 +123,14 @@ export async function deleteConfiguredGitHubWebhook(args: {
     typeof args.config.externalWebhookId === 'string' ? args.config.externalWebhookId : ''
   if (!args.secrets || !ownerRepo || !webhookId) return
 
-  const secrets = decryptSecrets<{ accessToken?: string }>(args.secrets)
-  if (!secrets.accessToken) return
+  const accessToken = await getGitHubAccessTokenForIntegration({
+    id: args.integrationId,
+    secrets: args.secrets,
+    config: args.config,
+  })
+  if (!accessToken) return
 
-  await deleteGitHubWebhook(secrets.accessToken, ownerRepo, webhookId)
+  await deleteGitHubWebhook(accessToken, ownerRepo, webhookId)
 }
 
 export async function ensureGitHubWebhookForIntegration(args: {
@@ -141,8 +146,8 @@ export async function ensureGitHubWebhookForIntegration(args: {
   const ownerRepo = typeof config.channelId === 'string' ? config.channelId : ''
   if (!ownerRepo || !integration.secrets) return
 
-  const secrets = decryptSecrets<{ accessToken?: string }>(integration.secrets)
-  if (!secrets.accessToken) return
+  const accessToken = await getGitHubAccessTokenForIntegration(integration)
+  if (!accessToken) return
 
   const existingWebhookId =
     typeof config.externalWebhookId === 'string' ? config.externalWebhookId : ''
@@ -153,7 +158,7 @@ export async function ensureGitHubWebhookForIntegration(args: {
   if (existingWebhookId && existingSecret) {
     let shouldRegisterReplacement = false
     try {
-      await ensureGitHubWebhookEvents(secrets.accessToken, ownerRepo, existingWebhookId, {
+      await ensureGitHubWebhookEvents(accessToken, ownerRepo, existingWebhookId, {
         callbackUrl,
         secret: webhookSecret,
       })
@@ -178,12 +183,7 @@ export async function ensureGitHubWebhookForIntegration(args: {
   }
 
   if (existingWebhookId && existingSecret) {
-    const result = await registerGitHubWebhook(
-      secrets.accessToken,
-      ownerRepo,
-      callbackUrl,
-      webhookSecret
-    )
+    const result = await registerGitHubWebhook(accessToken, ownerRepo, callbackUrl, webhookSecret)
     await db
       .update(integrations)
       .set({
@@ -199,12 +199,7 @@ export async function ensureGitHubWebhookForIntegration(args: {
     return
   }
 
-  const result = await registerGitHubWebhook(
-    secrets.accessToken,
-    ownerRepo,
-    callbackUrl,
-    webhookSecret
-  )
+  const result = await registerGitHubWebhook(accessToken, ownerRepo, callbackUrl, webhookSecret)
 
   await db
     .update(integrations)

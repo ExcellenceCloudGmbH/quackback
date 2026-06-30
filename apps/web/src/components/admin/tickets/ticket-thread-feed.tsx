@@ -17,7 +17,6 @@ import {
 import { Button } from '@/components/ui/button'
 import { Pencil } from 'lucide-react'
 import { TicketAttachments } from '@/components/tickets/ticket-attachments'
-import { ticketQueries } from '@/lib/client/queries/tickets'
 import { useImageUpload } from '@/lib/client/hooks/use-image-upload'
 
 export interface ThreadRow {
@@ -30,6 +29,15 @@ export interface ThreadRow {
   sharedWithTeamId: TeamId | null
   createdAt: Date | string
   editedAt: Date | string | null
+}
+
+export interface TicketAttachmentRow {
+  id: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  publicUrl: string | null
+  createdAt: string
 }
 
 export interface TicketThreadFeedProps {
@@ -46,6 +54,10 @@ export interface TicketThreadFeedProps {
   onDescriptionUpdate?: (json: JSONContent | null, text: string | null) => void
   /** Whether a description update is currently saving. */
   isDescriptionSaving?: boolean
+  /** Optional attachment loader for non-session surfaces such as the widget. */
+  loadAttachments?: (ticketId: TicketId, threadId: TicketThreadId) => Promise<TicketAttachmentRow[]>
+  /** Extra query-key scope for custom attachment loaders. */
+  attachmentsQueryScope?: readonly unknown[]
 }
 
 const DESCRIPTION_EDITOR_FEATURES = {
@@ -86,7 +98,13 @@ function hasMeaningfulJsonContent(content: unknown): content is JSONContent {
   if (!isRichTextContent(content)) return false
   const visit = (node: JSONContent): boolean => {
     if (node.type === 'text') return typeof node.text === 'string' && node.text.trim().length > 0
-    if (node.type === 'image' || node.type === 'quackbackEmbed' || node.type === 'horizontalRule') {
+    if (
+      node.type === 'image' ||
+      node.type === 'resizableImage' ||
+      node.type === 'chatImage' ||
+      node.type === 'quackbackEmbed' ||
+      node.type === 'horizontalRule'
+    ) {
       return true
     }
     return node.content?.some(visit) ?? false
@@ -124,6 +142,8 @@ export function TicketThreadFeed({
   description,
   onDescriptionUpdate,
   isDescriptionSaving,
+  loadAttachments,
+  attachmentsQueryScope,
 }: TicketThreadFeedProps) {
   const { upload: uploadImage } = useImageUpload({ prefix: 'uploads' })
   const hasDesc = hasDescriptionContent(description)
@@ -251,6 +271,8 @@ export function TicketThreadFeed({
             <ThreadAttachmentsLoader
               ticketId={(th.ticketId ?? fallbackTicketId) as TicketId}
               threadId={th.id}
+              loadAttachments={loadAttachments}
+              attachmentsQueryScope={attachmentsQueryScope}
             />
           </article>
         )
@@ -262,15 +284,35 @@ export function TicketThreadFeed({
 function ThreadAttachmentsLoader({
   ticketId,
   threadId,
+  loadAttachments,
+  attachmentsQueryScope,
 }: {
   ticketId: TicketId
   threadId: TicketThreadId
+  loadAttachments?: (ticketId: TicketId, threadId: TicketThreadId) => Promise<TicketAttachmentRow[]>
+  attachmentsQueryScope?: readonly unknown[]
 }) {
   const {
     data: attachments,
     isLoading,
     isError,
-  } = useQuery(ticketQueries.attachments(ticketId, threadId))
+  } = useQuery<TicketAttachmentRow[]>({
+    queryKey: loadAttachments
+      ? ([
+          'tickets',
+          'attachments',
+          'custom',
+          attachmentsQueryScope ?? [],
+          ticketId,
+          threadId,
+        ] as const)
+      : (['tickets', 'attachments', ticketId, threadId] as const),
+    queryFn: () =>
+      loadAttachments
+        ? loadAttachments(ticketId, threadId)
+        : loadDefaultAttachments(ticketId, threadId),
+    staleTime: 30_000,
+  })
 
   if (isError || (!isLoading && (!attachments || attachments.length === 0))) {
     return null
@@ -281,4 +323,16 @@ function ThreadAttachmentsLoader({
       <TicketAttachments attachments={attachments ?? []} isLoading={isLoading} />
     </div>
   )
+}
+
+async function loadDefaultAttachments(
+  ticketId: TicketId,
+  threadId: TicketThreadId
+): Promise<TicketAttachmentRow[]> {
+  const res = await fetch(`/api/v1/tickets/${ticketId}/threads/${threadId}/attachments`)
+  if (!res.ok) {
+    throw new Error(`Failed to load attachments: ${res.statusText}`)
+  }
+  const data = await res.json()
+  return (data.data ?? (Array.isArray(data) ? data : [])) as TicketAttachmentRow[]
 }

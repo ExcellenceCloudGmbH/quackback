@@ -21,7 +21,7 @@ interface WidgetChangelogProps {
 
 export function WidgetChangelog({ onEntrySelect }: WidgetChangelogProps) {
   const { data, fetchNextPage, hasNextPage, isFetchingNextPage, isLoading } = useInfiniteQuery(
-    publicChangelogQueries.list(getWidgetAuthHeaders())
+    publicChangelogQueries.list({ headers: getWidgetAuthHeaders() })
   )
 
   const entries = data?.pages.flatMap((page) => page.items) ?? []

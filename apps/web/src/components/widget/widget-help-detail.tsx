@@ -47,7 +47,7 @@ export function WidgetHelpDetail({ articleSlug }: WidgetHelpDetailProps) {
   return (
     <div className="flex flex-col h-full">
       <ScrollArea scrollBarClassName="w-1.5" className="flex-1 min-h-0 w-full">
-        <div className="px-4 py-3 min-w-0 max-w-full overflow-x-hidden">
+        <div className="px-4 py-3 min-w-0 max-w-full overflow-x-auto">
           <span className="text-[11px] text-muted-foreground/60 uppercase tracking-wide">
             {article.category.name}
           </span>
@@ -57,7 +57,7 @@ export function WidgetHelpDetail({ articleSlug }: WidgetHelpDetailProps) {
             {article.contentJson && isRichTextContent(article.contentJson) ? (
               <RichTextContent
                 content={article.contentJson as JSONContent}
-                className="prose-sm max-w-none break-words [overflow-wrap:anywhere] [&_pre]:max-w-full [&_pre]:overflow-x-auto [&_img]:max-w-full [&_img]:h-auto [&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto [&_h1]:text-base [&_h2]:text-[15px] [&_h3]:text-sm [&_h4]:text-sm [&_p]:text-[13px] [&_li]:text-[13px]"
+                className="prose-sm max-w-none [&_h1]:text-base [&_h2]:text-[15px] [&_h3]:text-sm [&_h4]:text-sm [&_p]:text-[13px] [&_li]:text-[13px]"
               />
             ) : (
               <p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[13px] text-muted-foreground">

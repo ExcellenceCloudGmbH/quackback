@@ -108,6 +108,7 @@ export const updateIntegrationFn = createServerFn({ method: 'POST' })
         const { deleteConfiguredGitHubWebhook } =
           await import('@/lib/server/integrations/github/webhook-registration')
         await deleteConfiguredGitHubWebhook({
+          integrationId,
           secrets: integration.secrets,
           config: previousConfig,
         })

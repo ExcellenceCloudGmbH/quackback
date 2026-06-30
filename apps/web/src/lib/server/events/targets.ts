@@ -405,8 +405,19 @@ async function getIntegrationTargets(
     let accessToken: string | undefined
     if (m.secrets) {
       try {
-        const secrets = decryptSecrets<{ accessToken?: string }>(m.secrets)
-        accessToken = secrets.accessToken
+        if (m.integrationType === 'github') {
+          const { getGitHubAccessTokenForIntegration } =
+            await import('@/lib/server/integrations/github/token')
+          accessToken =
+            (await getGitHubAccessTokenForIntegration({
+              id: m.integrationId,
+              secrets: m.secrets,
+              config: m.integrationConfig,
+            })) ?? undefined
+        } else {
+          const secrets = decryptSecrets<{ accessToken?: string }>(m.secrets)
+          accessToken = secrets.accessToken
+        }
       } catch (error) {
         log.error(
           { err: error, integration_type: m.integrationType },

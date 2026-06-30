@@ -52,6 +52,14 @@ const searchSchema = z.object({
   env: z.string().optional(),
 })
 
+function hasOwnFilter(filters: unknown, key: string): boolean {
+  return (
+    typeof filters === 'object' &&
+    filters !== null &&
+    Object.prototype.hasOwnProperty.call(filters, key)
+  )
+}
+
 export const Route = createFileRoute('/widget/')({
   validateSearch: searchSchema,
   loader: async ({ context, location }) => {
@@ -69,11 +77,20 @@ export const Route = createFileRoute('/widget/')({
     const allowedBoardIds = new Set(feedbackFilters?.boardIds ?? [])
     const allowedBoardSlugs = new Set(feedbackFilters?.boardSlugs ?? [])
     const allowedStatusIds = new Set(feedbackFilters?.statusIds ?? [])
-    const hasBoardFilter = allowedBoardIds.size > 0 || allowedBoardSlugs.size > 0
-    const hasStatusFilter = allowedStatusIds.size > 0
+    const hasBoardFilter =
+      hasOwnFilter(feedbackFilters, 'boardIds') || hasOwnFilter(feedbackFilters, 'boardSlugs')
+    const hasStatusFilter = hasOwnFilter(feedbackFilters, 'statusIds')
     const changelogFilter = widgetContext.contentFilters.changelog
+    const hasEmptyChangelogCategoryFilter =
+      hasOwnFilter(changelogFilter, 'categoryIds') &&
+      (changelogFilter?.categoryIds?.length ?? 0) === 0
+    const hasEmptyChangelogProductFilter =
+      hasOwnFilter(changelogFilter, 'productIds') &&
+      (changelogFilter?.productIds?.length ?? 0) === 0
     const changelogHasVisibleEntries =
-      changelogFilter?.mode !== 'selected_entries' || (changelogFilter.entryIds?.length ?? 0) > 0
+      !hasEmptyChangelogCategoryFilter &&
+      !hasEmptyChangelogProductFilter &&
+      (changelogFilter?.mode !== 'selected_entries' || (changelogFilter.entryIds?.length ?? 0) > 0)
 
     const { getBaseUrl } = await import('@/lib/server/config')
 

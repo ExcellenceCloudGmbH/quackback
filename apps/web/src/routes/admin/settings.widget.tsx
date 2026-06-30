@@ -728,18 +728,13 @@ function WidgetApplicationsSection({
             .filter(Boolean),
           configOverrides: { tabs },
           contentFilters: {
-            feedback: allowedBoardIds.length > 0 ? { boardIds: allowedBoardIds } : {},
+            feedback: { boardIds: allowedBoardIds },
             changelog: {
               mode: changelogMode,
-              categoryIds:
-                allowedChangelogCategoryIds.length > 0 ? allowedChangelogCategoryIds : undefined,
-              productIds:
-                allowedChangelogProductIds.length > 0 ? allowedChangelogProductIds : undefined,
+              categoryIds: allowedChangelogCategoryIds,
+              productIds: allowedChangelogProductIds,
             },
-            help:
-              allowedHelpCategoryIds.length > 0
-                ? { categoryIds: allowedHelpCategoryIds }
-                : undefined,
+            help: { categoryIds: allowedHelpCategoryIds },
           },
           supportConfig: {
             ticketListScope: 'requester_owned',
@@ -953,11 +948,11 @@ function WidgetApplicationsSection({
                         <Label className="text-xs text-muted-foreground">
                           Help center categories
                         </Label>
-                        {allowedHelpCategoryIds.length === 0 && (
-                          <span className="text-xs text-muted-foreground">
-                            All categories included
-                          </span>
-                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {allowedHelpCategoryIds.length === 0
+                            ? 'No categories selected'
+                            : `${allowedHelpCategoryIds.length} selected`}
+                        </span>
                       </div>
                       <div className="max-h-44 overflow-auto rounded-md border border-border/60 p-2">
                         {helpCategoryOptions.length === 0 ? (
@@ -1014,11 +1009,11 @@ function WidgetApplicationsSection({
                         <Label className="text-xs text-muted-foreground">
                           Changelog categories
                         </Label>
-                        {allowedChangelogCategoryIds.length === 0 && (
-                          <span className="text-xs text-muted-foreground">
-                            All categories included
-                          </span>
-                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {allowedChangelogCategoryIds.length === 0
+                            ? 'No categories selected'
+                            : `${allowedChangelogCategoryIds.length} selected`}
+                        </span>
                       </div>
                       <div className="max-h-44 overflow-auto rounded-md border border-border/60 p-2">
                         {changelogTaxonomy.categories.length === 0 ? (
@@ -1051,11 +1046,11 @@ function WidgetApplicationsSection({
 
                       <div className="flex items-center justify-between gap-3 mt-3">
                         <Label className="text-xs text-muted-foreground">Changelog products</Label>
-                        {allowedChangelogProductIds.length === 0 && (
-                          <span className="text-xs text-muted-foreground">
-                            All products included
-                          </span>
-                        )}
+                        <span className="text-xs text-muted-foreground">
+                          {allowedChangelogProductIds.length === 0
+                            ? 'No products selected'
+                            : `${allowedChangelogProductIds.length} selected`}
+                        </span>
                       </div>
                       <div className="max-h-44 overflow-auto rounded-md border border-border/60 p-2">
                         {changelogTaxonomy.products.length === 0 ? (

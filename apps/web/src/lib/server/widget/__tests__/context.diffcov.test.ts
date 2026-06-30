@@ -375,6 +375,42 @@ describe('resolveWidgetContext', () => {
     expect(claims?.ticketListScope).toBe('same_profile_allowed_inboxes')
   })
 
+  it('deep-merges per-profile tab overrides without disabling sibling tabs', async () => {
+    const { resolveWidgetContext } = await import('../context')
+    mocks.getPublicWidgetConfig.mockResolvedValueOnce({
+      ...baseConfig,
+      tabs: { home: true, feedback: true, changelog: true, help: true, chat: true },
+    })
+    mocks.widgetApplicationsFindFirst.mockResolvedValue({
+      key: 'app-1',
+      profiles: [
+        {
+          id: 'wprofile_tabs',
+          archivedAt: null,
+          environment: 'prod',
+          enabled: true,
+          allowedOrigins: [],
+          configOverrides: { tabs: { help: false } },
+          supportConfig: {},
+          contentFilters: {},
+        },
+      ],
+    })
+
+    const result = await resolveWidgetContext(makeRequest(), {
+      applicationKey: 'app-1',
+      environment: 'prod',
+    })
+
+    expect(result.publicConfig.tabs).toEqual({
+      home: true,
+      feedback: true,
+      changelog: true,
+      help: false,
+      chat: true,
+    })
+  })
+
   it('resolves a profile with no overrides and defaults (null configOverrides/supportConfig)', async () => {
     const { resolveWidgetContext, verifyWidgetContextToken } = await import('../context')
     mocks.widgetApplicationsFindFirst.mockResolvedValue({

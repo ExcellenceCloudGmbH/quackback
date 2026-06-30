@@ -112,15 +112,13 @@ function makeContext(
     articleIds: string[]
   }> = {}
 ) {
+  const help: { categoryIds?: string[]; articleIds?: string[] } = {}
+  if ('categoryIds' in overrides) help.categoryIds = overrides.categoryIds
+  if ('articleIds' in overrides) help.articleIds = overrides.articleIds
   return {
     claims: null,
     profileId: overrides.profileId,
-    contentFilters: {
-      help: {
-        categoryIds: overrides.categoryIds,
-        articleIds: overrides.articleIds,
-      },
-    },
+    contentFilters: { help },
     supportConfig: {},
   }
 }
@@ -177,9 +175,7 @@ describe('listPublicCategoriesFn — categoryAllowedByWidgetContext', () => {
     expect(typeof result[0].createdAt).toBe('string')
   })
 
-  it('returns only top-level categories when the widget profile has no selection', async () => {
-    // Uncurated widget → flat grid of top-level categories (children are reached
-    // by opening their parent), so a child must NOT appear at the top level.
+  it('returns no categories when the widget profile has an empty selection', async () => {
     hoisted.mockGetWidgetRequestContext.mockResolvedValue(
       makeContext({ profileId: 'wp_1', categoryIds: [] })
     )
@@ -191,7 +187,19 @@ describe('listPublicCategoriesFn — categoryAllowedByWidgetContext', () => {
     const result = (await handlerFor('listPublicCategoriesFn')({ data: {} })) as Array<{
       id: string
     }>
-    expect(result.map((c) => c.id)).toEqual(['cat_a'])
+    expect(result.map((c) => c.id)).toEqual([])
+  })
+
+  it('returns no categories when a widget profile has no help selection persisted', async () => {
+    hoisted.mockGetWidgetRequestContext.mockResolvedValue(makeContext({ profileId: 'wp_1' }))
+    hoisted.mockListPublicCategories.mockResolvedValue([
+      { id: 'cat_a', parentId: null, createdAt: NOW, updatedAt: NOW },
+    ])
+
+    const result = (await handlerFor('listPublicCategoriesFn')({ data: {} })) as Array<{
+      id: string
+    }>
+    expect(result).toEqual([])
   })
 
   it('filters categories down to the profile allow-list', async () => {
@@ -298,6 +306,19 @@ describe('listPublicArticlesFn — articleAllowedByWidgetContext', () => {
       items: Array<{ id: string }>
     }
     expect(result.items.map((a) => a.id)).toEqual(['art_2'])
+  })
+
+  it('returns no articles when a widget profile has no help selection persisted', async () => {
+    hoisted.mockGetWidgetRequestContext.mockResolvedValue(makeContext({ profileId: 'wp_1' }))
+    hoisted.mockListPublicArticles.mockResolvedValue({
+      items: [article('art_1', 'cat_a')],
+      total: 1,
+    })
+
+    const result = (await handlerFor('listPublicArticlesFn')({ data: {} })) as {
+      items: Array<{ id: string }>
+    }
+    expect(result.items).toEqual([])
   })
 
   it('resolves category via the nested category.id shape', async () => {

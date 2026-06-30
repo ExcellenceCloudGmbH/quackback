@@ -107,6 +107,15 @@ export interface WidgetTicketReplyResponse {
   createdAt: string
 }
 
+export interface WidgetTicketAttachment {
+  id: string
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  publicUrl: string | null
+  createdAt: string
+}
+
 export interface WidgetTicketResolveResponse {
   id: TicketId
   statusId: TicketStatusId
@@ -213,6 +222,15 @@ export async function replyToWidgetTicket(
     method: 'POST',
     jsonBody: { bodyText },
   })
+}
+
+export async function listWidgetThreadAttachments(
+  ticketId: TicketId | string,
+  threadId: string
+): Promise<WidgetTicketAttachment[]> {
+  return widgetFetch(
+    `/api/widget/tickets/${encodeURIComponent(ticketId)}/threads/${encodeURIComponent(threadId)}/attachments`
+  )
 }
 
 export async function updateWidgetTicketDescription(

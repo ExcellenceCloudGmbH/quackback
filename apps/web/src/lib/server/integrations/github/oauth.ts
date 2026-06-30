@@ -3,6 +3,7 @@
  */
 
 import { logger } from '@/lib/server/logger'
+import { toIsoString } from '@/lib/shared/utils'
 
 const log = logger.child({ component: 'github' })
 
@@ -42,6 +43,8 @@ export async function exchangeGitHubCode(
   credentials?: Record<string, string>
 ): Promise<{
   accessToken: string
+  refreshToken?: string
+  expiresIn?: number
   config?: Record<string, unknown>
 }> {
   const clientId = credentials?.clientId
@@ -73,6 +76,9 @@ export async function exchangeGitHubCode(
 
   const tokens = (await tokenResponse.json()) as {
     access_token?: string
+    refresh_token?: string
+    expires_in?: number
+    refresh_token_expires_in?: number
     error?: string
     error_description?: string
   }
@@ -109,7 +115,84 @@ export async function exchangeGitHubCode(
 
   return {
     accessToken: tokens.access_token,
-    config: { username, workspaceName: displayName },
+    refreshToken: tokens.refresh_token,
+    expiresIn: tokens.expires_in,
+    config: {
+      username,
+      workspaceName: displayName,
+      ...(tokens.refresh_token_expires_in
+        ? {
+            refreshTokenExpiresAt: toIsoString(
+              new Date(Date.now() + tokens.refresh_token_expires_in * 1000)
+            ),
+          }
+        : {}),
+    },
+  }
+}
+
+/**
+ * Refresh a GitHub OAuth user token when the OAuth app is configured for
+ * expiring user tokens.
+ */
+export async function refreshGitHubToken(
+  refreshToken: string,
+  credentials?: Record<string, string>
+): Promise<{
+  accessToken: string
+  refreshToken?: string
+  expiresIn: number
+  refreshTokenExpiresIn?: number
+}> {
+  const clientId = credentials?.clientId
+  const clientSecret = credentials?.clientSecret
+
+  if (!clientId || !clientSecret) {
+    throw new Error('GitHub credentials not configured')
+  }
+
+  const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
+    method: 'POST',
+    headers: {
+      Accept: 'application/json',
+      'Content-Type': 'application/json',
+      'User-Agent': 'quackback',
+    },
+    body: JSON.stringify({
+      client_id: clientId,
+      client_secret: clientSecret,
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+    }),
+  })
+
+  if (!tokenResponse.ok) {
+    const error = await tokenResponse.text()
+    throw new Error(`GitHub OAuth refresh failed: ${error}`)
+  }
+
+  const tokens = (await tokenResponse.json()) as {
+    access_token?: string
+    refresh_token?: string
+    expires_in?: number
+    refresh_token_expires_in?: number
+    error?: string
+    error_description?: string
+  }
+
+  if (tokens.error || !tokens.access_token || !tokens.expires_in) {
+    throw new Error(
+      `GitHub OAuth refresh failed: ${
+        tokens.error_description || tokens.error || 'No access token returned'
+      }`
+    )
+  }
+
+  return {
+    accessToken: tokens.access_token,
+    refreshToken: tokens.refresh_token,
+    expiresIn: tokens.expires_in,
+    refreshTokenExpiresIn: tokens.refresh_token_expires_in,
   }
 }
 

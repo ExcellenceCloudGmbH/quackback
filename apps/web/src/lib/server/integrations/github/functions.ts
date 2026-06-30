@@ -92,8 +92,8 @@ export const fetchGitHubReposFn = createServerFn({ method: 'GET' })
   .handler(async ({ data }): Promise<GitHubRepo[]> => {
     const { requireAuth } = await import('../../functions/auth-helpers')
     const { db, integrations, eq, and, sql } = await import('@/lib/server/db')
-    const { decryptSecrets } = await import('../encryption')
     const { GitHubApiError, listGitHubRepos } = await import('./repos')
+    const { getGitHubAccessTokenForIntegration } = await import('./token')
 
     await requireAuth({ roles: ['admin'] })
 
@@ -116,9 +116,10 @@ export const fetchGitHubReposFn = createServerFn({ method: 'GET' })
       throw new Error('GitHub not connected')
     }
 
-    const secrets = decryptSecrets<{ accessToken: string }>(integration.secrets)
+    const accessToken = await getGitHubAccessTokenForIntegration(integration)
+    if (!accessToken) throw new Error('GitHub authorization is missing. Reconnect GitHub.')
     try {
-      const repos = await listGitHubRepos(secrets.accessToken)
+      const repos = await listGitHubRepos(accessToken)
       if (integration.lastError) {
         await db
           .update(integrations)
@@ -220,15 +221,15 @@ async function repairGitHubSyncConfiguration(
 
     try {
       const { db, integrations, eq } = await import('@/lib/server/db')
-      const { decryptSecrets } = await import('../encryption')
       const {
         ensureGitHubWebhookEvents,
         ensureGitHubWebhookForIntegration,
         GITHUB_WEBHOOK_EVENTS_VERSION,
       } = await import('./webhook-registration')
       const { ensureGitHubEventMappings } = await import('./event-mappings')
-      const secrets = decryptSecrets<{ accessToken?: string }>(connection.secrets)
-      if (!secrets.accessToken) return
+      const { getGitHubAccessTokenForIntegration } = await import('./token')
+      const accessToken = await getGitHubAccessTokenForIntegration(connection)
+      if (!accessToken) return
 
       await ensureGitHubEventMappings({ integrationId: connection.id as IntegrationId, config })
 
@@ -238,7 +239,7 @@ async function repairGitHubSyncConfiguration(
           requestHeaders: getRequestHeaders(),
         })
       } else if (config.statusSyncEnabled === true && webhookId) {
-        await ensureGitHubWebhookEvents(secrets.accessToken, ownerRepo, webhookId, {
+        await ensureGitHubWebhookEvents(accessToken, ownerRepo, webhookId, {
           callbackUrl: (
             await import('@/lib/server/integrations/webhook-registration')
           ).buildWebhookCallbackUrl('github', { requestHeaders: getRequestHeaders() }),

@@ -17,7 +17,7 @@ export function RoadmapCard({ id, title, voteCount, board }: RoadmapCardProps): 
     <Link
       to="/b/$slug/posts/$postId"
       params={{ slug: board.slug, postId: id }}
-      className="roadmap-card flex bg-[var(--post-card-background)] [border-radius:var(--radius)] border border-[var(--post-card-border)]/50 shadow-sm hover:bg-[var(--post-card-background)]/80 transition-colors"
+      className="roadmap-card flex w-full min-w-0 max-w-full overflow-hidden bg-[var(--post-card-background)] [border-radius:var(--radius)] border border-[var(--post-card-border)]/50 shadow-sm hover:bg-[var(--post-card-background)]/80 transition-colors"
     >
       <div className="roadmap-card__vote flex flex-col items-center justify-center w-12 shrink-0 border-e border-[var(--post-card-border)]/30 text-muted-foreground">
         <ChevronUpIcon className="h-5 w-5" />

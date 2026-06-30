@@ -74,6 +74,7 @@ const entry = (over: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   vi.clearAllMocks()
   m.access = { granted: true }
+  m.context = {}
 })
 
 describe('listPublicChangelogsFn → applyWidgetChangelogFilters', () => {
@@ -100,6 +101,48 @@ describe('listPublicChangelogsFn → applyWidgetChangelogFilters', () => {
     }
     expect(res.items).toHaveLength(1)
     expect(res.items[0].id).toBe('cl_1')
+  })
+
+  it('returns no entries when the widget profile explicitly selects no changelog categories', async () => {
+    m.context = {
+      profileId: 'p1',
+      contentFilters: {
+        changelog: { mode: 'all_published', categoryIds: [] },
+      },
+    }
+    m.listPublic.mockResolvedValueOnce({
+      items: [entry()],
+      nextCursor: null,
+      hasMore: false,
+    })
+
+    const res = (await listPublicChangelogsFn({ data: { limit: 10 } })) as {
+      items: Array<{ id: string }>
+    }
+
+    expect(m.listPublic).toHaveBeenCalledWith(expect.objectContaining({ categoryIds: [] }))
+    expect(res.items).toEqual([])
+  })
+
+  it('returns no entries when the widget profile explicitly selects no changelog products', async () => {
+    m.context = {
+      profileId: 'p1',
+      contentFilters: {
+        changelog: { mode: 'all_published', productIds: [] },
+      },
+    }
+    m.listPublic.mockResolvedValueOnce({
+      items: [entry()],
+      nextCursor: null,
+      hasMore: false,
+    })
+
+    const res = (await listPublicChangelogsFn({ data: { limit: 10 } })) as {
+      items: Array<{ id: string }>
+    }
+
+    expect(m.listPublic).toHaveBeenCalledWith(expect.objectContaining({ productIds: [] }))
+    expect(res.items).toEqual([])
   })
 
   it('keeps only selected entries in selected_entries mode', async () => {

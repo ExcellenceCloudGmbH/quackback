@@ -250,6 +250,22 @@ describe('postAllowedByWidgetFeedbackFilters (via listPublicPostsFn)', () => {
 
     expect(result.items).toHaveLength(1)
   })
+
+  it('filters out all posts when the widget profile explicitly selects no boards', async () => {
+    mockGetWidgetRequestContext.mockResolvedValue({
+      profileId: 'wp_1',
+      contentFilters: { feedback: { boardIds: [] } },
+    })
+    mockListPublicPosts.mockResolvedValue({
+      items: [makePost({ board: { id: 'board_1', slug: 'roadmap' } })],
+      hasMore: false,
+      total: 1,
+    })
+
+    const result = (await listPublicPostsHandler({ data: LIST_INPUT })) as { items: unknown[] }
+
+    expect(result.items).toEqual([])
+  })
 })
 
 describe('boardAllowedByWidgetFeedbackFilters (via createPublicPostFn)', () => {
@@ -318,6 +334,19 @@ describe('boardAllowedByWidgetFeedbackFilters (via createPublicPostFn)', () => {
     const result = (await createPublicPostHandler({ data: CREATE_INPUT })) as { id: string }
 
     expect(result.id).toBe('post_new2')
+  })
+
+  it('throws when the widget profile explicitly selects no boards', async () => {
+    mockGetPublicBoardById.mockResolvedValue({ id: 'board_1', name: 'Roadmap', slug: 'roadmap' })
+    mockGetWidgetRequestContext.mockResolvedValue({
+      profileId: 'wp_1',
+      contentFilters: { feedback: { boardIds: [] } },
+    })
+
+    await expect(createPublicPostHandler({ data: CREATE_INPUT })).rejects.toThrow(
+      'Board is not available in this widget'
+    )
+    expect(mockCreatePost).not.toHaveBeenCalled()
   })
 
   it('creates the post when there is no widget profile at all (returns true early)', async () => {

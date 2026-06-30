@@ -506,6 +506,38 @@ describe('widget settings routes', () => {
     )
   })
 
+  it('persists empty widget content selections as explicit empty allow-lists', async () => {
+    const apps = mocks.queryData.widgetApplications as Array<{
+      profiles: Array<{ contentFilters: Record<string, unknown> }>
+    }>
+    apps[0]!.profiles[0]!.contentFilters = {
+      feedback: { boardIds: [] },
+      changelog: { mode: 'all_published', categoryIds: [], productIds: [] },
+      help: { categoryIds: [] },
+    }
+
+    const Component = widgetOptions().component
+    render(<Component />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save environment' }))
+
+    await waitFor(() =>
+      expect(mocks.upsertWidgetEnvironmentProfileFn).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          contentFilters: {
+            feedback: { boardIds: [] },
+            changelog: {
+              mode: 'all_published',
+              categoryIds: [],
+              productIds: [],
+            },
+            help: { categoryIds: [] },
+          },
+        }),
+      })
+    )
+  })
+
   it('covers the empty widget application state without rendering profile editors', () => {
     seedQueries({
       widgetApplications: [],

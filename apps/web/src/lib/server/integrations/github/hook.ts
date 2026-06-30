@@ -12,6 +12,7 @@ import {
   buildTicketIssueBody,
   buildTicketUpdateBody,
 } from './ticket-message'
+import { renderTiptapForGitHubMarkdown, resolveGitHubAssetUrl } from './tiptap-markdown'
 import {
   buildQuackbackSystemMarker,
   buildOutboundGitHubCommentBody,
@@ -428,12 +429,16 @@ async function handleTicketCreated(
   if (event.type !== 'ticket.created') return { success: true }
 
   log.debug(`Creating issue for ticket -> repo ${ownerRepo}`)
-  const ticketDescriptionMarkdown = await loadTicketDescriptionMarkdown(event.data.ticket.id)
+  const ticketDescriptionMarkdown = await loadTicketDescriptionMarkdown(
+    event.data.ticket.id,
+    config.rootUrl
+  )
   const attachments = await listTicketPublicAttachmentsForSync(event.data.ticket.id)
   const { title, body, labels } = buildTicketIssueBody(event, config.rootUrl)
   const bodyWithAssets = withTicketMediaBlocks(body, {
     descriptionMarkdown: ticketDescriptionMarkdown,
     attachments,
+    rootUrl: config.rootUrl,
   })
   const markedBody = appendQuackbackTicketIssueMarker(bodyWithAssets, {
     ticketId: event.data.ticket.id,
@@ -599,7 +604,10 @@ async function handleTicketUpdated(
     if (hasContentChange) {
       log.debug(`Updating issue #${issueNumber} content in ${ownerRepo}`)
       const update = buildTicketUpdateBody(ticket, config.rootUrl)
-      const ticketDescriptionMarkdown = await loadTicketDescriptionMarkdown(ticket.id)
+      const ticketDescriptionMarkdown = await loadTicketDescriptionMarkdown(
+        ticket.id,
+        config.rootUrl
+      )
       const attachments = await listTicketPublicAttachmentsForSync(ticket.id)
       const patchBody: Record<string, unknown> = {}
       if (update.title) patchBody.title = update.title
@@ -607,6 +615,7 @@ async function handleTicketUpdated(
         const bodyWithAssets = withTicketMediaBlocks(update.body, {
           descriptionMarkdown: ticketDescriptionMarkdown,
           attachments,
+          rootUrl: config.rootUrl,
         })
         patchBody.body = appendQuackbackTicketIssueMarker(bodyWithAssets, {
           ticketId: ticket.id,
@@ -693,10 +702,11 @@ async function handleTicketThreadAdded(
 
   try {
     const authorName = await getThreadAuthorName(fullThread.principalId)
-    const renderedThreadBody = await renderThreadBodyForGitHub(fullThread)
+    const renderedThreadBody = await renderThreadBodyForGitHub(fullThread, config.rootUrl)
     const attachmentBlock = buildAttachmentBlock(
       (await listThreadAttachmentsForSync(threadId)) ?? [],
-      'Thread attachments'
+      'Thread attachments',
+      config.rootUrl
     )
     const threadBody = `${renderedThreadBody}${attachmentBlock ? `\n\n${attachmentBlock}` : ''}`
     const body = buildOutboundGitHubCommentBody({
@@ -748,10 +758,11 @@ async function handleTicketThreadUpdated(
 
   try {
     const authorName = await getThreadAuthorName(fullThread.principalId)
-    const renderedThreadBody = await renderThreadBodyForGitHub(fullThread)
+    const renderedThreadBody = await renderThreadBodyForGitHub(fullThread, config.rootUrl)
     const attachmentBlock = buildAttachmentBlock(
       (await listThreadAttachmentsForSync(threadId)) ?? [],
-      'Thread attachments'
+      'Thread attachments',
+      config.rootUrl
     )
     const threadBody = `${renderedThreadBody}${attachmentBlock ? `\n\n${attachmentBlock}` : ''}`
     const body = buildOutboundGitHubCommentBody({
@@ -833,9 +844,15 @@ async function handleTicketAttachmentAdded(
   if (!issueNumber) return skipped()
 
   try {
-    const lines: string[] = ['_Quackback attachment added_', '', formatAttachmentEntry(attachment)]
-    if (attachment.publicUrl && isImageAttachment(attachment.mimeType)) {
-      lines.push('', `![${attachment.filename}](${attachment.publicUrl})`)
+    const attachmentUrl = resolveGitHubAssetUrl(attachment.publicUrl, config.rootUrl)
+    const attachmentForMarkdown = { ...attachment, publicUrl: attachmentUrl }
+    const lines: string[] = [
+      '_Quackback attachment added_',
+      '',
+      formatAttachmentEntry(attachmentForMarkdown),
+    ]
+    if (attachmentUrl && isImageAttachment(attachment.mimeType)) {
+      lines.push('', `![${attachment.filename}](<${attachmentUrl}>)`)
     }
     lines.push(
       '',
@@ -911,23 +928,23 @@ function githubCommentError(error: unknown): HookResult {
   }
 }
 
-async function renderThreadBodyForGitHub(thread: {
-  bodyJson?: unknown
-  bodyText?: string | null
-}): Promise<string> {
+async function renderThreadBodyForGitHub(
+  thread: {
+    bodyJson?: unknown
+    bodyText?: string | null
+  },
+  rootUrl?: string
+): Promise<string> {
   const fallback = (thread.bodyText ?? '').trim()
   if (!thread.bodyJson) return fallback
 
-  try {
-    const { tiptapJsonToMarkdown } = await import('@/lib/server/markdown-tiptap')
-    const markdown = tiptapJsonToMarkdown(thread.bodyJson).trim()
-    return markdown || fallback
-  } catch {
-    return fallback
-  }
+  return renderTiptapForGitHubMarkdown(thread.bodyJson, { fallback, rootUrl }) || fallback
 }
 
-async function loadTicketDescriptionMarkdown(ticketId: string): Promise<string | null> {
+async function loadTicketDescriptionMarkdown(
+  ticketId: string,
+  rootUrl?: string
+): Promise<string | null> {
   try {
     const { db, tickets, eq } = await import('@/lib/server/db')
     const row = await db.query.tickets.findFirst({
@@ -936,8 +953,10 @@ async function loadTicketDescriptionMarkdown(ticketId: string): Promise<string |
     })
     if (!row?.descriptionJson) return row?.descriptionText?.trim() || null
 
-    const { tiptapJsonToMarkdown } = await import('@/lib/server/markdown-tiptap')
-    const markdown = tiptapJsonToMarkdown(row.descriptionJson).trim()
+    const markdown = renderTiptapForGitHubMarkdown(row.descriptionJson, {
+      fallback: row.descriptionText,
+      rootUrl,
+    })
     return markdown || row.descriptionText?.trim() || null
   } catch {
     return null
@@ -984,12 +1003,13 @@ function withTicketMediaBlocks(
   opts: {
     descriptionMarkdown: string | null
     attachments: TicketAttachmentForSync[]
+    rootUrl?: string
   }
 ): string {
   const sections = baseBody.split('\n\n---\n\n')
   const meta = sections.length > 1 ? sections[1] : ''
   const description = opts.descriptionMarkdown?.trim() || sections[0]?.trim() || ''
-  const attachmentBlock = buildAttachmentBlock(opts.attachments, 'Attachments')
+  const attachmentBlock = buildAttachmentBlock(opts.attachments, 'Attachments', opts.rootUrl)
 
   const bodySections: string[] = [description || sections[0] || '']
   if (attachmentBlock) {
@@ -1002,14 +1022,19 @@ function withTicketMediaBlocks(
   return bodySections.filter(Boolean).join('\n\n')
 }
 
-function buildAttachmentBlock(attachments: TicketAttachmentForSync[], heading: string): string {
+function buildAttachmentBlock(
+  attachments: TicketAttachmentForSync[],
+  heading: string,
+  rootUrl?: string
+): string {
   if (!attachments.length) return ''
 
   const lines: string[] = [`### ${heading}`]
   for (const attachment of attachments) {
-    lines.push(formatAttachmentEntry(attachment))
-    if (attachment.publicUrl && isImageAttachment(attachment.mimeType)) {
-      lines.push('', `![${attachment.filename}](${attachment.publicUrl})`)
+    const publicUrl = resolveGitHubAssetUrl(attachment.publicUrl, rootUrl)
+    lines.push(formatAttachmentEntry({ ...attachment, publicUrl }))
+    if (publicUrl && isImageAttachment(attachment.mimeType)) {
+      lines.push('', `![${attachment.filename}](<${publicUrl}>)`)
     }
   }
   return lines.join('\n')
@@ -1023,7 +1048,7 @@ function formatAttachmentEntry(attachment: {
 }): string {
   const sizeLabel = formatBytes(attachment.sizeBytes)
   const fileLabel = attachment.publicUrl
-    ? `[${attachment.filename}](${attachment.publicUrl})`
+    ? `[${attachment.filename}](<${attachment.publicUrl}>)`
     : `**${attachment.filename}**`
   return `- ${fileLabel} (${attachment.mimeType}, ${sizeLabel})`
 }

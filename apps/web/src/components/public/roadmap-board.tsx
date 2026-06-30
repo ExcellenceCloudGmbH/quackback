@@ -134,7 +134,7 @@ export function RoadmapBoard({
             {statuses.map((status, index) => (
               <div
                 key={status.id}
-                className="snap-center sm:snap-start flex flex-col animate-in fade-in duration-200 fill-mode-backwards"
+                className="snap-center sm:snap-start flex w-[300px] max-w-[calc(100vw-2rem)] shrink-0 flex-col animate-in fade-in duration-200 fill-mode-backwards sm:w-[320px] lg:w-[350px]"
                 style={{ animationDelay: `${index * 75}ms` }}
               >
                 <RoadmapColumn

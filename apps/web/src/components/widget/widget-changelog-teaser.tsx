@@ -27,7 +27,9 @@ interface WidgetChangelogTeaserProps {
  * they never disagree about whether content exists.
  */
 export function WidgetChangelogTeaser({ onOpenEntry, onSeeAll }: WidgetChangelogTeaserProps) {
-  const { data } = useInfiniteQuery(publicChangelogQueries.list(getWidgetAuthHeaders()))
+  const { data } = useInfiniteQuery(
+    publicChangelogQueries.list({ headers: getWidgetAuthHeaders() })
+  )
   const latest = data?.pages[0]?.items[0]
   if (!latest) return null
 
@@ -53,10 +55,10 @@ export function WidgetChangelogTeaser({ onOpenEntry, onSeeAll }: WidgetChangelog
         <time className="text-[11px] font-medium text-muted-foreground/60 uppercase tracking-wide">
           {formatDate(latest.publishedAt)}
         </time>
-        <h3 className="mt-0.5 text-sm font-medium text-foreground line-clamp-1 leading-snug">
+        <h3 className="mt-0.5 text-sm font-medium text-foreground line-clamp-2 leading-snug break-words [overflow-wrap:anywhere]">
           {latest.title}
         </h3>
-        <p className="mt-0.5 text-xs text-muted-foreground/70 line-clamp-2 leading-relaxed">
+        <p className="mt-0.5 text-xs text-muted-foreground/70 line-clamp-2 leading-relaxed break-words [overflow-wrap:anywhere]">
           {contentPreview(latest.content, 120)}
         </p>
       </button>

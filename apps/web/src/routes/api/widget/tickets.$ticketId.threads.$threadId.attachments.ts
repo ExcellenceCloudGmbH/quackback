@@ -1,5 +1,5 @@
 /**
- * Widget thread attachments — POST /api/widget/tickets/:ticketId/threads/:threadId/attachments
+ * Widget thread attachments — GET/POST /api/widget/tickets/:ticketId/threads/:threadId/attachments
  *
  * Lets the requester attach an image to one of THEIR OWN threads on a ticket
  * they own. Two-step flow:
@@ -7,9 +7,9 @@
  *      (or use the seed thread returned from POST /api/widget/tickets).
  *   2. Upload one or more images to that thread via this endpoint.
  *
- * Constraints (mirror `/api/v1/.../attachments` and `/api/widget/upload`):
- *   - Image MIME types only (`isAllowedImageType`)
- *   - 5MB max (`MAX_FILE_SIZE`)
+ * Constraints (mirror `/api/v1/.../attachments`):
+ *   - Safe attachment MIME types only (`isAllowedAttachmentType`)
+ *   - 25MB max (`MAX_ATTACHMENT_FILE_SIZE`)
  *   - Shared S3 prefix `'widget-images'`
  *
  * Authorization gates:
@@ -26,8 +26,9 @@ import { createFileRoute } from '@tanstack/react-router'
 import { db, eq, principal as principalTable } from '@/lib/server/db'
 import { getWidgetSession } from '@/lib/server/functions/widget-auth'
 import { getTicketForPortalUser } from '@/lib/server/domains/tickets/ticket.portal-query'
-import { getThread, attachToThread } from '@/lib/server/domains/tickets'
+import { getThread, attachToThread, listForThread } from '@/lib/server/domains/tickets'
 import { getWidgetConfig } from '@/lib/server/domains/settings/settings.widget'
+import { getPublicOriginFromRequest } from '@/lib/server/integrations/oauth'
 import {
   isS3Configured,
   isAllowedAttachmentType,
@@ -41,9 +42,87 @@ import {
   widgetJsonError,
 } from '@/lib/server/widget/cors'
 import { widgetTicketingGate } from '@/lib/server/widget/ticketing-gate'
+import { getWidgetRequestContext } from '@/lib/server/widget/context'
+import { assertTicketMatchesWidgetContext } from '@/lib/server/widget/ticket-scope'
 import type { PrincipalId, TicketId, TicketThreadId, UserId } from '@quackback/ids'
 
 const STORAGE_PREFIX = 'ticket-attachments'
+
+function serializeAttachment(row: {
+  id: string
+  threadId: string
+  uploadedByPrincipalId?: string | null
+  filename: string
+  mimeType: string
+  sizeBytes: number
+  publicUrl: string | null
+  createdAt: Date | string
+}) {
+  return {
+    id: row.id,
+    threadId: row.threadId,
+    uploadedByPrincipalId: row.uploadedByPrincipalId ?? null,
+    filename: row.filename,
+    mimeType: row.mimeType,
+    sizeBytes: row.sizeBytes,
+    publicUrl: row.publicUrl,
+    createdAt:
+      row.createdAt instanceof Date
+        ? row.createdAt.toISOString()
+        : new Date(row.createdAt).toISOString(),
+  }
+}
+
+export async function handleWidgetThreadAttachmentList({
+  request,
+  params,
+}: {
+  request: Request
+  params: { ticketId: string; threadId: string }
+}): Promise<Response> {
+  const disabled = await widgetTicketingGate()
+  if (disabled) return disabled
+  const session = await getWidgetSession(request)
+  if (!session) {
+    return widgetJsonError('AUTH_REQUIRED', 'Valid widget session required', 401)
+  }
+  if (session.principal.type === 'anonymous') {
+    return widgetJsonError(
+      'IDENTITY_REQUIRED',
+      'Identify the widget user before viewing attachments',
+      403
+    )
+  }
+
+  const ticketId = params.ticketId as TicketId
+  const threadId = params.threadId as TicketThreadId
+
+  try {
+    const ticket = await getTicketForPortalUser({
+      userId: session.user.id as UserId,
+      ticketId,
+    })
+    assertTicketMatchesWidgetContext(ticket, await getWidgetRequestContext(request))
+
+    const thread = await getThread(threadId)
+    if (
+      !thread ||
+      thread.deletedAt ||
+      thread.ticketId !== ticketId ||
+      thread.audience !== 'public'
+    ) {
+      return widgetJsonError('THREAD_NOT_FOUND', 'Thread not found', 404)
+    }
+
+    const rows = await listForThread(threadId)
+    return Response.json({ data: rows.map(serializeAttachment) }, { headers: widgetCorsHeaders() })
+  } catch (err) {
+    const mapped = mapDomainErrorToResponse(err)
+    if (mapped) return mapped
+    console.error('[widget:tickets] attachment list error', err)
+    return widgetJsonError('SERVER_ERROR', 'Failed to load attachments', 500)
+  }
+}
 
 export async function handleWidgetThreadAttachmentUpload({
   request,
@@ -79,10 +158,11 @@ export async function handleWidgetThreadAttachmentUpload({
 
   try {
     // Ownership: throws NotFoundError on miss, never ForbiddenError.
-    await getTicketForPortalUser({
+    const ticket = await getTicketForPortalUser({
       userId: session.user.id as UserId,
       ticketId,
     })
+    assertTicketMatchesWidgetContext(ticket, await getWidgetRequestContext(request))
 
     const thread = await getThread(threadId)
     if (!thread || thread.deletedAt || thread.ticketId !== ticketId) {
@@ -129,7 +209,12 @@ export async function handleWidgetThreadAttachmentUpload({
     const filename = file.name || `upload-${Date.now()}.${ext}`
     const key = generateStorageKey(STORAGE_PREFIX, filename)
     const buffer = Buffer.from(await file.arrayBuffer())
-    const publicUrl = await uploadObject(key, buffer, file.type)
+    const publicUrl = await uploadObject(
+      key,
+      buffer,
+      file.type,
+      getPublicOriginFromRequest(request)
+    )
 
     const created = await attachToThread({
       threadId,
@@ -144,13 +229,7 @@ export async function handleWidgetThreadAttachmentUpload({
     return Response.json(
       {
         data: {
-          id: created.id,
-          threadId: created.threadId,
-          filename: created.filename,
-          mimeType: created.mimeType,
-          sizeBytes: created.sizeBytes,
-          publicUrl: created.publicUrl,
-          createdAt: created.createdAt.toISOString(),
+          ...serializeAttachment(created),
         },
       },
       { status: 201, headers: widgetCorsHeaders() }
@@ -167,6 +246,7 @@ export const Route = createFileRoute('/api/widget/tickets/$ticketId/threads/$thr
   {
     server: {
       handlers: {
+        GET: handleWidgetThreadAttachmentList,
         POST: handleWidgetThreadAttachmentUpload,
       },
     },
