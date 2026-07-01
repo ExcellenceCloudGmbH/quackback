@@ -70,7 +70,7 @@ export function RoadmapColumn({ roadmapId, statusId, title, color, filters }: Ro
               </p>
             </div>
           ) : (
-            <div className="min-w-0 space-y-2">
+            <div className="grid grid-cols-1 gap-2 min-w-0">
               {posts.map((post, index) => (
                 <div
                   key={post.id}

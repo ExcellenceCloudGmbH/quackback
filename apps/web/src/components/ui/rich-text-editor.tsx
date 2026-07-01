@@ -2284,7 +2284,13 @@ export function generateContentHTML(content: JSONContent): string {
         return '<hr class="my-4 border-border" />'
 
       case 'table':
-        return `<div class="max-w-full overflow-x-auto"><table class="w-max min-w-full border-collapse">${node.content?.map(renderNode).join('') ?? ''}</table></div>`
+        // grid grid-cols-1 (not a plain block div) is load-bearing: Radix ScrollArea's
+        // viewport wraps children in `display:table`, which lets a wide table's
+        // intrinsic content width inflate that wrapper — and everything beside the
+        // table (title, paragraphs) — instead of being contained by this div's own
+        // overflow-x-auto. A `minmax(0,1fr)` grid track caps that propagation so only
+        // the table itself scrolls horizontally when it doesn't fit.
+        return `<div class="grid grid-cols-1 max-w-full overflow-x-auto"><table class="w-max min-w-full border-collapse">${node.content?.map(renderNode).join('') ?? ''}</table></div>`
 
       case 'tableRow':
         return `<tr>${node.content?.map(renderNode).join('') ?? ''}</tr>`

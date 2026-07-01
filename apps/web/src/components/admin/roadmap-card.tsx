@@ -25,7 +25,7 @@ export const RoadmapCard = memo(function RoadmapCard({
       ref={setNodeRef}
       onClick={onClick}
       style={{ opacity: isDragging ? 0.4 : 1 }}
-      className="flex bg-card rounded-lg border border-border/50 shadow-sm cursor-pointer hover:bg-card/80 transition-opacity duration-150"
+      className="flex min-w-0 max-w-full overflow-hidden bg-card rounded-lg border border-border/50 shadow-sm cursor-pointer hover:bg-card/80 transition-opacity duration-150"
       {...attributes}
       {...listeners}
     >
@@ -42,12 +42,15 @@ function CardContent({ post }: { post: RoadmapPostEntry }) {
         <span className="text-sm font-semibold text-foreground">{post.voteCount}</span>
       </div>
       <div className="flex-1 min-w-0 p-4">
-        <p className="text-sm font-medium text-foreground line-clamp-2 leading-snug">
+        <p className="text-sm font-medium text-foreground line-clamp-2 leading-snug break-words [overflow-wrap:anywhere]">
           {post.title}
         </p>
-        <Badge variant="secondary" className="mt-2.5 text-xs inline-flex items-center gap-0.5">
-          <Squares2X2Icon className="h-3 w-3 text-muted-foreground/40" />
-          {post.board.name}
+        <Badge
+          variant="secondary"
+          className="mt-2.5 max-w-full text-xs inline-flex items-center gap-0.5"
+        >
+          <Squares2X2Icon className="h-3 w-3 shrink-0 text-muted-foreground/40" />
+          <span className="truncate">{post.board.name}</span>
         </Badge>
       </div>
     </>
