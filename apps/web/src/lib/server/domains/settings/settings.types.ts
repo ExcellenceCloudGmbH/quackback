@@ -71,7 +71,10 @@ export interface AuthConfig {
      * Optional IdP-attribute → role mapping. When set, the SSO callback
      * resolves the user's role from a claim on the ID token instead of
      * falling back to `autoProvisionRole`. The mapping is first-match-
-     * wins against `rules`; nothing matches → `defaultRole`.
+     * wins against `rules`; when none matches, `resolveSsoRole` returns null
+     * and the caller falls back to the provider's `autoProvisionRole` (the
+     * per-provider model dropped this blob's `defaultRole`, kept here only for
+     * the legacy config shape).
      *
      * Resolved on every sign-in when `syncOnEverySignIn=true` so role
      * changes in the IdP propagate down. Default `false` keeps JIT
@@ -91,14 +94,23 @@ export interface AuthConfig {
     }
   }
   /**
-   * Workspace-wide two-factor policy for team-role users.
+   * Workspace-wide two-factor authentication policy.
    *
-   * When `required` is true, the password sign-in hook redirects any
-   * team-role user (`admin` / `member`) without 2FA enrolled to
-   * `/auth/two-factor-setup-required`. Portal users (`role='user'`)
-   * are never gated. Magic-link remains open as the break-glass for
-   * an admin who lost their authenticator — they can get back in,
-   * re-enroll, then sign in via password again.
+   * When `required` is true, a password sign-in (or signup) by ANY user
+   * whose account has no 2FA enrolled takes them through inline TOTP
+   * enrollment inside the auth dialog. An already-enrolled user is
+   * challenged for their TOTP code inline instead of receiving a session.
+   * There is no role distinction — the policy applies to all roles equally.
+   *
+   * The dialog does not receive an error from the server. It infers
+   * enrollment-needed from this `twoFactor.required` flag combined with
+   * the presence of a full session: better-auth withholds the session for
+   * enrolled users (returning `twoFactorRedirect`), so a full session
+   * under a required-2FA workspace means the user is un-enrolled.
+   *
+   * This flag gates only the password path. Magic-link, OAuth, and
+   * email-OTP sign-ins are not gated — the workspace flag is not a hard
+   * guarantee when those methods are also enabled.
    *
    * Default `undefined` is treated as `required=false` (off) so
    * existing tenants pre-migration aren't suddenly locked out.
@@ -113,9 +125,9 @@ export interface AuthConfig {
  *    default on the login form.
  *  - `enforced: true` (with `verifiedAt: <ISO>`) — emails at this domain
  *    are hard-bound to SSO; password / magic-link / non-SSO OAuth are
- *    blocked. Toggling `enforced=true` requires the calling admin to
- *    have signed in via SSO within the bootstrap window (lockout guard)
- *    AND email-delivery configured (break-glass precondition).
+ *    blocked. Toggling `enforced=true` requires a successful test sign-in
+ *    through the owning provider (lockout guard) AND active recovery codes —
+ *    the break-glass to sign back in if the IdP is ever unavailable.
  */
 export interface VerifiedDomain {
   id: `domain_${string}`
@@ -127,6 +139,13 @@ export interface VerifiedDomain {
   verifiedAt: string | null
   /** Per-domain hard-binding switch. Default false. */
   enforced: boolean
+  /**
+   * Owning identity provider (`idp` TypeID). Null/absent until the
+   * provider backfill links it — routing/eligibility code resolves the
+   * provider from this. Optional so legacy callers that build a domain
+   * without it still typecheck.
+   */
+  providerId?: `idp_${string}` | null
   /** ISO-8601 UTC. */
   createdAt: string
 }
@@ -153,27 +172,6 @@ export const DEFAULT_AUTH_CONFIG: AuthConfig = {
 // =============================================================================
 // Portal Configuration (Public feedback portal settings)
 // =============================================================================
-
-/**
- * Portal auth settings — `password`, `magicLink`, and dynamic OAuth provider toggles.
- *
- * The legacy `email` flag (Email OTP) was retired in migration 0049 in
- * favour of `magicLink`. Existing portal_config blobs may still carry
- * `email: false` after the migration; the index signature accepts it so
- * we don't trip TypeScript when reading legacy data.
- */
-export interface PortalAuthMethods {
-  /** Whether password authentication is enabled (defaults to true) */
-  password?: boolean
-  /** Whether one-click magic-link sign-in is enabled. The magicLink
-   * better-auth plugin is always wired (used by team invitations);
-   * this toggle controls whether the portal login UI surfaces it as a
-   * sign-in option. Defaults to off so the only auth surface is what
-   * the admin has explicitly chosen. */
-  magicLink?: boolean
-  /** Dynamic OAuth provider toggles keyed by provider ID (github, google, discord, etc.) */
-  [providerId: string]: boolean | undefined
-}
 
 /**
  * Portal feature toggles
@@ -270,8 +268,6 @@ export const DEFAULT_PORTAL_SUPPORT_ACCESS: SupportAccessConfig = {
  * Controls the public feedback portal behavior
  */
 export interface PortalConfig {
-  /** OAuth providers for portal user sign-in */
-  oauth: PortalAuthMethods
   /** Feature toggles */
   features: PortalFeatures
   /** Welcome card on the portal index. Optional — absent = disabled. */
@@ -298,12 +294,6 @@ export interface PortalSupportConfig {
  * Default portal config for new organizations
  */
 export const DEFAULT_PORTAL_CONFIG: PortalConfig = {
-  oauth: {
-    password: true,
-    email: false,
-    google: true,
-    github: true,
-  },
   features: {
     allowEditAfterEngagement: false,
     allowDeleteAfterEngagement: false,
@@ -659,7 +649,6 @@ export interface UpdateAuthConfigInput {
  * Input for updating portal config (partial update)
  */
 export interface UpdatePortalConfigInput {
-  oauth?: Partial<PortalAuthMethods>
   features?: Partial<PortalFeatures>
   welcomeCard?: Partial<PortalWelcomeCard>
   moderationDefault?: ModerationDefault
@@ -677,16 +666,24 @@ export interface UpdatePortalConfigInput {
 export interface PublicAuthConfig {
   oauth: OAuthProviders
   openSignup: boolean
+  /** Workspace 2FA policy, surfaced so the auth dialog can drive inline
+   *  enrollment after a password sign-in. */
+  twoFactor?: { required: boolean }
 }
 
 /**
  * Public portal config for portal login forms
  */
 export interface PublicPortalConfig {
-  oauth: PortalAuthMethods
   features: PortalFeatures
-  /** Display name overrides for generic OAuth providers (e.g. custom-oidc → "Okta") */
-  customProviderNames?: Record<string, string>
+  /**
+   * Public OIDC sign-in buttons from the identity_provider table. Each
+   * `id` is a provider's `registrationId` (drives
+   * `signIn.oauth2({ providerId })`); `name` is its display label. Only
+   * button-eligible, registered providers appear — routed-only providers
+   * (verified domain + showButton:false) are omitted.
+   */
+  oidcProviders?: { id: string; name: string }[]
   /** Welcome card on the portal index. Absent / disabled = nothing rendered. */
   welcomeCard?: PortalWelcomeCard
   /**
@@ -804,7 +801,7 @@ export const FEATURE_FLAG_REGISTRY: Record<
   supportInbox: {
     label: 'Conversations',
     description:
-      'Let visitors start a live chat from the widget; messages land in a shared inbox your team works from.',
+      'Let visitors start a Messenger chat from the widget; messages land in a shared inbox your team works from.',
   },
   linkPreviews: {
     label: 'Link Previews',
@@ -830,7 +827,7 @@ export const LAB_SECTIONS: Array<{
 }> = [
   {
     title: 'Support',
-    description: 'Support your customers with live chat and a self-serve help center.',
+    description: 'Support your customers with Messenger and a self-serve help center.',
     flags: ['supportInbox', 'tickets', 'helpCenter', 'linkPreviews'],
   },
   {

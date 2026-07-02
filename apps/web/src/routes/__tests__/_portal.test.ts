@@ -30,12 +30,11 @@ vi.mock('@/lib/server/domains/settings/redact', () => ({
 }))
 vi.mock('@/lib/shared/theme', () => ({
   generateThemeCSS: vi.fn(() => ''),
-  getGoogleFontsUrl: vi.fn(() => null),
 }))
 vi.mock('@/lib/shared/i18n', () => ({ resolveLocale: vi.fn(async () => 'en') }))
-vi.mock('@/lib/shared/types/settings', () => ({ DEFAULT_PORTAL_CONFIG: { oauth: {}, access: {} } }))
-vi.mock('@/lib/shared/types/portal-gate-error', () => ({
-  parseGateError: vi.fn(() => null),
+vi.mock('@/lib/shared/types/settings', () => ({
+  DEFAULT_PORTAL_CONFIG: { oauth: {}, access: {} },
+  DEFAULT_AUTH_CONFIG: { oauth: { google: true, github: true, password: true }, openSignup: false },
 }))
 vi.mock('@tanstack/react-start', () => ({
   createServerFn: () => {
@@ -57,6 +56,9 @@ vi.mock('@tanstack/react-start', () => ({
 }))
 vi.mock('@tanstack/react-start/server', () => ({
   getRequestHeaders: () => new Headers(),
+}))
+vi.mock('@/lib/server/functions/instant-sso', () => ({
+  resolveInstantSsoRedirectFn: vi.fn(),
 }))
 
 // ---------------------------------------------------------------------------

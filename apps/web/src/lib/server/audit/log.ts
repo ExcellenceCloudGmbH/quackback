@@ -15,14 +15,10 @@ import { logger } from '@/lib/server/logger'
 
 const log = logger.child({ component: 'audit' })
 
-/** A JSON-shaped value — fits into a Postgres jsonb column. */
-export type JsonValue =
-  | string
-  | number
-  | boolean
-  | null
-  | { [key: string]: JsonValue }
-  | JsonValue[]
+/** A JSON-shaped value — fits into a Postgres jsonb column. Re-exported from the
+ *  shared module so client/shared code can reference it without importing from
+ *  `@/lib/server`. */
+export type { JsonValue } from '@/lib/shared/json'
 
 /**
  * Closed taxonomy of audit event types.
@@ -35,6 +31,13 @@ export type AuditEventType =
   | 'sso.enforcement.domain.enabled'
   | 'sso.enforcement.domain.disabled'
   | 'sso.config.changed'
+  // Multi-provider identity-provider CRUD (Task 15)
+  | 'idp.created'
+  | 'idp.updated'
+  | 'idp.deleted'
+  | 'idp.credentials.changed'
+  | 'idp.domain.enforced'
+  | 'idp.domain.unenforced'
   | 'sso.recovery_codes.generated'
   | 'sso.recovery_codes.used'
   | 'sso.recovery_codes.invalidated'

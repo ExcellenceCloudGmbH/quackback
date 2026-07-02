@@ -260,10 +260,36 @@ export function logStartupBanner(): void {
     })
     .catch((err) => log.error({ err }, 'failed to init merge suggestion sweep'))
 
+  // Changelog publish-notification reconciler: announces any live entry whose
+  // notification was missed (a dropped delayed-publish job, or a dispatch that
+  // failed after the synchronous publish). Cross-instance lock so only one
+  // replica notifies per tick; the per-entry atomic claim guards the rest.
+  // Runs shortly after startup, then every 5 minutes.
+  Promise.all([import('./domains/changelog/changelog.service'), import('@/lib/server/sweep-lock')])
+    .then(([{ reconcileChangelogNotifications }, { withSweepLock }]) => {
+      const TEN_MIN = 10 * 60 * 1000
+      const runReconcile = () =>
+        withSweepLock('changelog_notify', TEN_MIN, async () => {
+          await reconcileChangelogNotifications().catch((err) =>
+            log.error({ err }, 'changelog notify reconcile failed')
+          )
+        })
+      setTimeout(() => void runReconcile(), 25_000) // 25s delay (stagger after merge's 15s)
+      setInterval(() => void runReconcile(), 5 * 60 * 1000) // Every 5 minutes
+    })
+    .catch((err) => log.error({ err }, 'failed to init changelog notify reconciler'))
+
   // Ensure quackback feedback source exists (idempotent, creates on first startup)
   import('./domains/feedback/sources/quackback.source')
     .then(({ ensureQuackbackFeedbackSource }) => ensureQuackbackFeedbackSource())
     .catch((err) => log.error({ err }, 'failed to ensure quackback feedback source'))
+
+  // One-time in-place data backfills (idempotent, advisory-locked). Runs the
+  // custom-oidc → identity_provider migration that needs SECRET_KEY to decrypt
+  // its credential and so can't live in the SQL migration bundle.
+  import('@/lib/server/auth/backfill-custom-oidc-provider')
+    .then(({ runStartupBackfills }) => runStartupBackfills())
+    .catch((err) => log.error({ err }, 'failed to run startup backfills'))
 
   // Quackback config file watcher — reconciles managed fields from
   // /etc/quackback/config.yaml on every change. No-op when the file
