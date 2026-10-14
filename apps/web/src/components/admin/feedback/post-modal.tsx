@@ -578,6 +578,7 @@ export const PostModalContent = memo(function PostModalContent({
               onOwnerChange={canSetOwner ? handleOwnerChange : undefined}
               isUpdating={isUpdating}
               hideSubscribe
+              teamSubscribe
               variant="card"
               manageActions={manageActions}
             />

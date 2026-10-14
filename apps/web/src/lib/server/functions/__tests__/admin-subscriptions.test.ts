@@ -27,6 +27,13 @@ const mockRequireAuth = vi.fn()
 
 vi.mock('@/lib/server/functions/auth-helpers', () => ({
   requireAuth: (...args: unknown[]) => mockRequireAuth(...args),
+  policyActorFromAuth: vi.fn(async () => ({ principalId: 'principal_me' })),
+}))
+vi.mock('@/lib/server/functions/portal-access', () => ({
+  resolvePortalAccessForRequest: vi.fn(async () => ({ granted: true })),
+}))
+vi.mock('@/lib/server/domains/posts/post.access', () => ({
+  assertPostViewable: vi.fn(async () => undefined),
 }))
 
 // --- Mock: subscription service ---
@@ -169,6 +176,16 @@ describe('adminUpdateVoterSubscriptionFn', () => {
       postId: 'post_abc123',
       principalId: 'principal_xyz456',
       level: 'status_only',
+    })
+  })
+})
+
+describe('subscribeToPostFn', () => {
+  it('always records a self subscription as manual, whatever reason the client sends', async () => {
+    mockRequireAuth.mockResolvedValue({ principal: { id: 'principal_me' } })
+    await handlersByIndex[1]({ data: { postId: 'post_abc123', reason: 'author', level: 'all' } })
+    expect(mockSubscribeToPost).toHaveBeenCalledWith('principal_me', 'post_abc123', 'manual', {
+      level: 'all',
     })
   })
 })
