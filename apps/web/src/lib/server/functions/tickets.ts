@@ -46,7 +46,12 @@ import {
   ticketAttachmentSchema,
   ticketDueAtWireSchema,
   createMyTicketSchema,
+  ticketIdSchema,
+  ticketColleaguesSchema,
+  shareMyTicketSchema,
+  removeMyTicketShareSchema,
   type CreateMyTicketInput,
+  type ShareMyTicketInput,
 } from '@/lib/shared/schemas/tickets'
 
 const ticketTypeSchema = z.enum(TICKET_TYPES)
@@ -1059,12 +1064,14 @@ export const runGetConversationLinkedTicket = createServerOnlyFn(
     const { isSupportTicketsEnabled } =
       await import('@/lib/server/domains/settings/settings.support')
     if (!(await isSupportTicketsEnabled())) return null
-    const { getRequesterTicketForConversation } =
-      await import('@/lib/server/domains/tickets/requester.service')
-    return getRequesterTicketForConversation(
+    // The requester's own ticket, or one shared with the caller.
+    const { getCustomerTicketForConversation } =
+      await import('@/lib/server/domains/tickets/customer-ticket-sharing.service')
+    const linked = await getCustomerTicketForConversation(
       data.conversationId as ConversationId,
       ctx.principal.id
     )
+    return linked?.ticket ?? null
   }
 )
 
@@ -1175,4 +1182,132 @@ export const unwatchMyTicketFn = createServerFn({ method: 'POST' })
   .validator(z.object({ ticketId: z.string() }))
   .handler(async ({ data }) => {
     return runUnwatchMyTicket(await requireAuth(), data)
+  })
+
+// ---------------------------------------------------------------------------
+// Sharing, customer side (ticket-sharing.service): who is on a ticket the
+// caller can see, the colleagues the requester may share it with, sharing,
+// and taking someone off (yourself, to leave). Ownership- or share-gated in
+// the service, flag-gated here like the other requester fns.
+// ---------------------------------------------------------------------------
+
+export const runGetMyTicketSharing = createServerOnlyFn(async function runGetMyTicketSharing(
+  ctx: Awaited<ReturnType<typeof requireAuth>>,
+  data: { ticketId: string }
+) {
+  await requireSupportTicketsEnabled()
+  const actor = await policyActorFromAuth(ctx)
+  const { getTicketSharing } =
+    await import('@/lib/server/domains/tickets/customer-ticket-sharing.service')
+  return getTicketSharing(actor, data.ticketId as TicketId)
+})
+
+export const getMyTicketSharingFn = createServerFn({ method: 'GET' })
+  .validator(ticketIdSchema)
+  .handler(async ({ data }) => {
+    return runGetMyTicketSharing(await requireAuth(), data)
+  })
+
+export const runListMyTicketColleagues = createServerOnlyFn(
+  async function runListMyTicketColleagues(
+    ctx: Awaited<ReturnType<typeof requireAuth>>,
+    data: { ticketId: string; query?: string }
+  ) {
+    await requireSupportTicketsEnabled()
+    const actor = await policyActorFromAuth(ctx)
+    const { listShareableColleagues } =
+      await import('@/lib/server/domains/tickets/customer-ticket-sharing.service')
+    return {
+      colleagues: await listShareableColleagues(actor, data.ticketId as TicketId, data.query),
+    }
+  }
+)
+
+export const listMyTicketColleaguesFn = createServerFn({ method: 'GET' })
+  .validator(ticketColleaguesSchema)
+  .handler(async ({ data }) => {
+    return runListMyTicketColleagues(await requireAuth(), data)
+  })
+
+export const runShareMyTicket = createServerOnlyFn(async function runShareMyTicket(
+  ctx: Awaited<ReturnType<typeof requireAuth>>,
+  data: ShareMyTicketInput
+) {
+  await requireSupportTicketsEnabled()
+  const actor = await policyActorFromAuth(ctx)
+  const { shareTicketWithColleague } =
+    await import('@/lib/server/domains/tickets/customer-ticket-sharing.service')
+  const target = data.principalId
+    ? { principalId: data.principalId as PrincipalId }
+    : { email: data.email ?? '' }
+  return shareTicketWithColleague(actor, data.ticketId as TicketId, target, {
+    actorDisplayName: ctx.user.name,
+  })
+})
+
+export const shareMyTicketFn = createServerFn({ method: 'POST' })
+  .validator(shareMyTicketSchema)
+  .handler(async ({ data }) => {
+    return runShareMyTicket(await requireAuth(), data)
+  })
+
+export const runRemoveMyTicketShare = createServerOnlyFn(async function runRemoveMyTicketShare(
+  ctx: Awaited<ReturnType<typeof requireAuth>>,
+  data: { ticketId: string; principalId: string }
+) {
+  await requireSupportTicketsEnabled()
+  const actor = await policyActorFromAuth(ctx)
+  const { removeTicketShare } =
+    await import('@/lib/server/domains/tickets/customer-ticket-sharing.service')
+  return removeTicketShare(actor, data.ticketId as TicketId, data.principalId as PrincipalId, {
+    actorDisplayName: ctx.user.name,
+  })
+})
+
+export const removeMyTicketShareFn = createServerFn({ method: 'POST' })
+  .validator(removeMyTicketShareSchema)
+  .handler(async ({ data }) => {
+    return runRemoveMyTicketShare(await requireAuth(), data)
+  })
+
+// Sharing, team side: the customers a ticket is shared with, and sharing by
+// email (ticket.reply on a ticket the caller can see, enforced in the service).
+
+export const listTicketParticipantsFn = createServerFn({ method: 'GET' })
+  .validator(ticketIdSchema)
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_VIEW })
+    const actor = await policyActorFromAuth(ctx)
+    const { listTicketParticipants } =
+      await import('@/lib/server/domains/tickets/ticket-sharing.service')
+    return { participants: await listTicketParticipants(data.ticketId as TicketId, actor) }
+  })
+
+export const addTicketParticipantFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ ticketId: z.string(), email: z.string().email().max(320) }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_REPLY })
+    const actor = await policyActorFromAuth(ctx)
+    const { addTicketParticipantByEmail } =
+      await import('@/lib/server/domains/tickets/ticket-sharing.service')
+    return addTicketParticipantByEmail(data.ticketId as TicketId, data.email, actor, {
+      actorDisplayName: ctx.user.name,
+    })
+  })
+
+export const removeTicketParticipantFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ ticketId: z.string(), principalId: z.string() }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_REPLY })
+    const actor = await policyActorFromAuth(ctx)
+    const { removeTicketParticipant } =
+      await import('@/lib/server/domains/tickets/ticket-sharing.service')
+    return removeTicketParticipant(
+      data.ticketId as TicketId,
+      data.principalId as PrincipalId,
+      actor,
+      {
+        actorDisplayName: ctx.user.name,
+      }
+    )
   })

@@ -121,6 +121,14 @@ export function WidgetTickets({
                           {t.reference}
                         </span>
                         <TicketDueLabel dueAt={t.dueAt} closed={t.stage.closed} />
+                        {t.relation === 'participant' && (
+                          <span className="text-[11px] text-muted-foreground/70">
+                            <FormattedMessage
+                              id="widget.messages.sharedWithYou"
+                              defaultMessage="Shared with you"
+                            />
+                          </span>
+                        )}
                         {changed && (
                           <span className="sr-only">
                             <FormattedMessage

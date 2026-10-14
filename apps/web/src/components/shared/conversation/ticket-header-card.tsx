@@ -2,8 +2,9 @@
  * The converged Messages surface's ticket header (design: one thread per pair,
  * rendered as a conversation with a ticket "hat"): compact stage chip + title +
  * reference + watch bell on top, the full StageTracker under it (with the
- * due date, when one is set), and a collapsed Details disclosure holding what the old ticket page's rail showed
- * (type, opened date, intake answers). Rendered by VisitorConversationThread
+ * due date, when one is set), and a collapsed Details disclosure holding what
+ * the old ticket page's rail showed (type, opened date, intake answers), and
+ * who the ticket is shared with (TicketPeople). Rendered by VisitorConversationThread
  * whenever the conversation carries a linked customer ticket — one
  * implementation for the portal and the widget, like the thread itself.
  *
@@ -25,6 +26,7 @@ import { TimeAgo } from '@/components/ui/time-ago'
 import { cn } from '@/lib/shared/utils'
 import { formatCalendarDate } from '@/lib/shared/utils/date'
 import { useVisitorSurfaceRpc } from '@/lib/client/visitor-surface-rpc'
+import { TicketPeople } from './ticket-people'
 
 const NO_HEADERS = (): Record<string, string> => ({})
 
@@ -61,10 +63,13 @@ export function formatIntakeValue(
 export function TicketHeaderCard({
   ticket,
   getAuthHeaders = NO_HEADERS,
+  onLeft,
 }: {
   ticket: RequesterTicketDTO
   /** Widget passes its Bearer-token headers; portal rides on cookies. */
   getAuthHeaders?: () => Record<string, string>
+  /** The viewer left a ticket shared with them: the thread is no longer theirs. */
+  onLeft?: () => void
 }) {
   const intl = useIntl()
   const queryClient = useQueryClient()
@@ -180,6 +185,8 @@ export function TicketHeaderCard({
           <span className="text-muted-foreground/60">· {ticket.ticketType.name}</span>
         )}
       </button>
+
+      <TicketPeople ticketId={id} getAuthHeaders={getAuthHeaders} onLeft={onLeft} />
 
       {expanded && (
         <div className="mt-2 space-y-2 rounded-md border border-border/40 bg-background/60 px-2.5 py-2">

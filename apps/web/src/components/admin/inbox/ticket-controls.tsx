@@ -266,6 +266,11 @@ function reasonLabel(intl: IntlShape, reason: TicketWatcher['reason']): string {
         id: 'admin.ticketWatchers.reason.replier',
         defaultMessage: 'Replied',
       })
+    case 'participant':
+      return intl.formatMessage({
+        id: 'admin.ticketWatchers.reason.participant',
+        defaultMessage: 'Shared with',
+      })
     default:
       return intl.formatMessage({
         id: 'admin.ticketWatchers.reason.manual',

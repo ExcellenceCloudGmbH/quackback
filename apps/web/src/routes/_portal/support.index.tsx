@@ -93,6 +93,8 @@ function SupportListPage() {
 
   const conversations = data?.conversations ?? []
   const linkedTickets = data?.linkedTickets ?? {}
+  // Customer tickets a colleague or the team shared with this visitor.
+  const sharedIds = new Set<string>(data?.sharedConversationIds ?? [])
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 py-8">
@@ -211,6 +213,14 @@ function SupportListPage() {
                             {ticket.reference}
                           </span>
                           <TicketDueLabel dueAt={ticket.dueAt} closed={ticket.stage.closed} />
+                          {sharedIds.has(c.id) && (
+                            <span className="text-[11px] text-muted-foreground/70">
+                              {intl.formatMessage({
+                                id: 'portal.support.sharedWithYou',
+                                defaultMessage: 'Shared with you',
+                              })}
+                            </span>
+                          )}
                         </>
                       ) : (
                         <StatusLabel status={c.status} />
