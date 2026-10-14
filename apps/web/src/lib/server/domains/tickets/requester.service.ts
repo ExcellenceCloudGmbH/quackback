@@ -380,8 +380,10 @@ async function appendRequesterReply(
   actor: Actor
 ): Promise<{ message: ConversationMessageDTO }> {
   // CONVERGENCE PHASE 1a: on a linked pair the insert redirects to the
-  // conversation (the full conversation write pipeline runs there); the
-  // reopen + `ticket.replied` below are ticket-side and fire either way.
+  // conversation (the full conversation write pipeline runs there). The reopen
+  // below is ticket-side and runs either way; `ticket.replied` is emitted here
+  // only for a ticket-parented reply, since the pair-reply reaction raises it
+  // off the conversation's `message.created` (ticket.event-hooks.ts).
   const { message, ticket } = await insertTicketMessage(input, requesterPrincipalId, {
     senderType: 'visitor',
     isInternal: false,
@@ -391,7 +393,7 @@ async function appendRequesterReply(
   const { safeSubscribeToTicket } = await import('./ticket-subscription.service')
   await safeSubscribeToTicket(requesterPrincipalId, ticketId, 'requester')
   await autoReopenOnRequesterReply(ticketId, requesterPrincipalId)
-  void emitTicketReplied(actor, ticket, message)
+  if (!message.conversationId) void emitTicketReplied(actor, ticket, message)
   return { message }
 }
 

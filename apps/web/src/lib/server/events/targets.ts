@@ -1122,8 +1122,8 @@ export async function getMessageCreatedTargets(event: EventData): Promise<HookTa
 
   // CONVERGENCE PHASE 1a (the one behavior change the changelog flags):
   // suppress the team-wide bell for a conversation paired with a CUSTOMER
-  // ticket. The write redirect (ticket-message.service.ts) emits
-  // `ticket.replied` ALONGSIDE `message.created` on a linked pair, and the
+  // ticket. Every customer-visible message on a pair becomes that ticket's
+  // `ticket.replied` (the pair-reply reaction, ticket.event-hooks.ts), and the
   // watcher-scoped fan-out that rides it (getTicketRepliedTargets +
   // getTicketRepliedEmailTargets) replaces the team-wide bell — non-watcher
   // teammates no longer get belled for pair-conversation visitor messages.
@@ -1480,6 +1480,10 @@ export async function getTicketCreatedEmailTargets(
  * full reply body; the requester's target is requester-facing (portal CTA,
  * per-team From, reply-by-email), agent watchers get the inbox CTA and branded
  * From (D3 sequencing note).
+ *
+ * On a ticket paired with a conversation the requester is left out: the reply
+ * landed on that conversation, whose own pipeline already emails the requester
+ * (`notifyAgentReply`), so a ticket email on top would be the same reply twice.
  */
 export async function getTicketRepliedEmailTargets(
   event: EventData,
@@ -1500,8 +1504,12 @@ export async function getTicketRepliedEmailTargets(
   const ticketId = ticket.id as TicketId
   const { getTicketWatchersForEvent } =
     await import('@/lib/server/domains/tickets/ticket-subscription.service')
+  const requesterMailedByConversation =
+    emailableRequester != null && (await pairConversationId(ticketId)) != null
   const watchers = (await getTicketWatchersForEvent(ticketId)).filter(
-    (id) => id !== event.actor.principalId
+    (id) =>
+      id !== event.actor.principalId &&
+      !(requesterMailedByConversation && id === emailableRequester)
   )
   if (watchers.length === 0) return []
 

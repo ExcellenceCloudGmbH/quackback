@@ -273,11 +273,12 @@ describe('getTicketRepliedEmailTargets', () => {
       'principal_agent_1',
       'principal_agent_actor',
     ])
+    queueSelect([]) // no pair: a standalone ticket's reply lives on the ticket alone
     queueSelect([
       { id: 'principal_requester', email: 'req@example.com', contactEmail: null },
       { id: 'principal_agent_1', email: 'agent1@example.com', contactEmail: null },
     ])
-    queueSelect([{ conversationId: 'conversation_1' }]) // the pair (requester CTA target)
+    queueSelect([]) // no pair for the requester's CTA either
     const targets = await getTicketRepliedEmailTargets(repliedEvent(), context)
     expect(targets).toHaveLength(2)
     const byEmail = Object.fromEntries(
@@ -285,7 +286,7 @@ describe('getTicketRepliedEmailTargets', () => {
     )
     expect(byEmail['req@example.com']).toMatchObject({
       kind: 'reply',
-      ctaUrl: 'https://p/support/conversation_1',
+      ctaUrl: 'https://p/support',
       messageBody: 'Fix is queued.',
       authorName: 'Sarah',
     })
@@ -298,8 +299,21 @@ describe('getTicketRepliedEmailTargets', () => {
     expect(byEmail['agent1@example.com']).not.toHaveProperty('replyTo', expect.anything())
   })
 
+  it('leaves the requester of a paired ticket to the conversation reply email', async () => {
+    getTicketWatchersForEvent.mockResolvedValue(['principal_requester', 'principal_agent_1'])
+    queueSelect([{ conversationId: 'conversation_1' }]) // the pair
+    queueSelect([{ id: 'principal_agent_1', email: 'agent1@example.com', contactEmail: null }])
+    const targets = await getTicketRepliedEmailTargets(repliedEvent(), context)
+    // The reply landed on the pair's conversation, whose pipeline emails the
+    // requester itself: the ticket email reaches the agent watcher only.
+    expect(targets.map((t) => (t.target as { email: string }).email)).toEqual([
+      'agent1@example.com',
+    ])
+  })
+
   it('drops a synthetic-anon requester', async () => {
     getTicketWatchersForEvent.mockResolvedValue(['principal_requester'])
+    queueSelect([]) // no pair
     queueSelect([
       { id: 'principal_requester', email: 'temp-x@anon.quackback.io', contactEmail: null },
     ])
@@ -313,6 +327,7 @@ describe('getTicketRepliedEmailTargets', () => {
 
   it('returns [] when emailMuted / matrix denies the only recipient', async () => {
     getTicketWatchersForEvent.mockResolvedValue(['principal_requester'])
+    queueSelect([]) // no pair
     queueSelect([{ id: 'principal_requester', email: 'req@example.com', contactEmail: null }])
     batchGetNotificationPreferences.mockResolvedValue(
       new Map([['principal_requester', { emailMuted: true }]])

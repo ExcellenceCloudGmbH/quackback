@@ -181,6 +181,20 @@ export async function emitTicketReplied(
   ticket: Ticket,
   message: ConversationMessageDTO
 ): Promise<void> {
+  await emitTicketRepliedAs(toEventActor(actor), ticket, message)
+}
+
+/**
+ * `emitTicketReplied` for a caller that already holds the event actor rather
+ * than a policy actor: the pair-reply reaction (ticket.event-hooks.ts), which
+ * derives the ticket reply from a conversation's `message.created` and reuses
+ * that event's actor so the reply reads as the same person on both signals.
+ */
+export async function emitTicketRepliedAs(
+  eventActor: EventActor,
+  ticket: Ticket,
+  message: ConversationMessageDTO
+): Promise<void> {
   await safe('ticket.replied', async () => {
     // Requester replies notify only other watchers, so keep the support name.
     // Agent replies also notify the requester and must use the public label.
@@ -189,7 +203,7 @@ export async function emitTicketReplied(
       author = (await loadAuthors([author.principalId])).get(author.principalId) ?? null
     }
     return dispatchTicketReplied(
-      toEventActor(actor),
+      eventActor,
       ticketRef(ticket),
       message.id,
       contentJsonToMarkdown(message.contentJson, message.content),
