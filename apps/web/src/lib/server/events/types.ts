@@ -98,6 +98,9 @@ export const EVENT_TYPES = [
   // A public reply on the ticket thread was edited or deleted.
   'ticket.reply_updated',
   'ticket.reply_deleted',
+  // A file was added to or removed from a public ticket reply already sent.
+  'ticket.attachment_added',
+  'ticket.attachment_removed',
   'assistant.handed_off',
   'assistant.resolved',
   // Timer-driven triggers (see TIMER_DRIVEN_EVENT_TYPES above for the rationale).
@@ -633,6 +636,17 @@ export interface TicketReplyDeletedPayload {
   title: string
 }
 
+/** Payload for ticket.attachment_added / ticket.attachment_removed: one file
+ *  added to or removed from a public reply already sent. */
+export interface TicketAttachmentChangedPayload {
+  ticket: EventTicketRef
+  messageId: string
+  senderType: 'agent' | 'visitor'
+  /** Ticket title, for consumer copy (the ref carries no title). */
+  title: string
+  attachment: EventTicketMessageAttachment
+}
+
 /** A message attachment carried on a ticket reply/note event. */
 export interface EventTicketMessageAttachment {
   name: string
@@ -902,6 +916,12 @@ export interface TicketReplyUpdatedEvent extends EventBase<'ticket.reply_updated
 export interface TicketReplyDeletedEvent extends EventBase<'ticket.reply_deleted'> {
   data: TicketReplyDeletedPayload
 }
+export interface TicketAttachmentAddedEvent extends EventBase<'ticket.attachment_added'> {
+  data: TicketAttachmentChangedPayload
+}
+export interface TicketAttachmentRemovedEvent extends EventBase<'ticket.attachment_removed'> {
+  data: TicketAttachmentChangedPayload
+}
 
 export interface AssistantHandedOffEvent extends EventBase<'assistant.handed_off'> {
   data: AssistantHandedOffPayload
@@ -1019,6 +1039,8 @@ export type EventData =
   | TicketPriorityChangedEvent
   | TicketReplyUpdatedEvent
   | TicketReplyDeletedEvent
+  | TicketAttachmentAddedEvent
+  | TicketAttachmentRemovedEvent
   | AssistantHandedOffEvent
   | AssistantResolvedEvent
   | ConversationCustomerUnresponsiveEvent

@@ -443,6 +443,24 @@ export const BARE_GATE_CLASSIFICATIONS: Record<string, Classification> = {
     ],
     'author edits their own message; needs the permission that writes that kind (reply or note, conversation or ticket)'
   ),
+  'lib/server/functions/conversation.ts::addMessageAttachmentsFn': DYNAMIC_PERMISSION(
+    [
+      PERMISSIONS.CONVERSATION_REPLY,
+      PERMISSIONS.CONVERSATION_NOTE,
+      PERMISSIONS.TICKET_REPLY,
+      PERMISSIONS.TICKET_NOTE,
+    ],
+    'author adds files to their own sent message; the same rule as editing it (loadEditableMessage)'
+  ),
+  'lib/server/functions/conversation.ts::removeMessageAttachmentFn': DYNAMIC_PERMISSION(
+    [
+      PERMISSIONS.CONVERSATION_REPLY,
+      PERMISSIONS.CONVERSATION_NOTE,
+      PERMISSIONS.TICKET_REPLY,
+      PERMISSIONS.TICKET_NOTE,
+    ],
+    'author removes a file from their own sent message; the same rule as editing it (loadEditableMessage)'
+  ),
 
   // Requester tickets (converged Messages surface): a signed-in requester's
   // ticket surface is their conversation pair; these fns feed the shared

@@ -14,7 +14,17 @@
  * EventTicketMessageData): ticket events only ever reach admin-configured
  * consumers, never a per-user or public subscription.
  */
-import { db, eq, and, isNull, tickets, type Ticket } from '@/lib/server/db'
+import {
+  db,
+  eq,
+  and,
+  isNull,
+  tickets,
+  type Ticket,
+  type ConversationMessage,
+  type ConversationAttachment,
+} from '@/lib/server/db'
+import { attachmentForClient } from '@/lib/server/messages/message-core'
 import type { TicketId } from '@quackback/ids'
 import type { Actor } from '@/lib/server/policy/types'
 import type { ConversationMessageDTO } from '@/lib/shared/conversation/types'
@@ -38,6 +48,7 @@ import {
   dispatchTicketPriorityChanged,
   dispatchTicketReplyUpdated,
   dispatchTicketReplyDeleted,
+  dispatchTicketAttachmentChanged,
 } from '@/lib/server/events/dispatch'
 import { contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { logger } from '@/lib/server/logger'
@@ -389,6 +400,33 @@ export async function emitTicketReplyDeleted(
       messageId,
       senderType,
       ticket.title
+    )
+  })
+}
+
+/** A file was added to or removed from a public reply already sent (same
+ *  audience rule as emitTicketReplyUpdated). The attachment is the stored ref;
+ *  it is placed on a client-reachable URL here, as replies' attachments are. */
+export async function emitTicketAttachmentChanged(
+  change: 'added' | 'removed',
+  actor: Actor,
+  ticketId: TicketId,
+  message: ConversationMessage,
+  attachment: ConversationAttachment
+): Promise<void> {
+  const type = change === 'added' ? 'ticket.attachment_added' : 'ticket.attachment_removed'
+  await safe(type, async () => {
+    const ticket = await liveTicket(ticketId)
+    if (!ticket) return
+    const client = attachmentForClient(attachment)
+    return dispatchTicketAttachmentChanged(
+      type,
+      toEventActor(actor),
+      ticketRef(ticket),
+      message.id,
+      message.senderType === 'visitor' ? 'visitor' : 'agent',
+      ticket.title,
+      { name: client.name, url: client.url, contentType: client.contentType, size: client.size }
     )
   })
 }

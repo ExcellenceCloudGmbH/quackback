@@ -886,6 +886,46 @@ export const editConversationMessageFn = createServerFn({ method: 'POST' })
     )
   })
 
+/** Add files to a message the caller sent (the same rule as editing it). */
+export const addMessageAttachmentsFn = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      messageId: z.string(),
+      attachments: z.array(conversationAttachmentSchema).min(1).max(MAX_CONVERSATION_ATTACHMENTS),
+    })
+  )
+  .handler(async ({ data }) => {
+    // The permission depends on the message, so the service checks it once
+    // the row is loaded (as editConversationMessageFn does).
+    const ctx = await requireAuth()
+    const actor = await policyActorFromAuth(ctx)
+    const { addMessageAttachments } =
+      await import('@/lib/server/domains/conversation/conversation.attachments')
+    return addMessageAttachments(data.messageId as ConversationMessageId, data.attachments, actor)
+  })
+
+/** Remove one file from a message the caller sent, by position and name. */
+export const removeMessageAttachmentFn = createServerFn({ method: 'POST' })
+  .validator(
+    z.object({
+      messageId: z.string(),
+      index: z.number().int().nonnegative(),
+      name: z.string().max(255),
+    })
+  )
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth()
+    const actor = await policyActorFromAuth(ctx)
+    const { removeMessageAttachment } =
+      await import('@/lib/server/domains/conversation/conversation.attachments')
+    return removeMessageAttachment(
+      data.messageId as ConversationMessageId,
+      data.index,
+      data.name,
+      actor
+    )
+  })
+
 /** Soft-delete a message (team members; or a visitor deleting their own). */
 export const deleteConversationMessageFn = createServerFn({ method: 'POST' })
   .validator(messageIdSchema)

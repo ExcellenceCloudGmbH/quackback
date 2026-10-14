@@ -142,6 +142,20 @@ export async function editConversationMessage(
   contentJson: TiptapContent | null,
   actor: Actor
 ): Promise<AgentConversationMessageDTO> {
+  const { message, viewerId } = await loadEditableMessage(messageId, actor)
+  return applyEdit(message, rawContent, contentJson, actor, viewerId)
+}
+
+/**
+ * Load a live message the actor may change in place: its parent is visible to
+ * them and the edit rule (the author, for the kind of message it is) allows
+ * it. Blocked-sender notices and assistant messages are never editable.
+ * Shared by body edits and by adding or removing a sent message's files.
+ */
+export async function loadEditableMessage(
+  messageId: ConversationMessageId,
+  actor: Actor
+): Promise<{ message: ConversationMessage; viewerId: PrincipalId }> {
   const [message] = await db
     .select()
     .from(conversationMessages)
@@ -182,8 +196,12 @@ export async function editConversationMessage(
     isInternal: message.isInternal,
   })
   if (!decision.allowed) throw new ForbiddenError('FORBIDDEN', decision.reason)
-
-  return applyEdit(message, rawContent, contentJson, actor, viewerId)
+  // An in-flight thread-channel post already captured the original body.
+  // Wait until that send settles so the two copies don't diverge.
+  if (message.metadata?.channelDelivery?.status === 'pending') {
+    throw new ValidationError('VALIDATION_ERROR', 'This message is still sending')
+  }
+  return { message, viewerId }
 }
 
 async function applyEdit(
@@ -193,12 +211,6 @@ async function applyEdit(
   actor: Actor,
   viewerId: PrincipalId
 ): Promise<AgentConversationMessageDTO> {
-  // An in-flight thread-channel post already captured the original body.
-  // Wait until that send settles so the two copies don't diverge.
-  if (message.metadata?.channelDelivery?.status === 'pending') {
-    throw new ValidationError('VALIDATION_ERROR', 'This message is still sending')
-  }
-
   const safeContentJson = contentJson ? sanitizeTiptapContent(contentJson) : null
   const fallbackLabel = richMessageFallbackLabel(safeContentJson)
   const hasAttachments = (message.attachments?.length ?? 0) > 0
@@ -296,8 +308,7 @@ async function applyEdit(
     })
   }
 
-  const dto = await toAgentDto(updated, viewerId)
-  const ticketEdit = await publishTicketThreadEdit(updated)
+  const { dto, ticketEdit } = await publishMessageChange(updated, actor, viewerId)
   // A public reply shown in a ticket thread also tells the ticket's
   // integrations (ticket.reply_updated); an internal note never does.
   if (ticketEdit && !updated.isInternal && updated.senderType !== 'system') {
@@ -309,6 +320,26 @@ async function applyEdit(
       updated.editedAt ?? now
     )
   }
+  return dto
+}
+
+/**
+ * Fan an in-place change to a sent message (its body or its files) out to
+ * every surface showing it: open ticket threads, the inbox, the visitor's
+ * copy of a public message, and the conversation's message.updated webhook.
+ * Returns the agent DTO and, when the message renders in a ticket thread,
+ * that ticket and the message as pushed there.
+ */
+export async function publishMessageChange(
+  updated: ConversationMessage,
+  actor: Actor,
+  viewerId: PrincipalId
+): Promise<{
+  dto: AgentConversationMessageDTO
+  ticketEdit: { ticketId: TicketId; message: ConversationMessageDTO } | null
+}> {
+  const dto = await toAgentDto(updated, viewerId)
+  const ticketEdit = await publishTicketThreadEdit(updated)
 
   if (updated.conversationId) {
     publishAgentConversationEvent({
@@ -347,5 +378,5 @@ async function applyEdit(
     }
   }
 
-  return dto
+  return { dto, ticketEdit }
 }

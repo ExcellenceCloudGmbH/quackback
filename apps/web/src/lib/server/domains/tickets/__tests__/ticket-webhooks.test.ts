@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { Ticket } from '@/lib/server/db'
+import type { ConversationMessage, Ticket } from '@/lib/server/db'
 import type { Actor } from '@/lib/server/policy/types'
 import type { ConversationMessageDTO } from '@/lib/shared/conversation/types'
 import type { PrincipalId, TicketId } from '@quackback/ids'
@@ -18,6 +18,7 @@ const dispatch = vi.hoisted(() => ({
   dispatchTicketPriorityChanged: vi.fn().mockResolvedValue(undefined),
   dispatchTicketReplyUpdated: vi.fn().mockResolvedValue(undefined),
   dispatchTicketReplyDeleted: vi.fn().mockResolvedValue(undefined),
+  dispatchTicketAttachmentChanged: vi.fn().mockResolvedValue(undefined),
 }))
 
 // The reply emitters load the live ticket row; serve it from a settable stub.
@@ -44,6 +45,7 @@ import {
   emitTicketPriorityChanged,
   emitTicketReplyUpdated,
   emitTicketReplyDeleted,
+  emitTicketAttachmentChanged,
 } from '../ticket.webhooks'
 
 const now = new Date('2026-07-04T00:00:00.000Z')
@@ -458,5 +460,40 @@ describe('ticket.webhooks reply edit + delete emit helpers', () => {
     )
     expect(dispatch.dispatchTicketReplyUpdated).not.toHaveBeenCalled()
     expect(dispatch.dispatchTicketReplyDeleted).not.toHaveBeenCalled()
+  })
+})
+
+describe('ticket.webhooks attachment emit helper', () => {
+  beforeEach(() => {
+    Object.values(dispatch).forEach((m) => m.mockClear())
+    ticketRows.rows = [baseTicket]
+  })
+
+  it.each([
+    ['added', 'ticket.attachment_added'],
+    ['removed', 'ticket.attachment_removed'],
+  ] as const)('a file %s on a sent reply fires %s with the file', async (change, type) => {
+    const message = {
+      id: 'conversation_message_1',
+      senderType: 'visitor',
+    } as unknown as ConversationMessage
+    await emitTicketAttachmentChanged(change, agentActor, 'ticket_1' as TicketId, message, {
+      url: 'https://cdn.example/report.pdf',
+      name: 'report.pdf',
+      contentType: 'application/pdf',
+      size: 120,
+    })
+    const [firedType, , ref, messageId, senderType, title, attachment] =
+      dispatch.dispatchTicketAttachmentChanged.mock.calls[0]
+    expect(firedType).toBe(type)
+    expect(ref).toMatchObject({ id: 'ticket_1' })
+    expect(messageId).toBe('conversation_message_1')
+    expect(senderType).toBe('visitor')
+    expect(title).toBe('Cannot log in')
+    expect(attachment).toMatchObject({
+      name: 'report.pdf',
+      contentType: 'application/pdf',
+      size: 120,
+    })
   })
 })

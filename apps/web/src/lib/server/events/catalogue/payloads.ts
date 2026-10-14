@@ -343,6 +343,20 @@ export const P = {
     senderType: z.enum(['agent', 'visitor']),
     title: z.string(),
   }),
+  'ticket.attachment_added': z.looseObject({
+    ticket: ticketRef,
+    messageId: id,
+    senderType: z.enum(['agent', 'visitor']),
+    title: z.string(),
+    attachment,
+  }),
+  'ticket.attachment_removed': z.looseObject({
+    ticket: ticketRef,
+    messageId: id,
+    senderType: z.enum(['agent', 'visitor']),
+    title: z.string(),
+    attachment,
+  }),
   // assistant + sla
   'assistant.handed_off': z.looseObject({ conversationId: id, reason: z.string() }),
   'assistant.resolved': z.looseObject({ conversationId: id, outcome: z.string() }),

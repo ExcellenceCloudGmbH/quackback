@@ -24,6 +24,8 @@ checklist.
     following the entity by hand: a watcher, a subscriber),
     `reply_updated` · `reply_deleted` (a public ticket reply was edited or
     deleted; internal notes are never announced),
+    `attachment_added` · `attachment_removed` (a file added to or removed
+    from a public ticket reply already sent),
     `requested` · `decided` · `applied` (an approval is asked for, decided by
     a person, and its change applied), …
     (add new ones to the list _on purpose_).

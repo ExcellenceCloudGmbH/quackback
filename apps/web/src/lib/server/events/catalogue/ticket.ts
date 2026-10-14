@@ -91,3 +91,12 @@ export const ticketPriorityChanged = decl('ticket.priority_changed', 'ticket', {
 // mirror the thread (a linked issue's comments) follow the change.
 export const ticketReplyUpdated = decl('ticket.reply_updated', 'ticket', { webhook: true }, S)
 export const ticketReplyDeleted = decl('ticket.reply_deleted', 'ticket', { webhook: true }, S)
+// A file was added to or removed from a public reply already sent (same
+// audience rule as reply_updated).
+export const ticketAttachmentAdded = decl('ticket.attachment_added', 'ticket', { webhook: true }, S)
+export const ticketAttachmentRemoved = decl(
+  'ticket.attachment_removed',
+  'ticket',
+  { webhook: true },
+  S
+)

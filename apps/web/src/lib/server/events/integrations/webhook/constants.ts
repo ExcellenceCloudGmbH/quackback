@@ -300,6 +300,16 @@ export const WEBHOOK_EVENT_CONFIG = [
     description: 'When a public reply on a ticket thread is deleted',
   },
   {
+    id: 'ticket.attachment_added',
+    label: 'Ticket Reply File Added',
+    description: 'When a file is added to a public reply already sent on a ticket thread',
+  },
+  {
+    id: 'ticket.attachment_removed',
+    label: 'Ticket Reply File Removed',
+    description: 'When a file is removed from a public reply already sent on a ticket thread',
+  },
+  {
     id: 'approval.requested',
     label: 'Approval Requested',
     description: 'When an AI assistant or API key asks a person to approve a change',

@@ -777,6 +777,24 @@ export async function dispatchTicketReplyDeleted(
   })
 }
 
+/** A file was added to or removed from a public reply already sent. */
+export async function dispatchTicketAttachmentChanged(
+  type: 'ticket.attachment_added' | 'ticket.attachment_removed',
+  actor: EventActor,
+  ticket: EventTicketRef,
+  messageId: string,
+  senderType: 'agent' | 'visitor',
+  title: string,
+  attachment: EventTicketMessageAttachment
+): Promise<void> {
+  const data = { ticket, messageId, senderType, title, attachment }
+  await dispatchEvent(
+    type === 'ticket.attachment_added'
+      ? { ...eventEnvelope(actor), type, data }
+      : { ...eventEnvelope(actor), type, data }
+  )
+}
+
 export async function dispatchTicketNoteAdded(
   actor: EventActor,
   ticket: EventTicketRef,
