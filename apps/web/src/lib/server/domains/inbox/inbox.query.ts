@@ -310,6 +310,11 @@ export async function loadLinkedCustomerTicketSummaries(
       title: tickets.title,
       statusName: ticketStatuses.name,
       statusCategory: ticketStatuses.category,
+      // Deleted-safe, so the merge key agrees with the conversation list's
+      // 'due' sort expression (linkedCustomerTicketDueAtSql), which skips
+      // soft-deleted tickets.
+      dueAt: tickets.dueAt,
+      deletedAt: tickets.deletedAt,
     })
     .from(ticketConversations)
     .innerJoin(tickets, eq(tickets.id, ticketConversations.ticketId))
@@ -327,6 +332,7 @@ export async function loadLinkedCustomerTicketSummaries(
       title: row.title,
       statusName: row.statusName,
       statusCategory: row.statusCategory,
+      dueAt: row.dueAt && !row.deletedAt ? row.dueAt.toISOString() : null,
     })
   }
   return map

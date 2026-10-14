@@ -37,8 +37,7 @@ export function resolveInboxSort(sort: InboxSort | undefined, search?: string): 
 
 /** A reference to one inbox item, discriminated by kind. */
 export type InboxItemRef =
-  | { kind: 'conversation'; id: ConversationId }
-  | { kind: 'ticket'; id: TicketId }
+  { kind: 'conversation'; id: ConversationId } | { kind: 'ticket'; id: TicketId }
 
 /** The linked customer ticket's summary, carried on a conversation item so the
  *  list row can render its ticket line (`#N · <title>`) without a second fetch
@@ -49,6 +48,9 @@ export interface LinkedTicketSummary {
   title: string
   statusName: string
   statusCategory: TicketStatusCategory
+  /** The linked ticket's shared due date (ISO), null when none or when the
+   *  ticket is soft-deleted (agrees with the 'due' sort expression). */
+  dueAt: string | null
 }
 
 /** The wire shape for one unified inbox row. */

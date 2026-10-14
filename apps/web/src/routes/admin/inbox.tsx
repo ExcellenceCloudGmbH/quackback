@@ -398,6 +398,7 @@ function patchTicketInInboxLists(queryClient: QueryClient, ticket: TicketDTO): v
               title: ticket.title,
               statusName: ticket.status.name,
               statusCategory: ticket.status.category,
+              dueAt: ticket.dueAt,
             },
           }
         }
