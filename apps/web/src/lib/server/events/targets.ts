@@ -1667,7 +1667,9 @@ export async function getTicketSharedEmailTargets(
     ctaUrl: await requesterTicketUrl(context.portalBaseUrl, ticketId),
     assignedTeamId: ((ticket.assignedTeamId as string | null | undefined) ?? null) as TeamId | null,
     context,
-    authorName: event.actor.type === 'user' ? event.actor.displayName : undefined,
+    // Named only for a person; otherwise the copy says the workspace's team.
+    authorName:
+      event.actor.type === 'user' ? (await actorNameOf(event.actor, '')) || undefined : undefined,
     audience: 'participant',
   })
   return [ticketEmailTarget(email, config)]

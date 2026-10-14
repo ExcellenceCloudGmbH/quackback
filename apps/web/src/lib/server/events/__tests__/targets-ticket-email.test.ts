@@ -739,6 +739,27 @@ describe('getTicketSharedEmailTargets', () => {
     })
   })
 
+  it("reads the sharer's name from their principal, as the relayed event carries none", async () => {
+    queueSelect([{ id: 'principal_colleague', type: 'user', role: 'user' }])
+    queueSelect([{ id: 'principal_colleague', email: 'col@example.com', contactEmail: null }])
+    queueSelect([{ conversationId: 'conversation_1' }])
+    queueSelect([{ displayName: 'Rita' }]) // the sharer's principal
+    const relayed = sharedEvent()
+    relayed.actor = { type: 'user', principalId: 'principal_requester' }
+    const [target] = await getTicketSharedEmailTargets(relayed, context)
+    expect(target.config).toMatchObject({ authorName: 'Rita' })
+  })
+
+  it("leaves a service actor's share unnamed, so the email names the team", async () => {
+    queueSelect([{ id: 'principal_colleague', type: 'user', role: 'user' }])
+    queueSelect([{ id: 'principal_colleague', email: 'col@example.com', contactEmail: null }])
+    queueSelect([{ conversationId: 'conversation_1' }])
+    const byKey = sharedEvent()
+    byKey.actor = { type: 'service', principalId: 'principal_key' }
+    const [target] = await getTicketSharedEmailTargets(byKey, context)
+    expect(target.config).toMatchObject({ authorName: undefined })
+  })
+
   it('sends nothing for a watch that is not a share, or to a teammate', async () => {
     expect(await getTicketSharedEmailTargets(sharedEvent({ reason: 'manual' }), context)).toEqual(
       []
