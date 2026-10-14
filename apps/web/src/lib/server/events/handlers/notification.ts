@@ -68,6 +68,11 @@ export interface NotificationConfig {
   // ticket.status_changed + ticket.replied (watchers): lets buildNotifications
   // mark the requester's row portal-audience and everyone else's admin.
   requesterPrincipalId?: string | null
+  // ticket.status_changed + ticket.replied (ticket sharing): every customer
+  // recipient — the requester and anyone the ticket was shared with — whose
+  // row opens the portal thread. Absent on rows queued before sharing, where
+  // the requester alone is the customer.
+  portalPrincipalIds?: string[]
   // message.created (WO-3 slice 5) — read back out by the anti-spam presence
   // gate in run(), below.
   isFirstMessage?: boolean
@@ -331,6 +336,7 @@ function buildNotifications(
       stageLabel,
       previousStageLabel,
       requesterPrincipalId,
+      portalPrincipalIds,
     } = config
     const body = previousStageLabel
       ? `Moved from ${previousStageLabel} to ${stageLabel}`
@@ -356,14 +362,21 @@ function buildNotifications(
               ticketTitle: title,
               stageLabel,
               previousStageLabel,
-              audience:
-                requesterPrincipalId && principalId === requesterPrincipalId ? 'portal' : 'admin',
+              audience: customerAudience(principalId, requesterPrincipalId, portalPrincipalIds),
             },
     }))
   }
 
   if (event.type === 'ticket.replied') {
-    const { ticketId, conversationId, title, authorName, preview, requesterPrincipalId } = config
+    const {
+      ticketId,
+      conversationId,
+      title,
+      authorName,
+      preview,
+      requesterPrincipalId,
+      portalPrincipalIds,
+    } = config
     return principalIds.map((principalId) => ({
       principalId,
       type: 'ticket_replied' as NotificationType,
@@ -374,7 +387,7 @@ function buildNotifications(
         conversationId,
         ticketTitle: title,
         actorName: authorName,
-        audience: requesterPrincipalId && principalId === requesterPrincipalId ? 'portal' : 'admin',
+        audience: customerAudience(principalId, requesterPrincipalId, portalPrincipalIds),
       },
     }))
   }
@@ -501,4 +514,18 @@ export function filterByInAppPreference(
     if (!prefs) return true
     return shouldNotify(prefs, n.type, 'inApp')
   })
+}
+
+/**
+ * Which surface a ticket bell opens for one recipient: the portal thread for a
+ * customer (the requester, or anyone the ticket was shared with), the admin
+ * inbox for a teammate.
+ */
+function customerAudience(
+  principalId: string,
+  requesterPrincipalId: string | null | undefined,
+  portalPrincipalIds: string[] | undefined
+): 'portal' | 'admin' {
+  if (requesterPrincipalId && principalId === requesterPrincipalId) return 'portal'
+  return portalPrincipalIds?.includes(principalId) ? 'portal' : 'admin'
 }

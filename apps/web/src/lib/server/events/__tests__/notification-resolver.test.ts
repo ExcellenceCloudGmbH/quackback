@@ -19,6 +19,7 @@ const h = vi.hoisted(() => ({
   getTicketNoteAddedTargets: vi.fn(),
   getTicketExternalStatusChangedTargets: vi.fn(),
   getTicketSubscriberAddedTargets: vi.fn(),
+  getTicketSharedEmailTargets: vi.fn(),
   getMessageCreatedTargets: vi.fn(),
   getApprovalRequestedTargets: vi.fn(),
   getTicketCreatedEmailTargets: vi.fn(),
@@ -48,6 +49,7 @@ vi.mock('../targets', () => ({
   getTicketNoteAddedTargets: h.getTicketNoteAddedTargets,
   getTicketExternalStatusChangedTargets: h.getTicketExternalStatusChangedTargets,
   getTicketSubscriberAddedTargets: h.getTicketSubscriberAddedTargets,
+  getTicketSharedEmailTargets: h.getTicketSharedEmailTargets,
   getMessageCreatedTargets: h.getMessageCreatedTargets,
   getApprovalRequestedTargets: h.getApprovalRequestedTargets,
   getTicketCreatedEmailTargets: h.getTicketCreatedEmailTargets,
@@ -95,6 +97,7 @@ describe('notification resolver routing (WO-8c)', () => {
     // Email builders return arrays; default empty so only the routed ones matter.
     h.getTicketCreatedEmailTargets.mockResolvedValue([])
     h.getTicketRepliedEmailTargets.mockResolvedValue([])
+    h.getTicketSharedEmailTargets.mockResolvedValue([])
     h.getTicketResolvedEmailTargets.mockResolvedValue([])
     h.getTicketAssignedEmailTargets.mockResolvedValue([])
     h.getSlaEmailTargets.mockResolvedValue([])
@@ -168,10 +171,12 @@ describe('notification resolver routing (WO-8c)', () => {
     expect(notificationResolver.interestedIn('ticket.note_added')).toBe(true)
   })
 
-  it('routes ticket.subscriber_added to the added-as-watcher bell', async () => {
+  it('routes ticket.subscriber_added to the added-as-watcher bell and the shared-ticket email', async () => {
     h.getTicketSubscriberAddedTargets.mockResolvedValue(T('ticket_subscriber_bell')[0])
+    h.getTicketSharedEmailTargets.mockResolvedValue(T('ticket_shared_email'))
     const out = await notificationResolver.resolve(evt('ticket.subscriber_added'))
-    expect(out.map((t) => t.type)).toEqual(['ticket_subscriber_bell'])
+    expect(out.map((t) => t.type).sort()).toEqual(['ticket_shared_email', 'ticket_subscriber_bell'])
+    expect(h.getTicketSharedEmailTargets).toHaveBeenCalledTimes(1)
     expect(h.getTicketSubscriberAddedTargets).toHaveBeenCalledTimes(1)
     expect(notificationResolver.interestedIn('ticket.subscriber_added')).toBe(true)
   })

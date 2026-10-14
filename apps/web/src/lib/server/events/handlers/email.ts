@@ -37,10 +37,12 @@ import { withEmailIdempotencyKey } from '@quackback/email/idempotency'
 import { permittedSendingIdentity } from '@/lib/server/domains/channel-accounts/outbound-identity'
 import { logger } from '@/lib/server/logger'
 
-/** The event types whose email is one of the nine ticket-lifecycle kinds. */
+/** The event types whose email is one of the ten ticket-lifecycle kinds. */
 const TICKET_EMAIL_EVENT_TYPES = new Set<string>([
   'ticket.created',
   'ticket.replied',
+  // A customer ticket shared with someone (kind 'shared').
+  'ticket.subscriber_added',
   'ticket.status_changed',
   'ticket.assigned',
   'ticket.due_soon',
@@ -261,7 +263,7 @@ async function deliverEmail(
         logoUrl: cfg.logoUrl,
       })
     } else if (TICKET_EMAIL_EVENT_TYPES.has(event.type)) {
-      // All eight ticket/SLA event types map onto sendTicketEventEmail; the
+      // Every ticket/SLA event type here maps onto sendTicketEventEmail; the
       // per-recipient config already carries the copy `kind`, CTA, per-team
       // From, and reply-by-email Reply-To, so the hook only computes threading.
       const t = config as TicketEmailConfig

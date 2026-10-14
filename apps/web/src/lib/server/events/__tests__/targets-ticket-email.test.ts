@@ -82,9 +82,16 @@ vi.mock('@/lib/server/domains/subscriptions/subscription.service', () => ({
   batchGetNotificationPreferences: (ids: string[]) => batchGetNotificationPreferences(ids),
 }))
 
+// --- the once-a-day guard on the shared-ticket email ---
+const incrementBucket = vi.fn<() => Promise<{ count: number | null }>>()
+vi.mock('@/lib/server/utils/rate-bucket', () => ({
+  incrementBucket: () => incrementBucket(),
+}))
+
 const {
   getTicketCreatedEmailTargets,
   getTicketRepliedEmailTargets,
+  getTicketSharedEmailTargets,
   getTicketResolvedEmailTargets,
   getTicketAssignedEmailTargets,
   getSlaEmailTargets,
@@ -107,6 +114,7 @@ beforeEach(() => {
   inboundTicketReplyToAddress.mockReset().mockReturnValue(null)
   getStageLabels.mockReset().mockResolvedValue({ received: 'Received', resolved: 'Resolved' })
   batchGetNotificationPreferences.mockReset().mockResolvedValue(new Map())
+  incrementBucket.mockReset().mockResolvedValue({ count: 1 })
 })
 
 /** Preferences map that denies email for one matrix key. */
@@ -302,10 +310,28 @@ describe('getTicketRepliedEmailTargets', () => {
   it('leaves the requester of a paired ticket to the conversation reply email', async () => {
     getTicketWatchersForEvent.mockResolvedValue(['principal_requester', 'principal_agent_1'])
     queueSelect([{ conversationId: 'conversation_1' }]) // the pair
+    queueSelect([
+      { id: 'principal_requester', type: 'user', role: 'user' },
+      { id: 'principal_agent_1', type: 'user', role: 'member' },
+    ]) // which watchers are customers
     queueSelect([{ id: 'principal_agent_1', email: 'agent1@example.com', contactEmail: null }])
     const targets = await getTicketRepliedEmailTargets(repliedEvent(), context)
     // The reply landed on the pair's conversation, whose pipeline emails the
     // requester itself: the ticket email reaches the agent watcher only.
+    expect(targets.map((t) => (t.target as { email: string }).email)).toEqual([
+      'agent1@example.com',
+    ])
+  })
+
+  it('also leaves a customer the paired ticket was shared with to the conversation email', async () => {
+    getTicketWatchersForEvent.mockResolvedValue(['principal_colleague', 'principal_agent_1'])
+    queueSelect([{ conversationId: 'conversation_1' }]) // the pair
+    queueSelect([
+      { id: 'principal_colleague', type: 'user', role: 'user' },
+      { id: 'principal_agent_1', type: 'user', role: 'member' },
+    ])
+    queueSelect([{ id: 'principal_agent_1', email: 'agent1@example.com', contactEmail: null }])
+    const targets = await getTicketRepliedEmailTargets(repliedEvent(), context)
     expect(targets.map((t) => (t.target as { email: string }).email)).toEqual([
       'agent1@example.com',
     ])
@@ -363,6 +389,7 @@ describe('getTicketResolvedEmailTargets', () => {
   it('fires on open→closed and emails the watching requester with stage labels', async () => {
     getTicketWatchersForEvent.mockResolvedValue(['principal_requester'])
     queueSelect([{ id: 'principal_requester', email: 'req@example.com', contactEmail: null }])
+    queueSelect([{ id: 'principal_requester', type: 'user', role: 'user' }]) // the customers
     queueSelect([{ conversationId: 'conversation_1' }]) // the pair (requester CTA target)
     const targets = await getTicketResolvedEmailTargets(statusEvent(), context)
     expect(targets).toHaveLength(1)
@@ -373,6 +400,20 @@ describe('getTicketResolvedEmailTargets', () => {
     })
     // A staged (resolved) close is not the generic-close copy branch.
     expect(targets[0].config.closedGeneric).not.toBe(true)
+  })
+
+  it('emails a customer the ticket was shared with the customer copy, never the agent one', async () => {
+    getTicketWatchersForEvent.mockResolvedValue(['principal_colleague'])
+    queueSelect([{ id: 'principal_colleague', email: 'col@example.com', contactEmail: null }])
+    queueSelect([{ id: 'principal_colleague', type: 'user', role: 'user' }]) // the customers
+    queueSelect([{ conversationId: 'conversation_1' }]) // the pair (CTA target)
+    const targets = await getTicketResolvedEmailTargets(statusEvent(), context)
+    expect(targets).toHaveLength(1)
+    expect(targets[0].config).toMatchObject({
+      kind: 'status_resolved',
+      audience: 'participant',
+      ctaUrl: 'https://p/support/conversation_1',
+    })
   })
 
   it('B18: an unwatched requester (row deleted via "Stop watching") is NOT emailed', async () => {
@@ -659,5 +700,57 @@ describe('customer-type gate on requester-facing emails', () => {
       expect(cfg.ctaUrl).toContain('/admin/inbox')
       expect(cfg.replyTo).toBeUndefined()
     }
+  })
+})
+
+// ============================================================================
+// shared (ticket.subscriber_added with reason 'participant')
+// ============================================================================
+
+function sharedEvent(overrides: Record<string, unknown> = {}): EventData {
+  return {
+    id: 'evt-sh',
+    type: 'ticket.subscriber_added',
+    timestamp: '2026-01-01T00:00:00Z',
+    actor: { type: 'user', principalId: 'principal_requester', displayName: 'Rita' },
+    data: {
+      ticket: repliedTicketRef,
+      title: 'Cannot log in',
+      subscriberPrincipalId: 'principal_colleague',
+      reason: 'participant',
+      ...overrides,
+    },
+  } as EventData
+}
+
+describe('getTicketSharedEmailTargets', () => {
+  it('tells the person a ticket was shared with, in the customer view', async () => {
+    queueSelect([{ id: 'principal_colleague', type: 'user', role: 'user' }]) // a customer
+    queueSelect([{ id: 'principal_colleague', email: 'col@example.com', contactEmail: null }])
+    queueSelect([{ conversationId: 'conversation_1' }]) // the pair (CTA target)
+    const targets = await getTicketSharedEmailTargets(sharedEvent(), context)
+    expect(targets).toHaveLength(1)
+    expect(targets[0].target).toMatchObject({ email: 'col@example.com' })
+    expect(targets[0].config).toMatchObject({
+      kind: 'shared',
+      audience: 'participant',
+      authorName: 'Rita',
+      ctaUrl: 'https://p/support/conversation_1',
+    })
+  })
+
+  it('sends nothing for a watch that is not a share, or to a teammate', async () => {
+    expect(await getTicketSharedEmailTargets(sharedEvent({ reason: 'manual' }), context)).toEqual(
+      []
+    )
+    queueSelect([{ id: 'principal_colleague', type: 'user', role: 'member' }]) // a teammate
+    expect(await getTicketSharedEmailTargets(sharedEvent(), context)).toEqual([])
+  })
+
+  it('sends at most once a day per ticket and person', async () => {
+    incrementBucket.mockResolvedValue({ count: 2 })
+    queueSelect([{ id: 'principal_colleague', type: 'user', role: 'user' }])
+    queueSelect([{ id: 'principal_colleague', email: 'col@example.com', contactEmail: null }])
+    expect(await getTicketSharedEmailTargets(sharedEvent(), context)).toEqual([])
   })
 })

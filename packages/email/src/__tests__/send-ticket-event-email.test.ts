@@ -113,6 +113,30 @@ describe('sendTicketEventEmail', () => {
     expect(call.subject).toBe('Your ticket #142 was closed')
   })
 
+  it('tells a customer who shared a ticket with them, and why they got the email', async () => {
+    await sendTicketEventEmail({ ...baseParams, kind: 'shared', authorName: 'Rita' })
+    const call = sendMailMock.mock.calls[0][0]
+    expect(call.subject).toBe('Rita shared ticket #142 with you')
+    expect(call.text).toContain('was shared with you')
+
+    sendMailMock.mockClear()
+    await sendTicketEventEmail({ ...baseParams, kind: 'shared' })
+    expect(sendMailMock.mock.calls[0][0].subject).toBe('The Acme team shared ticket #142 with you')
+  })
+
+  it('never calls the ticket "yours" when it was shared with the reader', async () => {
+    await sendTicketEventEmail({
+      ...baseParams,
+      kind: 'status_resolved',
+      audience: 'participant',
+      statusChange: { previousLabel: 'In progress', newLabel: 'Done' },
+    })
+    const call = sendMailMock.mock.calls[0][0]
+    expect(call.subject).toBe('The ticket #142 was resolved')
+    expect(call.text).not.toMatch(/your ticket|you opened/i)
+    expect(call.text).toContain('was shared with you')
+  })
+
   it('forwards threading headers, replyTo, and the from override when provided', async () => {
     await sendTicketEventEmail({
       ...baseParams,
