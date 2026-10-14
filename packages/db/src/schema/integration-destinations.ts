@@ -70,6 +70,27 @@ export interface IntegrationDestinationConfig {
    * a public reply the requester sees and is notified of (`reply`).
    */
   commentVisibility?: 'off' | 'note' | 'reply'
+  /**
+   * Linked issues here follow their tickets' status, priority, assignee and
+   * title automatically, through the provider's guarded write (read the issue,
+   * write only when nobody changed it there since we last saw it, else a
+   * review in Sync history). Off unless switched on: without it those changes
+   * are review proposals.
+   */
+  applyAutomatically?: boolean
+  /**
+   * Ticket status id → the issue's state, a closed issue's reason and an
+   * optional label, while `applyAutomatically` is on. A missing status uses
+   * the default its category and stage give; null leaves the issue alone.
+   */
+  pushStatusMappings?: Record<
+    string,
+    {
+      state: 'open' | 'closed'
+      stateReason?: 'completed' | 'not_planned'
+      label?: string
+    } | null
+  >
   [key: string]: unknown
 }
 

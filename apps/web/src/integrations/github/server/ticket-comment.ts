@@ -119,7 +119,7 @@ export function buildGitHubTicketComment(
   return [head, body, fixed].filter(Boolean).join('\n\n')
 }
 
-function githubHeaders(accessToken: unknown): Record<string, string> {
+export function githubHeaders(accessToken: unknown): Record<string, string> {
   return {
     Authorization: `Bearer ${accessToken}`,
     Accept: 'application/vnd.github+json',
@@ -130,7 +130,7 @@ function githubHeaders(accessToken: unknown): Record<string, string> {
 }
 
 /** A repository name the API path may carry. */
-function repository(auth: Record<string, unknown>): string {
+export function repository(auth: Record<string, unknown>): string {
   const ownerRepo = auth.channelId
   if (typeof ownerRepo !== 'string' || !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(ownerRepo))
     throw issueError('No repository configured', { retryable: false })
@@ -138,13 +138,13 @@ function repository(auth: Record<string, unknown>): string {
 }
 
 /** A numeric id the API path may carry. */
-function numericId(value: string, what: string): string {
+export function numericId(value: string, what: string): string {
   if (!/^\d+$/.test(value)) throw issueError(`Invalid ${what}`, { retryable: false })
   return value
 }
 
 /** A rejected request as an `issueError` with its status, which the ledger classifies. */
-async function rejected(response: Response, ownerRepo: string): Promise<Error> {
+export async function rejected(response: Response, ownerRepo: string): Promise<Error> {
   const status = response.status
   if (status === 401)
     return issueError('Authentication failed. Please reconnect GitHub.', {

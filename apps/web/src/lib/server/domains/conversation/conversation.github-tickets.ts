@@ -138,9 +138,11 @@ export async function validateGitHubRepositorySettings(
   const mapped = Object.values(patch.ticketStatusMappings ?? {}).filter(
     (id): id is string => typeof id === 'string'
   )
-  if (mapped.length > 0) {
+  // The issue each ticket status gets, keyed by status.
+  const pushed = Object.keys(patch.pushStatusMappings ?? {})
+  if (mapped.length > 0 || pushed.length > 0) {
     const live = new Set((await liveTicketStatuses()).map((s) => s.id as string))
-    if (mapped.some((id) => !live.has(id)))
+    if ([...mapped, ...pushed].some((id) => !live.has(id)))
       throw new ValidationError('INVALID_STATUS_MAPPING', 'Map onto a ticket status that exists')
   }
 }

@@ -15,8 +15,15 @@ import { getExecuteRows } from '@/lib/server/utils/execute-rows'
 import { queueSyncOperation } from './ledger'
 import { installationIdentity, linkTarget, reviewDestination, syncOperationKey } from './identity'
 import { hookSource } from './hooks'
+import { linkUpdatesAutomatically } from './issue-updates'
 
-/** Status is a remote edit too. No adapter currently declares verified conditional writes. */
+/**
+ * Status is a remote edit too, so an outbound status change is a review
+ * proposal. The exception is a ticket link in a destination that updates its
+ * issues automatically through a guarded provider (`applyAutomatically`, see
+ * `issue-updates.ts`): that link gets the update from the issue-update sink
+ * instead, and no proposal here.
+ */
 export async function queueStatusSync(data: HookJobData, tx: JobSqlExecutor) {
   const integrationId = String(data.config.integrationId)
   const [integration] = getExecuteRows<{
@@ -56,6 +63,20 @@ export async function queueStatusSync(data: HookJobData, tx: JobSqlExecutor) {
   )
   if (!link) throw new Error('Status sync link is no longer available')
   if (!link.sync_scope) return null
+  if (
+    source.sourceType === 'ticket' &&
+    (await linkUpdatesAutomatically(
+      tx,
+      {
+        id: integrationId as IntegrationId,
+        integrationType: integration?.integration_type ?? 'unknown',
+        connectedAt: integration?.connected_at ? new Date(integration.connected_at) : null,
+        config,
+      },
+      link.sync_scope
+    ))
+  )
+    return null
   const reviewed = { id: target.linkId, syncScope: link.sync_scope }
   const connection = {
     id: integrationId,

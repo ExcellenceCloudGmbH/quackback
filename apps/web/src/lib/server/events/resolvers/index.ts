@@ -14,6 +14,7 @@ import { workflowTriggerResolver } from './workflow.resolver'
 import { appWebhookResolver } from './app-webhook.resolver'
 import { remoteStatusPushResolver } from './remote-status-push.resolver'
 import { ticketCommentResolver } from './ticket-comment.resolver'
+import { issueUpdateResolver } from './issue-update.resolver'
 
 let registered = false
 
@@ -30,6 +31,7 @@ export function registerAllResolvers(): void {
   registerResolver(appWebhookResolver)
   registerResolver(remoteStatusPushResolver)
   registerResolver(ticketCommentResolver)
+  registerResolver(issueUpdateResolver)
 }
 
 export * from './registry'

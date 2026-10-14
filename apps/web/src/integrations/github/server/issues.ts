@@ -9,6 +9,7 @@ import { issueError } from '@/lib/server/integrations/message-utils'
 import { ValidationError } from '@/lib/shared/errors'
 import { buildGitHubTicketIssue } from '@/integrations/github/server/ticket-issue'
 import { githubIssueComments } from '@/integrations/github/server/ticket-comment'
+import { updateGitHubIssue } from '@/integrations/github/server/issue-update'
 
 const GITHUB_API = 'https://api.github.com'
 
@@ -104,6 +105,10 @@ export const githubIssues: IssueTrackerCapability = {
   formatTicketIssue: buildGitHubTicketIssue,
 
   comments: githubIssueComments,
+
+  // Automatic issue updates, per repository opt-in: read, compare, then write.
+  update: updateGitHubIssue,
+  writeContract: 'guarded',
 
   async create({ auth, title, bodyMarkdown, labels }): Promise<ParsedIssueRef> {
     const ownerRepo = auth.channelId as string

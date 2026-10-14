@@ -7,6 +7,7 @@ export type SyncExecutor =
   | 'refresh'
   | 'ticket-create'
   | 'ticket-comment'
+  | 'remote-update'
   | 'inbound-status'
   | 'inbound-assignee'
   | 'inbound-comment'

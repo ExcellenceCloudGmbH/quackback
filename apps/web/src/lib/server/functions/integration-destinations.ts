@@ -19,6 +19,7 @@ import type {
   DestinationDirection,
 } from '@/lib/server/integrations/destinations'
 import type { DestinationTicketIssues } from '@/lib/server/integrations/destination-admin'
+import type { IssuePushStateMappings } from '@/lib/shared/issue-push'
 import type {
   GitHubInboundMode,
   GitHubTicketScope,
@@ -87,6 +88,10 @@ export interface IntegrationDestinationSummary {
   postRepliesAsComments: boolean
   /** What a comment on an issue there becomes on the tickets linked to it. */
   commentVisibility: DestinationCommentVisibility
+  /** Whether linked issues there follow their tickets automatically (guarded writes). */
+  applyAutomatically: boolean
+  /** Ticket status id → the issue it gives, where set; others use the default. */
+  pushStatusMappings: IssuePushStateMappings
   /** Whether the tickets it matches (by team and type; none chosen: every ticket) get an issue there. */
   ticketIssues: DestinationTicketIssues
   /** The connection's default destination (`config.channelId`). */
@@ -165,6 +170,8 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
       assigneeSync: destination.config.assigneeSync === true,
       postRepliesAsComments: destination.config.postRepliesAsComments === true,
       commentVisibility: destinationCommentVisibility(destination),
+      applyAutomatically: destination.config.applyAutomatically === true,
+      pushStatusMappings: destination.config.pushStatusMappings ?? {},
       ticketIssues: ticketIssues.get(destination.id) ?? {
         enabled: false,
         teamIds: [],
@@ -291,7 +298,7 @@ export const setIntegrationDestinationEnabledFn = createServerFn({ method: 'POST
 
 /**
  * Patch a destination's provider-specific settings (GitHub: `direction`,
- * `assigneeSync`, `postRepliesAsComments`).
+ * `assigneeSync`, `postRepliesAsComments`, `applyAutomatically`, `pushStatusMappings`).
  */
 export const setIntegrationDestinationConfigFn = createServerFn({ method: 'POST' })
   .validator(setDestinationConfigSchema)

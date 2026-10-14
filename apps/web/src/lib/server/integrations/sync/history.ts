@@ -43,6 +43,7 @@ import { getIntegration } from '../index'
 import { safeDestinationLabel } from '../destination'
 import { inspectSyncRemote } from './remote'
 import { persistSyncLink } from './hooks'
+import { acknowledgeIssueReview } from './issue-updates'
 import { getBaseUrl } from '@/lib/server/config'
 import { absolutizeMarkdownUrls } from '../post-content'
 
@@ -261,6 +262,8 @@ export async function inspectSyncOperation(id: string, actor: Actor) {
       }
     if (typeof payload.data.proposedStatus === 'string')
       preview = { title: 'Proposed status', content: payload.data.proposedStatus }
+    if (typeof payload.data.proposedChange === 'string')
+      preview = { title: 'Proposed change', content: payload.data.proposedChange }
     const inbound = payload.data.result as { externalStatus?: unknown } | undefined
     if (op.direction === 'inbound' && typeof inbound?.externalStatus === 'string')
       preview = { title: 'Platform status', content: inbound.externalStatus }
@@ -394,6 +397,8 @@ export async function actOnSync(
         })
         .where(eq(operations.id, current.id))
     } else if (input.action === 'cancel' || input.action === 'keep_remote') {
+      // A settled issue-update review: automatic updates resume from the issue as it is.
+      await acknowledgeIssueReview(tx, current)
       await tx
         .update(operations)
         .set({

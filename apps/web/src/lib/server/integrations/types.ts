@@ -329,7 +329,69 @@ export interface IssueTrackerCapability {
    * issue's comments back when a ticket is resynced (`ticket-sync.ts`).
    */
   comments?: IssueCommentCapability
+  /**
+   * Bring a linked issue in step with its ticket (state, labels, title, body,
+   * assignees), in destinations that switch `applyAutomatically` on (see
+   * `sync/issue-updates.ts`). Only honoured with `writeContract: 'guarded'`.
+   */
+  update?(args: IssueUpdateArgs): Promise<IssueUpdateResult>
+  /**
+   * The promise `update` keeps, which automatic remote edits require:
+   * `guarded` reads the item first and writes nothing when it changed on the
+   * platform since `baseline` (a review instead), then writes only the
+   * fields that differ. It is compare-then-write, not an atomic conditional
+   * write: a change landing between the read and the write is not detected.
+   */
+  writeContract?: 'guarded'
 }
+
+/**
+ * What a ticket asks of its linked issue. Every field is optional; only the
+ * ones given are compared, and only those that differ are written.
+ */
+export interface IssueUpdateChange {
+  state?: { state: 'open' | 'closed'; stateReason?: 'completed' | 'not_planned' }
+  /** Labels to add, and labels Quackback owns to take off when present. Others are never touched. */
+  labels?: { add: string[]; remove: string[] }
+  title?: string
+  /**
+   * The re-rendered body, written only while the issue's body is still the
+   * one this connection wrote for this ticket (it carries the marker), so a
+   * body written by a person is never replaced.
+   */
+  body?: string
+  /** The issue's assignees, as platform logins; `[]` clears them. */
+  assignees?: string[]
+}
+
+export interface IssueUpdateArgs {
+  auth: Record<string, unknown>
+  issueId: string
+  /** The ticket and connection, to recognise a body this connection wrote. */
+  ticketId: string
+  integrationId: string
+  /**
+   * What we last saw of the issue: its state (as the inbound parser names
+   * it, e.g. `Closed (not planned)`), and when (the platform's version for
+   * our own writes, the receipt time for inbound changes, the link's creation
+   * otherwise). Null state: never seen.
+   */
+  baseline: { state: string | null; at: Date }
+  change: IssueUpdateChange
+  /**
+   * Called once the guard passed and before the first write; records the
+   * dispatch. A false return means the work is no longer wanted: write nothing.
+   */
+  beforeWrite(): Promise<boolean>
+}
+
+export type IssueUpdateResult =
+  /** Nothing differed, or everything was written. `version`/`state` are the issue's now. */
+  | { outcome: 'unchanged' | 'updated'; version: string; state: string; changed: string[] }
+  /** The issue changed on the platform since the baseline: nothing was written. */
+  | { outcome: 'conflict'; reason: 'state' | 'activity' }
+  /** `beforeWrite` declined: nothing was written. */
+  | { outcome: 'cancelled' }
 
 /** One selectable external status/state, as shown in the status-mapping UI. */
 export interface ExternalStatusItem {

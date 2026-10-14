@@ -119,6 +119,29 @@ before automatic remote edits can be enabled. Reading and then writing
 unconditionally is insufficient. GitHub and Linear currently support read-only
 `issues.inspect` for verified link-existing recovery.
 
+One opt-in exception extends that rule deliberately. A provider may declare
+`issues.update` with `writeContract: 'guarded'`: it reads the issue, writes
+nothing when the issue changed on the platform since the baseline the link
+records (`remote_state`, `remote_state_at`), and otherwise writes only what
+differs. This is compare-then-write, not an atomic conditional write: a change
+landing between the read and the write is not detected. So it runs only in a
+destination that switches `applyAutomatically` on (off by default; see
+`sync/issue-updates.ts`). The issue-update resolver routes
+`ticket.status_changed`, `ticket.priority_changed`, `ticket.assigned` and
+`ticket.updated` (a new title) to each active link; one `remote-update`
+operation per event and link (`issue-status`, `-priority`, `-assignees`,
+`-title`) reads the ticket when it runs and is superseded by a newer one for
+the same issue. The destination's `pushStatusMappings` give each ticket status
+an issue state, close reason and label (defaults from the status's category
+and stage, `lib/shared/issue-push.ts`); only those status labels and
+`priority:*` are ever removed. A refused write becomes the usual review in
+Sync history, settling it re-baselines the link, and a successful one records
+the issue's state and version on the link. With the option off, or on a
+switched-off or receive-only destination, `sync/status.ts` keeps making status
+review proposals. Changes the integration's own principal made, anything
+applied by integration sync, and tickets paired with an inbox conversation are
+never sent. GitHub implements it in `integrations/github/server/issue-update.ts`.
+
 A provider with `linkedItems` and `issues.create` can also create an issue for a
 ticket on its own: a destination's `ticket.created` / `ticket.assigned` mappings
 (with `ticketTeamIds` / `ticketTypeIds` filters, see `ticket-issues.ts`) queue the

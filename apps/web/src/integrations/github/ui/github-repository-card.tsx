@@ -14,6 +14,8 @@
  * reply, with a warning that the requester then sees it; not for a send-only
  * one),
  * whether each new ticket it matches gets an issue there (not for a
+ * receive-only one), whether linked issues follow their tickets
+ * automatically and what each ticket status makes of them (not for a
  * receive-only one), which way it syncs, and removing it. A repository set to
  * bring issues in while the GitHub inbox channel is off says so, with a link
  * to the channel.
@@ -37,6 +39,7 @@ import { TimeAgo } from '@/components/ui/time-ago'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { GitHubInboundModeControl } from '@/integrations/github/ui/github-inbound-mode'
 import { GitHubTicketIssues } from '@/integrations/github/ui/github-ticket-issues'
+import { GitHubIssueAutoUpdate } from '@/integrations/github/ui/github-issue-autoupdate'
 import {
   useReconnectIntegrationDestination,
   useRemoveIntegrationDestination,
@@ -344,6 +347,7 @@ export function GitHubRepositoryCard({ destination, inboxOff }: GitHubRepository
           settings={destination.ticketIssues}
           disabled={destination.direction === 'inbound'}
         />
+        <GitHubIssueAutoUpdate destination={destination} />
         <Select
           value={destination.direction}
           disabled={setConfig.isPending}

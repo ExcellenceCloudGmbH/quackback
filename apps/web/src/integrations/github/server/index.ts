@@ -1,4 +1,10 @@
 import { z } from 'zod'
+import {
+  ISSUE_LABEL_MAX,
+  ISSUE_PUSH_STATES,
+  ISSUE_STATE_REASONS,
+  PRIORITY_LABEL_PREFIX,
+} from '@/lib/shared/issue-push'
 import { channelDestination } from '@/lib/server/integrations/destination'
 import type { IntegrationDefinition } from '@/lib/server/integrations/types'
 import { fetchGitHubStatuses, GITHUB_ISSUE_STATES } from '@/integrations/github/server/statuses'
@@ -35,6 +41,26 @@ import {
 import { githubCatalog } from '@/integrations/github/server/catalog'
 import { listGitHubRepos } from '@/integrations/github/server/repos'
 
+/**
+ * One ticket status's issue: open, or closed with a reason, and an optional
+ * label. A status label may not look like a priority label, which Quackback
+ * also owns.
+ */
+const issuePushStateSchema = z
+  .object({
+    state: z.enum(ISSUE_PUSH_STATES),
+    stateReason: z.enum(ISSUE_STATE_REASONS).optional(),
+    label: z
+      .string()
+      .trim()
+      .min(1)
+      .max(ISSUE_LABEL_MAX)
+      .refine((label) => !label.toLowerCase().startsWith(PRIORITY_LABEL_PREFIX))
+      .optional(),
+  })
+  .strict()
+  .refine((value) => value.state === 'closed' || value.stateReason === undefined)
+
 export const githubIntegration: IntegrationDefinition = {
   id: 'github',
   destination: {
@@ -60,6 +86,8 @@ export const githubIntegration: IntegrationDefinition = {
           assigneeSync: z.boolean(),
           postRepliesAsComments: z.boolean(),
           commentVisibility: z.enum(DESTINATION_COMMENT_VISIBILITIES),
+          applyAutomatically: z.boolean(),
+          pushStatusMappings: z.record(z.string().max(100), issuePushStateSchema.nullable()),
         })
         .partial()
         .strict(),

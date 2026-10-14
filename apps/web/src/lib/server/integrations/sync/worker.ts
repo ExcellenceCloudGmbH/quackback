@@ -27,6 +27,7 @@ import { syncErrorOutcome } from './outcomes'
 import type { SyncOutcome } from './types'
 import { executeTicketCreate } from './tickets'
 import { executeTicketCommentSync } from './comments'
+import { executeIssueUpdate } from './issue-updates'
 import { applyIdentifySync } from './identify'
 import {
   fanOutInboundStatus,
@@ -139,6 +140,8 @@ export async function runIntegrationSync(job: ClaimedJob): Promise<void> {
           outcome = await executeTicketCreate(claim, integration)
         else if (payload.executor === 'ticket-comment')
           outcome = await executeTicketCommentSync(claim, integration)
+        else if (payload.executor === 'remote-update')
+          outcome = await executeIssueUpdate(claim, integration)
         else if (payload.executor === 'segment')
           outcome = await executeSegmentSync(claim, payload.data, integration)
         else if (

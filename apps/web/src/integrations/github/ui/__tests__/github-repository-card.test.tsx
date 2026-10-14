@@ -67,6 +67,8 @@ const repo: IntegrationDestinationSummary = {
   assigneeSync: false,
   postRepliesAsComments: false,
   commentVisibility: 'off',
+  applyAutomatically: false,
+  pushStatusMappings: {},
   ticketIssues: { enabled: false, teamIds: [], ticketTypeIds: [] },
   isDefault: false,
   webhookRegistered: true,
@@ -80,6 +82,15 @@ function renderCard(destination: IntegrationDestinationSummary, inboxOff = false
   const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } })
   client.setQueryData(inboxTeamsQueryOptions().queryKey, [
     { id: 'team_billing', name: 'Billing', icon: null, color: 'gray', memberCount: 2 },
+  ] as never)
+  client.setQueryData(ticketQueries.statuses().queryKey, [
+    {
+      id: 'ticket_status_waiting',
+      name: 'Waiting on customer',
+      category: 'pending',
+      publicStage: 'awaiting_requester',
+    },
+    { id: 'ticket_status_resolved', name: 'Resolved', category: 'closed', publicStage: 'resolved' },
   ] as never)
   client.setQueryData(ticketQueries.types().queryKey, [
     { id: 'ticket_type_question', name: 'Question', category: 'customer', icon: null },
@@ -309,6 +320,71 @@ describe('GitHubRepositoryCard', () => {
       teamIds: ['team_billing'],
       ticketTypeIds: ['ticket_type_task'],
     })
+  })
+
+  it('updates GitHub issues automatically when switched on, never for a receive-only repository', () => {
+    renderCard(repo)
+    const name = 'Update GitHub issues in acme/app automatically'
+    expect(screen.getByRole('switch', { name })).not.toBeChecked()
+    expect(screen.getByText(/waits for review in Sync history/)).toBeTruthy()
+    expect(screen.queryByRole('button', { name: 'Issue for each ticket status' })).toBeNull()
+    fireEvent.click(screen.getByRole('switch', { name }))
+    expect(mocks.setConfig.mock.calls[0][0]).toEqual({
+      destinationId: 'integration_destination_1',
+      config: { applyAutomatically: true },
+    })
+    cleanup()
+    renderCard({ ...repo, direction: 'inbound' })
+    expect(screen.getByRole('switch', { name })).toBeDisabled()
+  })
+
+  it('edits the issue each ticket status gives, starting from the defaults', async () => {
+    renderCard({
+      ...repo,
+      applyAutomatically: true,
+      pushStatusMappings: { ticket_status_resolved: { state: 'closed', label: 'shipped' } },
+    })
+    await userEvent.click(screen.getByRole('button', { name: 'Issue for each ticket status' }))
+    const waitingState = screen.getByRole('combobox', {
+      name: 'Issue state for tickets in Waiting on customer',
+    })
+    expect(waitingState).toHaveTextContent('Open')
+    const waitingLabel = screen.getByRole('textbox', {
+      name: 'Issue label for tickets in Waiting on customer',
+    })
+    expect(waitingLabel).toHaveValue('waiting-on-customer')
+    expect(
+      screen.getByRole('textbox', { name: 'Issue label for tickets in Resolved' })
+    ).toHaveValue('shipped')
+
+    await userEvent.click(waitingState)
+    await userEvent.click(screen.getByRole('option', { name: 'Leave the issue alone' }))
+    expect(mocks.setConfig.mock.calls[0][0]).toEqual({
+      destinationId: 'integration_destination_1',
+      config: {
+        pushStatusMappings: {
+          ticket_status_resolved: { state: 'closed', label: 'shipped' },
+          ticket_status_waiting: null,
+        },
+      },
+    })
+
+    const resolvedLabel = screen.getByRole('textbox', {
+      name: 'Issue label for tickets in Resolved',
+    })
+    await userEvent.clear(resolvedLabel)
+    await userEvent.type(resolvedLabel, 'released')
+    fireEvent.blur(resolvedLabel)
+    expect(
+      mocks.setConfig.mock.calls[1][0].config.pushStatusMappings.ticket_status_resolved
+    ).toEqual({ state: 'closed', stateReason: 'completed', label: 'released' })
+
+    // A priority label belongs to the priority sync, not to a status.
+    await userEvent.clear(resolvedLabel)
+    await userEvent.type(resolvedLabel, 'priority:high')
+    fireEvent.blur(resolvedLabel)
+    expect(mocks.setConfig).toHaveBeenCalledTimes(2)
+    expect(mocks.toastError).toHaveBeenCalled()
   })
 
   it('removes the repository only after confirming', async () => {

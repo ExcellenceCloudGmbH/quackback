@@ -25,6 +25,12 @@ import {
   persistTicketComment,
   queueTicketCommentSync,
 } from './comments'
+import {
+  ISSUE_UPDATE_HOOK,
+  isIssueUpdateKind,
+  persistIssueUpdate,
+  queueIssueUpdateSync,
+} from './issue-updates'
 import { getExecuteRows } from '@/lib/server/utils/execute-rows'
 import type { JobSqlExecutor } from '@/lib/server/jobs/job-queue'
 import { getBaseUrl } from '@/lib/server/config'
@@ -80,6 +86,8 @@ export async function queueHookSync(
   }
   // A linked ticket's reply, mirrored onto one linked issue as a comment.
   if (data.hookType === TICKET_COMMENT_HOOK) return queueTicketCommentSync(data, executor)
+  // A ticket change a linked issue follows, where its destination updates issues automatically.
+  if (data.hookType === ISSUE_UPDATE_HOOK) return queueIssueUpdateSync(data, executor)
   // A tracker that keeps linked issues opens one for a ticket its destination's
   // opt-in matches: the same create a teammate can ask for, not a notification.
   const definition = getIntegration(data.hookType)
@@ -291,6 +299,7 @@ export async function persistSyncLink(
   result: Record<string, unknown>
 ): Promise<void> {
   if (isTicketCommentKind(claim.operation.kind)) return persistTicketComment(tx, claim, result)
+  if (isIssueUpdateKind(claim.operation.kind)) return persistIssueUpdate(tx, claim, result)
   if (typeof result.externalId !== 'string') return
   const op = claim.operation
   // Notification receipts remain in sync history; only tracked items get
