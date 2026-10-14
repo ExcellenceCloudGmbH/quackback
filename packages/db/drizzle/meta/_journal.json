@@ -1989,6 +1989,13 @@
       "when": 1791001100000,
       "tag": "0306_ticket_sharing",
       "breakpoints": true
+    },
+    {
+      "idx": 284,
+      "version": "7",
+      "when": 1791001200000,
+      "tag": "0307_integration_destinations",
+      "breakpoints": true
     }
   ]
 }

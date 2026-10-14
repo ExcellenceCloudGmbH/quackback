@@ -16,6 +16,7 @@ import {
 } from '@/lib/server/functions/admin'
 import { fetchBoardsFn, fetchBoardsWithCountsFn } from '@/lib/server/functions/boards'
 import { fetchPlatformCredentialsMaskedFn } from '@/lib/server/functions/platform-credentials'
+import { listIntegrationDestinationsFn } from '@/lib/server/functions/integration-destinations'
 import {
   fetchAuthProviderStatusFn,
   fetchAuthProviderCredentialsMaskedFn,
@@ -264,6 +265,18 @@ export const adminQueries = {
       queryKey: ['admin', 'integrations', type],
       queryFn: () => fetchIntegrationByType({ data: { type } }),
       staleTime: 30 * 1000, // 30s - config may change frequently during setup
+    }),
+
+  /**
+   * The destinations (GitHub repositories) a connected integration serves, with
+   * their webhook health. Nested under the integration's key so every
+   * integration mutation refreshes it.
+   */
+  integrationDestinations: (type: string) =>
+    queryOptions({
+      queryKey: ['admin', 'integrations', type, 'destinations'],
+      queryFn: () => listIntegrationDestinationsFn({ data: { integrationType: type } }),
+      staleTime: 30 * 1000,
     }),
 
   /**
