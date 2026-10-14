@@ -37,16 +37,25 @@ function linkText(name: string): string {
   return name.replace(/[[\]\r\n]/g, ' ').trim() || 'file'
 }
 
-function attachmentsSection(ticket: TicketIssueSource, rootUrl: string): string {
-  if (ticket.attachments.length === 0) return ''
+/**
+ * An `### Attachments` section for these files, images shown inline and
+ * anything else linked, within `limit` characters (the rest counted as "more
+ * in Quackback"). Empty when there are none.
+ */
+export function attachmentsSection(
+  attachments: TicketIssueSource['attachments'],
+  rootUrl: string,
+  limit: number = ATTACHMENTS_LIMIT
+): string {
+  if (attachments.length === 0) return ''
   const lines: string[] = []
   let length = 0
-  for (const [index, file] of ticket.attachments.entries()) {
+  for (const [index, file] of attachments.entries()) {
     const url = absoluteUrl(file.url, rootUrl)
     const name = linkText(file.name)
     const line = file.contentType.startsWith('image/') ? `![${name}](${url})` : `[${name}](${url})`
-    if (length + line.length + 1 > ATTACHMENTS_LIMIT) {
-      lines.push(`_${ticket.attachments.length - index} more in Quackback_`)
+    if (length + line.length + 1 > limit) {
+      lines.push(`_${attachments.length - index} more in Quackback_`)
       break
     }
     lines.push(line)
@@ -60,7 +69,7 @@ function priorityName(priority: TicketIssueSource['priority']): string {
 }
 
 /** Cut Markdown to `max` characters without leaving half an image or link behind. */
-function cutNarrative(markdown: string, max: number): string {
+export function cutMarkdown(markdown: string, max: number): string {
   if (markdown.length <= max) return markdown
   let end = Math.max(0, max - 3)
   for (const match of markdown.matchAll(/!?\[[^\]]*\]\([^)]*\)/g)) {
@@ -78,7 +87,7 @@ export function buildGitHubTicketIssue(
   context: { integrationId: string },
   rootUrl: string = getBaseUrl()
 ): TicketIssueContent {
-  const attachments = attachmentsSection(ticket, rootUrl)
+  const attachments = attachmentsSection(ticket.attachments, rootUrl)
   const footer = [
     '---',
     '',
@@ -93,7 +102,7 @@ export function buildGitHubTicketIssue(
   const fixed = [attachments, footer].filter(Boolean).join('\n\n')
   // What the narrative may take: the limit less the fixed parts and the blank lines between.
   const room = GITHUB_ISSUE_BODY_LIMIT - fixed.length - 2
-  const narrative = cutNarrative(
+  const narrative = cutMarkdown(
     absolutizeMarkdownUrls(ticket.narrative.trim(), rootUrl, false),
     room
   )

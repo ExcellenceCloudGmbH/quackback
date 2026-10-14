@@ -80,6 +80,8 @@ export interface IntegrationDestinationSummary {
   ticketScope: GitHubTicketScope
   /** GitHub: whether an issue's assignee follows onto its linked tickets. */
   assigneeSync: boolean
+  /** Whether a linked ticket's public replies are posted to its issues there as comments. */
+  postRepliesAsComments: boolean
   /** Whether the tickets it matches (by team and type; none chosen: every ticket) get an issue there. */
   ticketIssues: DestinationTicketIssues
   /** The connection's default destination (`config.channelId`). */
@@ -156,6 +158,7 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
       inboundMode: githubInboundMode(destination.config),
       ticketScope: githubTicketScope(destination.config),
       assigneeSync: destination.config.assigneeSync === true,
+      postRepliesAsComments: destination.config.postRepliesAsComments === true,
       ticketIssues: ticketIssues.get(destination.id) ?? {
         enabled: false,
         teamIds: [],
@@ -280,7 +283,10 @@ export const setIntegrationDestinationEnabledFn = createServerFn({ method: 'POST
     return { ok: true }
   })
 
-/** Patch a destination's provider-specific settings (GitHub: `direction`, `assigneeSync`). */
+/**
+ * Patch a destination's provider-specific settings (GitHub: `direction`,
+ * `assigneeSync`, `postRepliesAsComments`).
+ */
 export const setIntegrationDestinationConfigFn = createServerFn({ method: 'POST' })
   .validator(setDestinationConfigSchema)
   .handler(async ({ data }): Promise<{ ok: true }> => {

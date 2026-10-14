@@ -395,6 +395,31 @@ describe.skipIf(!fixture.available)('github channel ingest (real DB, rolled back
     expect(await testDb.select().from(conversations)).toHaveLength(0)
   })
 
+  it('a comment carrying our marker (a mirrored ticket reply) is not brought back', async () => {
+    const { integration } = await seedConnection()
+    await ingestGitHubChannelEvent({
+      body: JSON.stringify(issuePayload({})),
+      eventName: 'issues',
+      integration: { id: integration.id as IntegrationId, config: integration.config },
+    })
+    await ingestGitHubChannelEvent({
+      body: JSON.stringify(
+        issuePayload({
+          action: 'created',
+          comment: {
+            id: 556,
+            login: 'jane',
+            body: '_Quackback reply by Jane_\n\nFixed.\n\n<!-- quackback:ticket-comment messageId=conversation_msg_1 integrationId=integration_1 -->',
+          },
+        })
+      ),
+      eventName: 'issue_comment',
+      integration: { id: integration.id as IntegrationId, config: integration.config },
+    })
+    const msgs = await testDb.select().from(conversationMessages)
+    expect(msgs.some((m) => m.metadata?.githubCommentId === '556')).toBe(false)
+  })
+
   it('same githubCommentId twice inserts one message', async () => {
     const { integration } = await seedConnection()
     const payload = issuePayload({

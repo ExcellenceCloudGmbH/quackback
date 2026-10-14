@@ -56,6 +56,7 @@ export const githubIntegration: IntegrationDefinition = {
             z.string().max(100).nullable()
           ),
           assigneeSync: z.boolean(),
+          postRepliesAsComments: z.boolean(),
         })
         .partial()
         .strict(),

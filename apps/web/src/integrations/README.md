@@ -128,6 +128,20 @@ made or a ticket opened before the opt-in, and the worker rechecks the current
 ticket before sending. `issues.formatTicketIssue` renders the issue (GitHub adds
 attachments, a footer, labels and a marker); without it the narrative is sent.
 
+A provider with `issues.comments` mirrors a linked ticket's public replies onto
+its issues, in destinations that switch `postRepliesAsComments` on (see
+`sync/comments.ts`). The ticket-comment resolver routes `ticket.replied`,
+`ticket.reply_updated`, `ticket.reply_deleted` and `ticket.attachment_added` /
+`_removed` to each active ticket link; one `comment` operation per reply and link
+posts the comment, with a hidden marker, and `message_external_links` records it.
+Those comments are Quackback-authored, not remote content: the reply's edits and
+file changes rewrite the comment, and deleting the reply deletes it, without a
+review, as the inbox channel already does for its own comments. A comment already
+deleted on the platform counts as deleted: a rewrite that finds it gone records
+that, and the reply stays. Remote-authored
+comments are never edited, and replies the integration's own principal wrote are
+never sent back.
+
 Integration-only resync visits every active link without re-emitting `post.created`
 to unrelated sinks. Canonical rich text is converted with `contentJsonToMarkdown`;
 `buildIntegrationPostContent` keeps absolute media URLs and complete attachments

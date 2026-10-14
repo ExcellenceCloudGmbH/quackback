@@ -6,6 +6,7 @@ export type SyncExecutor =
   | 'hook'
   | 'refresh'
   | 'ticket-create'
+  | 'ticket-comment'
   | 'inbound-status'
   | 'inbound-assignee'
   | 'inbound-webhook'

@@ -383,6 +383,7 @@ describe('replayGateVerdict', () => {
       '0306_ticket_sharing',
       '0307_integration_destinations',
       '0308_integration_user_mappings',
+      '0309_message_external_links',
     ])
     const verdict = replayGateVerdict(before, verdictsFor(replaySetFor(before)), false)
     expect(verdict.ok).toBe(false)

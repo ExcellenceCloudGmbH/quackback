@@ -111,6 +111,7 @@ export type {
   EventMappingId,
   PostExternalLinkId,
   TicketExternalLinkId,
+  MessageExternalLinkId,
   ImportRunId,
   ExportRunId,
   PostSubscriptionId,

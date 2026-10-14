@@ -216,7 +216,9 @@ export async function ingestGitHubChannelEvent(opts: {
   const comment = payload.comment
   if (!comment?.id) return
   const commenterLogin = comment.user?.login ?? payload.sender?.login
-  if (githubLoginsMatch(botLogin, commenterLogin)) return
+  // Echo guard: our own comments, and bodies carrying our marker (a ticket
+  // reply mirrored onto a linked issue).
+  if (githubLoginsMatch(botLogin, commenterLogin) || hasQuackbackMarker(comment.body)) return
 
   const commentId = String(comment.id)
   if (await githubCommentExists(commentId)) return

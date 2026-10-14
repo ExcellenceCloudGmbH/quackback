@@ -8,6 +8,7 @@ import type { IssueTrackerCapability, ParsedIssueRef } from '@/lib/server/integr
 import { issueError } from '@/lib/server/integrations/message-utils'
 import { ValidationError } from '@/lib/shared/errors'
 import { buildGitHubTicketIssue } from '@/integrations/github/server/ticket-issue'
+import { githubIssueComments } from '@/integrations/github/server/ticket-comment'
 
 const GITHUB_API = 'https://api.github.com'
 
@@ -101,6 +102,8 @@ export const githubIssues: IssueTrackerCapability = {
   },
 
   formatTicketIssue: buildGitHubTicketIssue,
+
+  comments: githubIssueComments,
 
   async create({ auth, title, bodyMarkdown, labels }): Promise<ParsedIssueRef> {
     const ownerRepo = auth.channelId as string

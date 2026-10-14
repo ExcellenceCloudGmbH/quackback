@@ -283,6 +283,8 @@ export {
   postExternalLinksRelations,
   ticketExternalLinks,
   ticketExternalLinksRelations,
+  messageExternalLinks,
+  messageExternalLinksRelations,
   // Schema tables - import runs (imports & exports hub)
   importRuns,
   importRunsRelations,

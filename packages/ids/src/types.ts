@@ -118,6 +118,9 @@ export type PostExternalLinkId = TypeId<'post_external_link'>
 /** Ticket external link ID - e.g., ticket_external_link_01h455vb4pex5vsknk084sn02q */
 export type TicketExternalLinkId = TypeId<'ticket_external_link'>
 
+/** Message external link ID - e.g., message_external_link_01h455vb4pex5vsknk084sn02q */
+export type MessageExternalLinkId = TypeId<'message_external_link'>
+
 /** Slack channel monitor ID - e.g., slack_monitor_01h455vb4pex5vsknk084sn02q */
 export type SlackMonitorId = TypeId<'slack_monitor'>
 
@@ -519,6 +522,7 @@ export interface EntityIdMap {
   event_mapping: EventMappingId
   post_external_link: PostExternalLinkId
   ticket_external_link: TicketExternalLinkId
+  message_external_link: MessageExternalLinkId
   slack_monitor: SlackMonitorId
   import_run: ImportRunId
   export_run: ExportRunId

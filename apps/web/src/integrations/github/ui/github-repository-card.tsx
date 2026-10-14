@@ -7,10 +7,13 @@
  * that, its own switches: on or off (off keeps the webhook, so switching back
  * is immediate), whether its issues come into the inbox (as conversations,
  * or as tickets with their team and type), whether an issue's assignee
- * follows onto its tickets (not for a send-only repository), whether each new
- * ticket it matches gets an issue there (not for a receive-only one), which
- * way it syncs, and removing it. A repository set to bring issues in while the GitHub inbox channel is
- * off says so, with a link to the channel.
+ * follows onto its tickets (not for a send-only repository), whether a
+ * linked ticket's public replies are posted to its issues as comments (with a
+ * warning that they become visible there; not for a receive-only one),
+ * whether each new ticket it matches gets an issue there (not for a
+ * receive-only one), which way it syncs, and removing it. A repository set to
+ * bring issues in while the GitHub inbox channel is off says so, with a link
+ * to the channel.
  */
 import { useState } from 'react'
 import { Link } from '@tanstack/react-router'
@@ -258,6 +261,31 @@ export function GitHubRepositoryCard({ destination, inboxOff }: GitHubRepository
             />
           </span>
         </div>
+        <div className="flex items-center gap-2 text-xs">
+          <Switch
+            checked={destination.postRepliesAsComments}
+            disabled={setConfig.isPending || destination.direction === 'inbound'}
+            onCheckedChange={(postRepliesAsComments) =>
+              setConfig.mutate(
+                { destinationId: destination.id, config: { postRepliesAsComments } },
+                { onError: saveFailed }
+              )
+            }
+            aria-label={intl.formatMessage(
+              {
+                id: 'admin.githubRepository.postReplies',
+                defaultMessage: 'Post ticket replies as comments on linked issues in {repository}',
+              },
+              { repository: destination.externalId }
+            )}
+          />
+          <span aria-hidden>
+            <FormattedMessage
+              id="admin.githubRepository.postRepliesLabel"
+              defaultMessage="Replies as comments"
+            />
+          </span>
+        </div>
         <GitHubTicketIssues
           destinationId={destination.id}
           repository={destination.externalId}
@@ -301,6 +329,14 @@ export function GitHubRepositoryCard({ destination, inboxOff }: GitHubRepository
           <FormattedMessage id="admin.githubRepository.remove" defaultMessage="Remove" />
         </Button>
       </div>
+      {destination.postRepliesAsComments && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          <FormattedMessage
+            id="admin.githubRepository.postRepliesWarning"
+            defaultMessage="Public replies on linked tickets, including the customer's, are posted to the issue and visible to anyone who can see it."
+          />
+        </p>
+      )}
       <ConfirmDialog
         open={confirmRemove}
         onOpenChange={setConfirmRemove}

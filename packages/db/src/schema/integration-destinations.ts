@@ -51,6 +51,19 @@ export interface IntegrationDestinationConfig {
    * (`integration_user_mappings`). Off unless switched on.
    */
   assigneeSync?: boolean
+  /**
+   * A linked ticket's public replies are posted to its issue in this
+   * destination as comments, and those comments follow the reply's edits,
+   * files and deletion. Off unless switched on: on a public repository the
+   * customer's words become public.
+   */
+  postRepliesAsComments?: boolean
+  /**
+   * When `postRepliesAsComments` was last switched on (ISO), set by the
+   * server and never by a settings patch: no reply written before it is
+   * posted, so switching the option on never publishes what was said before.
+   */
+  postRepliesAsCommentsSince?: string
   [key: string]: unknown
 }
 

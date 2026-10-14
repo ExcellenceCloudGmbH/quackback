@@ -485,10 +485,16 @@ export async function updateDestinationConfig(
   if (!parsed.success)
     throw new ValidationError('INVALID_DESTINATION_CONFIG', 'These settings are not valid here')
   await multiple.validateConfig?.(parsed.data)
+  // Switching replies-as-comments on records when, the boundary no earlier
+  // reply is ever posted across.
+  const config =
+    parsed.data.postRepliesAsComments === true && destination.config.postRepliesAsComments !== true
+      ? { ...parsed.data, postRepliesAsCommentsSince: new Date().toISOString() }
+      : parsed.data
   const [updated] = await db
     .update(integrationDestinations)
     .set({
-      config: sql`${integrationDestinations.config} || ${JSON.stringify(parsed.data)}::jsonb`,
+      config: sql`${integrationDestinations.config} || ${JSON.stringify(config)}::jsonb`,
       updatedAt: new Date(),
     })
     .where(eq(integrationDestinations.id, destination.id))

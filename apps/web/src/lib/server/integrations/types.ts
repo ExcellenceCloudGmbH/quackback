@@ -198,6 +198,59 @@ export interface TicketIssueContent {
 }
 
 /**
+ * A public ticket reply as a comment on a linked issue may say it, read at
+ * dispatch: never an internal note, never another message's files, and the
+ * requester is never named (the issue may be public).
+ */
+export interface TicketReplySource {
+  messageId: string
+  ticketId: string
+  /** `agent` for a teammate's reply, `visitor` for the requester's. */
+  senderType: 'agent' | 'visitor'
+  /** The teammate's public display name. Always null for a requester reply. */
+  authorName: string | null
+  /** The reply, as Markdown. */
+  markdown: string
+  /** This reply's own files. */
+  attachments: { name: string; url: string; contentType: string }[]
+}
+
+/** A comment the connection wrote, as the provider reports it. */
+export interface IssueCommentRef {
+  /** The provider's comment id. */
+  externalId: string
+  externalUrl: string | null
+  /** Its version after the write (GitHub: `updated_at`), when the provider reports one. */
+  version: string | null
+}
+
+/**
+ * Mirror a linked ticket's public replies onto the issue as comments. Every
+ * comment written here is the connection's own: it is created from a reply,
+ * and only ever edited or deleted to follow that reply. Remote-authored
+ * comments are never touched. Each call throws an `issueError` carrying the
+ * response `status` on a rejected request.
+ */
+export interface IssueCommentCapability {
+  /** The comment body for a reply, with a hidden marker naming the reply and the connection. */
+  format(reply: TicketReplySource, context: { integrationId: string }): string
+  create(args: {
+    auth: Record<string, unknown>
+    /** The linked issue (`ParsedIssueRef.externalId`). */
+    issueId: string
+    body: string
+  }): Promise<IssueCommentRef>
+  /** Null when the comment is gone from the platform (deleted there). */
+  update(args: {
+    auth: Record<string, unknown>
+    commentId: string
+    body: string
+  }): Promise<IssueCommentRef | null>
+  /** Resolves when the comment is gone, including when it was already removed. */
+  delete(args: { auth: Record<string, unknown>; commentId: string }): Promise<void>
+}
+
+/**
  * Issue-tracker capabilities beyond the event-bus create hook. Optional per
  * provider; surfaces that offer manual linking / creation gate on the
  * specific member being present, never on the provider id.
@@ -253,6 +306,11 @@ export interface IssueTrackerCapability {
     ticket: TicketIssueSource,
     context: { integrationId: string }
   ): TicketIssueContent
+  /**
+   * Post a linked ticket's public replies to the issue, in destinations that
+   * switch `postRepliesAsComments` on (see `sync/comments.ts`).
+   */
+  comments?: IssueCommentCapability
 }
 
 /** One selectable external status/state, as shown in the status-mapping UI. */

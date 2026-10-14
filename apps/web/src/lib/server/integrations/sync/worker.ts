@@ -26,6 +26,7 @@ import { executeHookSync, persistSyncLink } from './hooks'
 import { syncErrorOutcome } from './outcomes'
 import type { SyncOutcome } from './types'
 import { executeTicketCreate } from './tickets'
+import { executeTicketCommentSync } from './comments'
 import { applyIdentifySync } from './identify'
 import {
   fanOutInboundStatus,
@@ -127,6 +128,8 @@ export async function runIntegrationSync(job: ClaimedJob): Promise<void> {
           outcome = await executeHookSync(claim, payload.data, integration)
         else if (payload.executor === 'ticket-create')
           outcome = await executeTicketCreate(claim, integration)
+        else if (payload.executor === 'ticket-comment')
+          outcome = await executeTicketCommentSync(claim, integration)
         else if (payload.executor === 'segment')
           outcome = await executeSegmentSync(claim, payload.data, integration)
         else if (payload.executor === 'refresh' || payload.executor === 'archive')

@@ -63,6 +63,9 @@ export const SYNC_KIND_LABELS: Record<string, string> = {
   'app-hook': 'App event',
   notify: 'Notification',
   link: 'Link existing item',
+  comment: 'Post reply as comment',
+  'comment-update': 'Update comment',
+  'comment-delete': 'Delete comment',
 }
 export interface SyncHistoryItem {
   id: string
