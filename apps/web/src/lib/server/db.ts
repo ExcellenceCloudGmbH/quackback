@@ -276,6 +276,8 @@ export {
   integrationsRelations,
   integrationDestinations,
   integrationDestinationsRelations,
+  integrationUserMappings,
+  integrationUserMappingsRelations,
   // Schema tables - external links
   postExternalLinks,
   postExternalLinksRelations,

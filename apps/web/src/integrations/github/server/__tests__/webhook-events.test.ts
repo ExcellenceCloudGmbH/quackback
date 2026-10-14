@@ -1,5 +1,8 @@
 import { describe, expect, it, vi, afterEach } from 'vitest'
-import { githubWebhookEvents } from '@/lib/server/domains/channel-accounts/github-connection'
+import {
+  githubHookWanted,
+  githubWebhookEvents,
+} from '@/lib/server/domains/channel-accounts/github-connection'
 import { registerGitHubWebhook, patchGitHubWebhook } from '../webhook-registration'
 
 describe('githubWebhookEvents', () => {
@@ -13,6 +16,20 @@ describe('githubWebhookEvents', () => {
       'issues',
       'issue_comment',
     ])
+  })
+})
+
+describe('githubHookWanted', () => {
+  it('wants a hook for status sync, a live inbox repository, or assignee sync', () => {
+    const off = { statusSync: false, inboxLive: false }
+    expect(githubHookWanted({}, off)).toBe(false)
+    expect(githubHookWanted({}, { ...off, statusSync: true })).toBe(true)
+    expect(githubHookWanted({ inboundMode: 'tickets' }, off)).toBe(false)
+    expect(githubHookWanted({ inboundMode: 'tickets' }, { ...off, inboxLive: true })).toBe(true)
+    const assignees = { inboundMode: 'off', assigneeSync: true }
+    expect(githubHookWanted(assignees, off)).toBe(true)
+    // Assignees ride the `issues` events every hook carries.
+    expect(githubWebhookEvents(assignees, { inboxLive: false })).toEqual(['issues'])
   })
 })
 

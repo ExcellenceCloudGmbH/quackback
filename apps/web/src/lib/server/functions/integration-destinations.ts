@@ -70,6 +70,8 @@ export interface IntegrationDestinationSummary {
   inboundMode: GitHubInboundMode
   /** GitHub: the team and ticket type its tickets get, in `tickets` mode. */
   ticketScope: GitHubTicketScope
+  /** GitHub: whether an issue's assignee follows onto its linked tickets. */
+  assigneeSync: boolean
   /** The connection's default destination (`config.channelId`). */
   isDefault: boolean
   webhookRegistered: boolean
@@ -140,6 +142,7 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
       direction: destinationDirection(destination),
       inboundMode: githubInboundMode(destination.config),
       ticketScope: githubTicketScope(destination.config),
+      assigneeSync: destination.config.assigneeSync === true,
       isDefault:
         typeof defaultId === 'string' &&
         defaultId.toLowerCase() === destination.externalId.toLowerCase(),
@@ -259,7 +262,7 @@ export const setIntegrationDestinationEnabledFn = createServerFn({ method: 'POST
     return { ok: true }
   })
 
-/** Patch a destination's provider-specific settings (GitHub: `direction`). */
+/** Patch a destination's provider-specific settings (GitHub: `direction`, `assigneeSync`). */
 export const setIntegrationDestinationConfigFn = createServerFn({ method: 'POST' })
   .validator(setDestinationConfigSchema)
   .handler(async ({ data }): Promise<{ ok: true }> => {

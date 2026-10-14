@@ -382,6 +382,7 @@ describe('replayGateVerdict', () => {
       '0305_ticket_due_dates',
       '0306_ticket_sharing',
       '0307_integration_destinations',
+      '0308_integration_user_mappings',
     ])
     const verdict = replayGateVerdict(before, verdictsFor(replaySetFor(before)), false)
     expect(verdict.ok).toBe(false)

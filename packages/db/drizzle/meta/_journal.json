@@ -1996,6 +1996,13 @@
       "when": 1791001200000,
       "tag": "0307_integration_destinations",
       "breakpoints": true
+    },
+    {
+      "idx": 285,
+      "version": "7",
+      "when": 1791001300000,
+      "tag": "0308_integration_user_mappings",
+      "breakpoints": true
     }
   ]
 }

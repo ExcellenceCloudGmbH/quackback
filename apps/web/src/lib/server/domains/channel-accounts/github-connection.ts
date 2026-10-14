@@ -191,7 +191,7 @@ export function githubRepositoryIngests(
 
 /**
  * The events one repository's hook subscribes to: `issues` always (status
- * sync, issue lifecycle), `issue_comment` only while the inbox channel is
+ * sync, issue lifecycle, assignees), `issue_comment` only while the inbox channel is
  * live and this repository brings its issues in (as conversations or
  * tickets). The one place a feature that needs another event per repository
  * adds it.
@@ -203,6 +203,23 @@ export function githubWebhookEvents(
   return opts.inboxLive && githubBringsIssuesIn(repository)
     ? ['issues', 'issue_comment']
     : ['issues']
+}
+
+/**
+ * Whether anything listens to one repository's hook: status sync (every
+ * repository), the inbox (a repository that brings its issues in, while the
+ * channel is live), or assignee sync (a repository that has it on). All of
+ * them read the `issues` events the hook always carries.
+ */
+export function githubHookWanted(
+  repository: { inboundMode?: unknown; assigneeSync?: unknown },
+  opts: { statusSync: boolean; inboxLive: boolean }
+): boolean {
+  return (
+    opts.statusSync ||
+    repository.assigneeSync === true ||
+    githubWebhookEvents(repository, opts).includes('issue_comment')
+  )
 }
 
 /**
@@ -297,7 +314,7 @@ export async function syncGitHubWebhookEvents(destinationId?: string): Promise<v
           externalWebhookId: repository.externalWebhookId,
           events,
         })
-      } else if (statusSync || events.includes('issue_comment')) {
+      } else if (githubHookWanted(repository.config, { statusSync, inboxLive })) {
         // Registration finds and patches a hook GitHub already has at this URL.
         await registerDestinationWebhook({ integration, destination: repository, accessToken })
       }

@@ -176,6 +176,22 @@ const EXEMPTIONS: { reason: string; pattern: RegExp; optional?: boolean }[] = [
     pattern: /^DROP INDEX "integration_destinations_external_id_uq"/,
   },
   {
+    // Lookup index mixing a plain column with a lower() expression member
+    // (integration_user_mappings): an account found by its login,
+    // case-insensitively. The same round-trip limitation as the destination
+    // name index above.
+    reason:
+      'integration user mapping login index: mixed column and lower() expression members do not round-trip introspection, drizzle-kit re-emits the CREATE',
+    pattern:
+      /^CREATE INDEX "integration_user_mappings_login_idx" ON "integration_user_mappings" USING btree /,
+  },
+  {
+    // Drop half of the spurious pair for the same index.
+    reason:
+      'integration user mapping login index: mixed column and lower() expression members do not round-trip introspection, drizzle-kit re-emits the DROP',
+    pattern: /^DROP INDEX "integration_user_mappings_login_idx"/,
+  },
+  {
     // GIN pg_trgm index for the inbox message-content ILIKE search (0139,
     // narrowed to partial in 0209). It is declared in TS, but drizzle-kit cannot
     // introspect the gin_trgm_ops opclass, so it reads the index as absent and

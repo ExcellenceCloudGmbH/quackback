@@ -190,6 +190,10 @@ export type AuditEventType =
   // repository); the target is the destination.
   | 'integration.destination.added'
   | 'integration.destination.removed'
+  // An account on a provider (a GitHub user) was matched to a teammate, or the
+  // match was removed; the target is the mapping.
+  | 'integration.user_mapping.added'
+  | 'integration.user_mapping.removed'
 
 export type AuditEventOutcome = 'success' | 'failure'
 

@@ -45,6 +45,12 @@ export interface IntegrationDestinationConfig {
    * `ticketStatusMappings`. Null ignores that state.
    */
   ticketStatusMappings?: Record<string, string | null>
+  /**
+   * GitHub: an issue assigned or unassigned on GitHub assigns or unassigns
+   * the tickets linked to it, through the connection's account matches
+   * (`integration_user_mappings`). Off unless switched on.
+   */
+  assigneeSync?: boolean
   [key: string]: unknown
 }
 

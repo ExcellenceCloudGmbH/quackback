@@ -58,6 +58,8 @@ export {
   useRemoveIntegrationDestination,
   useSetIntegrationDestinationEnabled,
   useSetIntegrationDestinationConfig,
+  useUpsertIntegrationUserMapping,
+  useDeleteIntegrationUserMapping,
 } from './integrations'
 
 // Status sync mutations

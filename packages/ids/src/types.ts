@@ -106,6 +106,9 @@ export type PlatformCredentialId = TypeId<'platform_cred'>
 /** Integration destination ID - e.g., integration_destination_01h455vb4pex5vsknk084sn02q */
 export type IntegrationDestinationId = TypeId<'integration_destination'>
 
+/** Integration user mapping ID - e.g., integration_user_mapping_01h455vb4pex5vsknk084sn02q */
+export type IntegrationUserMappingId = TypeId<'integration_user_mapping'>
+
 /** Event mapping ID - e.g., event_mapping_01h455vb4pex5vsknk084sn02q */
 export type EventMappingId = TypeId<'event_mapping'>
 
@@ -512,6 +515,7 @@ export interface EntityIdMap {
   integration: IntegrationId
   platform_cred: PlatformCredentialId
   integration_destination: IntegrationDestinationId
+  integration_user_mapping: IntegrationUserMappingId
   event_mapping: EventMappingId
   post_external_link: PostExternalLinkId
   ticket_external_link: TicketExternalLinkId

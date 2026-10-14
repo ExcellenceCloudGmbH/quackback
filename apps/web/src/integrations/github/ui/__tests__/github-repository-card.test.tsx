@@ -3,7 +3,8 @@
  * One repository's card: its state badges, whether a webhook is registered,
  * the last delivery, the recorded error, a repair that reports its outcome,
  * the on/off switch, what its issues open in the inbox (with the team and
- * ticket type of its tickets), and removal behind a confirmation.
+ * ticket type of its tickets), the assignee switch, and removal behind a
+ * confirmation.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
@@ -56,6 +57,7 @@ const repo: IntegrationDestinationSummary = {
   direction: 'both',
   inboundMode: 'off',
   ticketScope: { teamId: null, ticketTypeId: null },
+  assigneeSync: false,
   isDefault: false,
   webhookRegistered: true,
   webhookEvents: ['issues'],
@@ -141,6 +143,19 @@ describe('GitHubRepositoryCard', () => {
       destinationId: 'integration_destination_1',
       enabled: false,
     })
+  })
+
+  it('switches issue assignees on, but not for a send-only repository', () => {
+    renderCard(repo)
+    const name = 'Follow issue assignees from acme/app onto tickets'
+    fireEvent.click(screen.getByRole('switch', { name }))
+    expect(mocks.setConfig.mock.calls[0][0]).toEqual({
+      destinationId: 'integration_destination_1',
+      config: { assigneeSync: true },
+    })
+    cleanup()
+    renderCard({ ...repo, direction: 'outbound' })
+    expect(screen.getByRole('switch', { name })).toBeDisabled()
   })
 
   it('brings the repository into the inbox as conversations or tickets', async () => {

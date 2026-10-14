@@ -12,6 +12,7 @@ import {
   GITHUB_INBOUND_MODES,
   getLiveGitHubConnectionAccount,
   githubBringsIssuesIn,
+  githubHookWanted,
   githubWebhookEvents,
   syncGitHubWebhookEvents,
 } from '@/lib/server/domains/channel-accounts/github-connection'
@@ -54,6 +55,7 @@ export const githubIntegration: IntegrationDefinition = {
             z.enum(GITHUB_ISSUE_STATES),
             z.string().max(100).nullable()
           ),
+          assigneeSync: z.boolean(),
         })
         .partial()
         .strict(),
@@ -64,13 +66,13 @@ export const githubIntegration: IntegrationDefinition = {
           await import('@/lib/server/domains/conversation/conversation.github-tickets')
         await validateGitHubRepositorySettings(patch)
       },
-      // Status sync listens to every repository's hook; the inbox only to
-      // the hooks of repositories that bring their issues in.
+      // Status sync listens to every repository's hook; the inbox and
+      // assignee sync only to the hooks of repositories that use them.
       webhookWanted: async (config) =>
-        !!config.statusSyncEnabled ||
-        githubWebhookEvents(config, {
+        githubHookWanted(config, {
+          statusSync: !!config.statusSyncEnabled,
           inboxLive: !!(await getLiveGitHubConnectionAccount()),
-        }).includes('issue_comment'),
+        }),
       // While the inbox is on, the first repository to arrive brings its
       // issues in, as the single repository always did; later ones start off.
       initialConfig: async (integrationId) => {
@@ -82,7 +84,8 @@ export const githubIntegration: IntegrationDefinition = {
             : 'conversations',
         }
       },
-      // A changed inbox choice changes which events that repository's hook needs.
+      // A changed inbox choice changes which events that repository's hook
+      // needs, and switching assignee sync on may need a hook at all.
       onConfigChanged: (destination) => syncGitHubWebhookEvents(destination.id).catch(() => {}),
     },
   },
@@ -161,7 +164,12 @@ export const githubIntegration: IntegrationDefinition = {
     if (!integration) return
     await ensureDestinations(integration)
     const config = (integration.config ?? {}) as Record<string, unknown>
-    if (config.statusSyncEnabled || (await getLiveGitHubConnectionAccount())) {
+    const repositories = await listDestinations(integration.id, 'repo')
+    if (
+      config.statusSyncEnabled ||
+      (await getLiveGitHubConnectionAccount()) ||
+      repositories.some((r) => r.config.assigneeSync)
+    ) {
       // A failure is recorded on the repository and the connection; connecting still succeeds.
       await syncGitHubWebhookEvents().catch(() => {})
     }

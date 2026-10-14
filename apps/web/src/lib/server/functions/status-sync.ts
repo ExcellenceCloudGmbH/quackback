@@ -213,14 +213,25 @@ export const disableStatusSyncFn = createServerFn({ method: 'POST' })
         return { success: true }
       }
     }
-    // One webhook per destination: remove each (best effort) and forget it.
+    // One webhook per destination: remove each (best effort) and forget it,
+    // except where something other than status sync still listens (GitHub:
+    // a repository with assignee sync on).
     const { getIntegration } = await import('@/lib/server/integrations')
     const multiple = getIntegration(data.integrationType)?.destination?.multiple
     if (multiple) {
-      const { listDestinations, unregisterDestinationWebhook } =
-        await import('@/lib/server/integrations/destinations')
+      const {
+        listDestinations,
+        unregisterDestinationWebhook,
+        destinationConfig,
+        ensureDestinations,
+      } = await import('@/lib/server/integrations/destinations')
+      // A hook that stays must carry its own secret before the connection's
+      // legacy one is cleared below.
+      await ensureDestinations(integration)
+      const statusSyncOff = { config: { ...config, statusSyncEnabled: false } }
       for (const destination of await listDestinations(integrationId, multiple.kind)) {
         if (!destination.externalWebhookId && !destination.secrets) continue
+        if (await multiple.webhookWanted?.(destinationConfig(statusSyncOff, destination))) continue
         await unregisterDestinationWebhook({
           integration,
           destination,

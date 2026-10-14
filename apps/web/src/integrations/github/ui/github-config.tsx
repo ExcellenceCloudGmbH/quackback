@@ -12,6 +12,7 @@ import { MENU_LABEL } from '@/components/ui/menu'
 import { useUpdateIntegration } from '@/lib/client/mutations'
 import { getGitHubChannelStatusFn } from '@/integrations/github/server/functions'
 import { GitHubRepositoryList } from '@/integrations/github/ui/github-repository-list'
+import { GitHubPeople } from '@/integrations/github/ui/github-people'
 import { StatusSyncConfig } from '@/components/admin/settings/integrations/status-sync-config'
 import { TicketStatusSyncConfig } from '@/components/admin/settings/integrations/ticket-status-sync-config'
 import { OnDeleteConfig } from '@/components/admin/settings/integrations/on-delete-config'
@@ -221,6 +222,7 @@ export function GitHubConfig({
             />
           </div>
         </section>
+        <GitHubPeople disabled={!integrationEnabled} />
       </div>
     </div>
   )

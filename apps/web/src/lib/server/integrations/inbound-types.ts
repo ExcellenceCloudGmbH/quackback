@@ -36,6 +36,30 @@ export interface InboundWebhookResult {
 }
 
 /**
+ * An item's assignee added or removed on the provider (GitHub
+ * `issues.assigned` / `issues.unassigned`), parsed from a signed delivery.
+ */
+export interface InboundAssigneeChange {
+  /** The destination the delivery came from, as `destinationOf` names it. */
+  destination: { externalId: string; externalKey?: string }
+  /** The item's id in that destination (GitHub: the issue number). */
+  externalId: string
+  externalDisplayId: string
+  externalUrl: string | null
+  /**
+   * The channel thread an Inbox conversation about this item has, for a
+   * provider with an Inbox channel (GitHub: `owner/repo#n`), so a ticket
+   * paired with that conversation follows too.
+   */
+  threadKey?: string
+  action: 'assigned' | 'unassigned'
+  /** The account added or removed: the provider's immutable id when it sends one, and its login. */
+  assignee: { externalUserId: string | null; login: string }
+  /** When the item last changed, for ordering against other changes to it. */
+  occurredAt?: string
+}
+
+/**
  * Handler interface for inbound webhooks from external platforms.
  */
 export interface InboundWebhookHandler {
@@ -70,4 +94,13 @@ export interface InboundWebhookHandler {
     config: Record<string, unknown>,
     secrets: Record<string, unknown>
   ): Promise<InboundWebhookResult | InboundWebhookResult[] | null>
+
+  /**
+   * Runs in the durable worker beside `parseStatusChange`, on the same signed
+   * receipt: the assignee change a delivery reports, or null for any other
+   * delivery and for the connection's own changes coming back. Linked tickets
+   * follow it in destinations that switch assignee sync on
+   * (`sync/assignees.ts`).
+   */
+  parseAssigneeChange?(body: string, config: Record<string, unknown>): InboundAssigneeChange | null
 }

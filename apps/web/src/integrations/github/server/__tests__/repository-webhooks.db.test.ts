@@ -391,6 +391,43 @@ describe.skipIf(!fixture.available)('GitHub repository webhooks', () => {
       expect(repo).toMatchObject({ externalWebhookId: null, secrets: null })
   })
 
+  it('keeps the webhook of a repository with assignee sync on when status sync turns off', async () => {
+    const integration = await seedGitHub({ channelId: 'acme/a', statusSyncEnabled: true })
+    await addRepo(integration, {
+      externalId: 'acme/a',
+      externalWebhookId: '1',
+      secrets: encryptSecrets({ webhookSecret: 'a-secret' }),
+    })
+    await addRepo(integration, {
+      externalId: 'acme/b',
+      externalWebhookId: '2',
+      secrets: encryptSecrets({ webhookSecret: 'b-secret' }),
+      config: { assigneeSync: true },
+    })
+    github({ 'DELETE /repos/acme/a/hooks/1': () => new Response(null, { status: 204 }) })
+
+    await disableStatusSyncFn({
+      data: { integrationId: integration.id, integrationType: 'github' },
+    })
+    expect(calls).toEqual(['DELETE /repos/acme/a/hooks/1'])
+    const [a, b] = await repos(integration)
+    expect(a).toMatchObject({ externalWebhookId: null, secrets: null })
+    expect(b.externalWebhookId).toBe('2')
+    expect(readDestinationSecret(b)).toBe('b-secret')
+  })
+
+  it('switching assignee sync on registers a hook where nothing listened', async () => {
+    const integration = await seedGitHub({ channelId: 'acme/a' })
+    const repo = await addRepo(integration, { externalId: 'acme/a' })
+    github({ 'POST /repos/acme/a/hooks': () => Response.json({ id: 9 }, { status: 201 }) })
+    const { updateDestinationConfig } = await import('@/lib/server/integrations/destination-admin')
+    await updateDestinationConfig(repo.id, { assigneeSync: true })
+    expect(calls).toEqual(['POST /repos/acme/a/hooks'])
+    const [after] = await repos(integration)
+    expect(after).toMatchObject({ externalWebhookId: '9', webhookEvents: ['issues'] })
+    expect(after.config).toMatchObject({ assigneeSync: true })
+  })
+
   it('removes every repository webhook before revoking the token on disconnect', async () => {
     const integration = await seedGitHub({ channelId: 'acme/a', statusSyncEnabled: true })
     await addRepo(integration, { externalId: 'acme/a', externalWebhookId: '1' })

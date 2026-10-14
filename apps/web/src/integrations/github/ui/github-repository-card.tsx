@@ -6,8 +6,9 @@
  * registration hit, with a repair that registers the webhook again. Below
  * that, its own switches: on or off (off keeps the webhook, so switching back
  * is immediate), whether its issues come into the inbox (as conversations,
- * or as tickets with their team and type), which way it syncs, and removing
- * it. A repository set to bring issues in while the GitHub inbox channel is
+ * or as tickets with their team and type), whether an issue's assignee
+ * follows onto its tickets (not for a send-only repository), which way it
+ * syncs, and removing it. A repository set to bring issues in while the GitHub inbox channel is
  * off says so, with a link to the channel.
  */
 import { useState } from 'react'
@@ -229,6 +230,31 @@ export function GitHubRepositoryCard({ destination, inboxOff }: GitHubRepository
               )
             }
           />
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <Switch
+            checked={destination.assigneeSync}
+            disabled={setConfig.isPending || destination.direction === 'outbound'}
+            onCheckedChange={(assigneeSync) =>
+              setConfig.mutate(
+                { destinationId: destination.id, config: { assigneeSync } },
+                { onError: saveFailed }
+              )
+            }
+            aria-label={intl.formatMessage(
+              {
+                id: 'admin.githubRepository.assigneeSync',
+                defaultMessage: 'Follow issue assignees from {repository} onto tickets',
+              },
+              { repository: destination.externalId }
+            )}
+          />
+          <span aria-hidden>
+            <FormattedMessage
+              id="admin.githubRepository.assigneeSyncLabel"
+              defaultMessage="Assignees"
+            />
+          </span>
         </div>
         <Select
           value={destination.direction}

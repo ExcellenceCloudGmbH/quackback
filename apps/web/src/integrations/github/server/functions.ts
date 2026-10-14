@@ -8,8 +8,11 @@ import type {
   GitHubInboundMode,
   GitHubTicketScope,
 } from '@/lib/server/domains/channel-accounts/github-connection'
+import type { GitHubAccount, GitHubPersonSuggestion } from '@/integrations/github/server/people'
 import { PERMISSIONS } from '@/lib/shared/permissions'
 import { ValidationError } from '@/lib/shared/errors'
+
+export type { GitHubAccount, GitHubPersonSuggestion }
 
 export interface GitHubOAuthState {
   type: 'github_oauth'
@@ -306,4 +309,68 @@ export const retryGitHubAgentMessageFn = createServerFn({ method: 'POST' })
       direction: 'agent_reply',
     })
     return { ok: true }
+  })
+
+/**
+ * Suggest teammates for the GitHub accounts that can be assigned issues in
+ * the synced repositories (switched on ones only) and are not matched yet.
+ * Nothing is stored: each suggestion is matched only when someone accepts it.
+ */
+export const suggestGitHubPeopleFn = createServerFn({ method: 'POST' }).handler(
+  async (): Promise<{ scanned: number; suggestions: GitHubPersonSuggestion[] }> => {
+    const { requireAuth } = await import('@/lib/server/functions/auth-helpers')
+    const { db, integrations, eq } = await import('@/lib/server/db')
+    await requireAuth({ permission: PERMISSIONS.INTEGRATION_MANAGE })
+    const integration = await db.query.integrations.findFirst({
+      where: eq(integrations.integrationType, 'github'),
+    })
+    if (!integration?.secrets || integration.status !== 'active')
+      throw new ValidationError('INTEGRATION_UNAVAILABLE', 'Connect GitHub first')
+
+    const { listDestinations } = await import('@/lib/server/integrations/destinations')
+    const { listUserMappings } = await import('@/lib/server/integrations/user-mappings')
+    const { listAssignableTeammates } = await import('@/lib/server/domains/teams/team.service')
+    const { withIntegrationReadAuth } = await import('@/lib/server/integrations/token-refresh')
+    const { suggestGitHubPeople } = await import('@/integrations/github/server/people')
+    const repositories = (await listDestinations(integration.id, 'repo'))
+      .filter((r) => r.enabled)
+      .map((r) => r.externalId)
+    const mappings = await listUserMappings(integration.id)
+    const teammates = await listAssignableTeammates()
+    return withIntegrationReadAuth(integration.id, ({ accessToken }) =>
+      suggestGitHubPeople({
+        accessToken,
+        repositories,
+        teammates,
+        mappedAccountIds: new Set(mappings.map((m) => m.externalUserId)),
+        mappedPrincipalIds: new Set(mappings.map((m) => m.principalId as string)),
+      })
+    )
+  }
+)
+
+/**
+ * Look a GitHub account up by login, so a teammate can be matched to an
+ * account nobody suggested. The match is stored by GitHub's numeric id.
+ */
+export const findGitHubUserFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ login: z.string().trim().min(1).max(39) }))
+  .handler(async ({ data }): Promise<GitHubAccount> => {
+    const { requireAuth } = await import('@/lib/server/functions/auth-helpers')
+    const { db, integrations, eq } = await import('@/lib/server/db')
+    const { NotFoundError } = await import('@/lib/shared/errors')
+    await requireAuth({ permission: PERMISSIONS.INTEGRATION_MANAGE })
+    const integration = await db.query.integrations.findFirst({
+      where: eq(integrations.integrationType, 'github'),
+    })
+    if (!integration?.secrets || integration.status !== 'active')
+      throw new ValidationError('INTEGRATION_UNAVAILABLE', 'Connect GitHub first')
+    const login = data.login.replace(/^@/, '')
+    const { withIntegrationReadAuth } = await import('@/lib/server/integrations/token-refresh')
+    const { getGitHubUser } = await import('@/integrations/github/server/people')
+    const found = await withIntegrationReadAuth(integration.id, ({ accessToken }) =>
+      getGitHubUser(accessToken, login)
+    )
+    if (!found) throw new NotFoundError('GITHUB_USER_NOT_FOUND', `GitHub has no user @${login}`)
+    return { id: found.id, login: found.login, name: found.name, avatarUrl: found.avatarUrl }
   })

@@ -107,6 +107,7 @@ export type {
   IntegrationId,
   PlatformCredentialId,
   IntegrationDestinationId,
+  IntegrationUserMappingId,
   EventMappingId,
   PostExternalLinkId,
   TicketExternalLinkId,

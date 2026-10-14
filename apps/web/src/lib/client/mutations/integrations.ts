@@ -24,6 +24,10 @@ import {
   setIntegrationDestinationConfigFn,
   setIntegrationDestinationEnabledFn,
 } from '@/lib/server/functions/integration-destinations'
+import {
+  deleteIntegrationUserMappingFn,
+  upsertIntegrationUserMappingFn,
+} from '@/lib/server/functions/integration-user-mappings'
 
 /**
  * Mutation hook for updating integration config and event mappings
@@ -159,6 +163,37 @@ export function useSetIntegrationDestinationConfig() {
   return useMutation({
     mutationFn: (input: { destinationId: string; config: Record<string, unknown> }) =>
       setIntegrationDestinationConfigFn({ data: input }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'integrations'] })
+    },
+  })
+}
+
+/** Match an account on the provider (a GitHub user) to a teammate. The caller reports the outcome. */
+export function useUpsertIntegrationUserMapping() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      integrationType: string
+      externalUserId: string
+      externalLogin: string
+      externalDisplayName?: string | null
+      principalId: string
+    }) => upsertIntegrationUserMappingFn({ data: input }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'integrations'] })
+    },
+  })
+}
+
+/** Remove an account's match to a teammate. */
+export function useDeleteIntegrationUserMapping() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: { integrationType: string; mappingId: string }) =>
+      deleteIntegrationUserMappingFn({ data: input }),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'integrations'] })
     },

@@ -17,6 +17,7 @@ import {
 import { fetchBoardsFn, fetchBoardsWithCountsFn } from '@/lib/server/functions/boards'
 import { fetchPlatformCredentialsMaskedFn } from '@/lib/server/functions/platform-credentials'
 import { listIntegrationDestinationsFn } from '@/lib/server/functions/integration-destinations'
+import { listIntegrationUserMappingsFn } from '@/lib/server/functions/integration-user-mappings'
 import {
   fetchAuthProviderStatusFn,
   fetchAuthProviderCredentialsMaskedFn,
@@ -276,6 +277,17 @@ export const adminQueries = {
     queryOptions({
       queryKey: ['admin', 'integrations', type, 'destinations'],
       queryFn: () => listIntegrationDestinationsFn({ data: { integrationType: type } }),
+      staleTime: 30 * 1000,
+    }),
+
+  /**
+   * The accounts on a connected integration (GitHub users) matched to
+   * teammates. Nested under the integration's key like its destinations.
+   */
+  integrationUserMappings: (type: string) =>
+    queryOptions({
+      queryKey: ['admin', 'integrations', type, 'user-mappings'],
+      queryFn: () => listIntegrationUserMappingsFn({ data: { integrationType: type } }),
       staleTime: 30 * 1000,
     }),
 

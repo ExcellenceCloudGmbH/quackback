@@ -8,13 +8,17 @@
  * like `Closed` until it has a mapping of its own.
  * Routing: each repository has its own webhook and secret; `destinationOf`
  * names the repository a delivery claims so the handler can pick that secret.
+ * Assignees: `issues.assigned` / `issues.unassigned` name the account added
+ * or removed; our own bot's changes are left out, since they echo a ticket.
  */
 
 import { timingSafeEqual, createHmac } from 'crypto'
 import type {
+  InboundAssigneeChange,
   InboundWebhookHandler,
   InboundWebhookResult,
 } from '@/lib/server/integrations/inbound-types'
+import { githubLoginsMatch, githubThreadKey } from '@/lib/server/domains/channels/github-thread'
 
 export const githubInboundHandler: InboundWebhookHandler = {
   statusMode: 'automatic',
@@ -84,6 +88,55 @@ export const githubInboundHandler: InboundWebhookHandler = {
       ...(notPlanned ? { fallbackStatus: 'Closed' } : {}),
       eventType: `issues.${payload.action}`,
       transition: payload.action,
+    }
+  },
+
+  parseAssigneeChange(body: string, config: Record<string, unknown>): InboundAssigneeChange | null {
+    let payload: {
+      action?: string
+      assignee?: { id?: number | string | null; login?: string } | null
+      sender?: { login?: string }
+      issue?: {
+        number?: number
+        html_url?: string
+        updated_at?: string
+        pull_request?: unknown
+      }
+      repository?: { full_name?: string; id?: number | string }
+    }
+    try {
+      payload = JSON.parse(body) as typeof payload
+    } catch {
+      return null
+    }
+    const action = payload.action
+    if (action !== 'assigned' && action !== 'unassigned') return null
+    const issue = payload.issue
+    const login = payload.assignee?.login
+    const repository = payload.repository?.full_name
+    if (!issue?.number || issue.pull_request || !login || !repository?.includes('/')) return null
+    const botLogin = typeof config.username === 'string' ? config.username : undefined
+    if (githubLoginsMatch(botLogin, payload.sender?.login)) return null
+    const id = payload.repository?.id
+    const assigneeId = payload.assignee?.id
+    return {
+      destination: {
+        externalId: repository,
+        ...(typeof id === 'number' || typeof id === 'string' ? { externalKey: String(id) } : {}),
+      },
+      externalId: String(issue.number),
+      externalDisplayId: `${repository}#${issue.number}`,
+      externalUrl: issue.html_url ?? null,
+      threadKey: githubThreadKey(repository, issue.number),
+      action,
+      assignee: {
+        externalUserId:
+          typeof assigneeId === 'number' || typeof assigneeId === 'string'
+            ? String(assigneeId)
+            : null,
+        login,
+      },
+      occurredAt: issue.updated_at,
     }
   },
 }

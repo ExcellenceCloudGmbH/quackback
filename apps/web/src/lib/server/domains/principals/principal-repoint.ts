@@ -519,6 +519,10 @@ export const REPOINT_EXEMPTIONS: Record<string, string> = {
   'webhooks.created_by_id': 'webhook creator is a team member',
   'integrations.principal_id': 'integration identity is a service principal',
   'integrations.connected_by_principal_id': 'integration connector is a team member',
+  'integration_user_mappings.principal_id':
+    'a GitHub account is matched only to a teammate (the service refuses any other role); the merge source is always anonymous',
+  'integration_user_mappings.created_by_principal_id':
+    'matching accounts requires integration.manage, a team permission; ON DELETE SET NULL keeps the mapping when its author goes',
   'integration_platform_credentials.configured_by_principal_id':
     'credential configurator is a team member',
   'post_external_links.created_by_principal_id':
