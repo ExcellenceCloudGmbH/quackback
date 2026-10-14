@@ -109,6 +109,9 @@ export interface TicketListFilter {
   teamId?: TeamId
   requesterPrincipalId?: PrincipalId
   companyId?: CompanyId
+  /** Only tickets this principal watches (a ticket_subscriptions row, muted
+   *  or not): the inbox's Watching view and the API's watcher filter. */
+  watcherPrincipalId?: PrincipalId
   /** Free-text match over the ticket title + its messages' `search_vector`
    *  (same FTS primitive as `searchTickets`). A bare/`#`-prefixed integer
    *  (e.g. "42", "#42") also matches by ticket number, OR'd with the FTS match. */

@@ -69,6 +69,8 @@ const listTicketsSchema = z.object({
   teamId: z.string().optional(),
   requesterPrincipalId: z.string().optional(),
   companyId: z.string().optional(),
+  // Only the tickets the caller watches.
+  watching: z.boolean().optional(),
   search: z.string().optional(),
   sort: z.enum(TICKET_SORTS).optional(),
   // Due-date filter: overdue, due within 24 hours, or no due date.
@@ -109,6 +111,7 @@ export const listTicketsFn = createServerFn({ method: 'GET' })
         data.companyId && isValidTypeId(data.companyId, 'company')
           ? (data.companyId as CompanyId)
           : undefined,
+      watcherPrincipalId: data.watching ? (ctx.principal.id as PrincipalId) : undefined,
       search: data.search,
       sort: data.sort,
       due: data.due,
@@ -900,8 +903,10 @@ export const searchTicketsFn = createServerFn({ method: 'GET' })
 // Ticket watchers (subscriptions). Agent side gates on TICKET_VIEW +
 // assertTicketVisible (watching is a read-side self-action — same visibility
 // as reading the ticket); managing OTHER watchers gates on TICKET_ASSIGN, the
-// established "manage this ticket's associations" permission. Requester side
-// is ownership-gated in requester.service, mirroring the fns above.
+// established "manage this ticket's associations" permission. The rules live
+// in ticket-watchers.service, shared with the REST API and the MCP tools.
+// Requester side is ownership-gated in requester.service, mirroring the fns
+// above.
 // ---------------------------------------------------------------------------
 
 /** The caller's principal id, or refuse — watch state is per-principal. */
@@ -927,11 +932,9 @@ export const watchTicketFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_VIEW })
     const actor = await policyActorFromAuth(ctx)
-    const { assertTicketVisible } = await import('@/lib/server/domains/tickets/ticket.service')
-    await assertTicketVisible(data.ticketId as TicketId, actor)
-    const { subscribeToTicket } =
-      await import('@/lib/server/domains/tickets/ticket-subscription.service')
-    await subscribeToTicket(requireSelfPrincipal(actor), data.ticketId as TicketId, 'manual')
+    const { watchTicketForSelf } =
+      await import('@/lib/server/domains/tickets/ticket-watchers.service')
+    await watchTicketForSelf(data.ticketId as TicketId, actor)
   })
 
 export const unwatchTicketFn = createServerFn({ method: 'POST' })
@@ -939,11 +942,9 @@ export const unwatchTicketFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_VIEW })
     const actor = await policyActorFromAuth(ctx)
-    const { assertTicketVisible } = await import('@/lib/server/domains/tickets/ticket.service')
-    await assertTicketVisible(data.ticketId as TicketId, actor)
-    const { unsubscribeFromTicket } =
-      await import('@/lib/server/domains/tickets/ticket-subscription.service')
-    await unsubscribeFromTicket(requireSelfPrincipal(actor), data.ticketId as TicketId)
+    const { unwatchTicketForSelf } =
+      await import('@/lib/server/domains/tickets/ticket-watchers.service')
+    await unwatchTicketForSelf(data.ticketId as TicketId, actor)
   })
 
 export const muteTicketFn = createServerFn({ method: 'POST' })
@@ -975,11 +976,21 @@ export const listTicketWatchersFn = createServerFn({ method: 'GET' })
   .handler(async ({ data }) => {
     const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_VIEW })
     const actor = await policyActorFromAuth(ctx)
-    const { assertTicketVisible } = await import('@/lib/server/domains/tickets/ticket.service')
-    await assertTicketVisible(data.ticketId as TicketId, actor)
-    const { listTicketWatchers } =
-      await import('@/lib/server/domains/tickets/ticket-subscription.service')
-    return listTicketWatchers(data.ticketId as TicketId)
+    const { listWatchersOfTicket } =
+      await import('@/lib/server/domains/tickets/ticket-watchers.service')
+    return listWatchersOfTicket(data.ticketId as TicketId, actor)
+  })
+
+/** The teammates the watcher picker offers, each marked with whether the
+ *  ticket is visible to them (a teammate who can't see it can't be added). */
+export const listTicketWatcherCandidatesFn = createServerFn({ method: 'GET' })
+  .validator(z.object({ ticketId: z.string() }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_ASSIGN })
+    const actor = await policyActorFromAuth(ctx)
+    const { listTicketWatcherCandidates } =
+      await import('@/lib/server/domains/tickets/ticket-watchers.service')
+    return listTicketWatcherCandidates(data.ticketId as TicketId, actor)
   })
 
 export const adminAddTicketWatcherFn = createServerFn({ method: 'POST' })
@@ -987,11 +998,9 @@ export const adminAddTicketWatcherFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_ASSIGN })
     const actor = await policyActorFromAuth(ctx)
-    const { assertTicketVisible } = await import('@/lib/server/domains/tickets/ticket.service')
-    await assertTicketVisible(data.ticketId as TicketId, actor)
-    const { addManualTicketWatcher } =
-      await import('@/lib/server/domains/tickets/ticket-subscription.service')
-    await addManualTicketWatcher(data.principalId as PrincipalId, data.ticketId as TicketId)
+    const { addTicketWatcher } =
+      await import('@/lib/server/domains/tickets/ticket-watchers.service')
+    await addTicketWatcher(data.ticketId as TicketId, data.principalId as PrincipalId, actor)
   })
 
 export const adminRemoveTicketWatcherFn = createServerFn({ method: 'POST' })
@@ -999,11 +1008,9 @@ export const adminRemoveTicketWatcherFn = createServerFn({ method: 'POST' })
   .handler(async ({ data }) => {
     const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_ASSIGN })
     const actor = await policyActorFromAuth(ctx)
-    const { assertTicketVisible } = await import('@/lib/server/domains/tickets/ticket.service')
-    await assertTicketVisible(data.ticketId as TicketId, actor)
-    const { unsubscribeFromTicket } =
-      await import('@/lib/server/domains/tickets/ticket-subscription.service')
-    await unsubscribeFromTicket(data.principalId as PrincipalId, data.ticketId as TicketId)
+    const { removeTicketWatcher } =
+      await import('@/lib/server/domains/tickets/ticket-watchers.service')
+    await removeTicketWatcher(data.ticketId as TicketId, data.principalId as PrincipalId, actor)
   })
 
 // Requester side (portal): ownership-gated in requester.service, flag-gated

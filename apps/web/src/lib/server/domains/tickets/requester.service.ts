@@ -29,7 +29,11 @@ import type { TiptapContent, ConversationAttachment } from '@/lib/shared/db-type
 import type { ConversationMessageDTO } from '@/lib/shared/conversation/types'
 import { NotFoundError, ForbiddenError } from '@/lib/shared/errors'
 import { loadTicketOr404, createTicketCore, autoReopenOnRequesterReply } from './ticket.service'
-import { emitTicketReplied } from './ticket.webhooks'
+import {
+  emitTicketReplied,
+  emitTicketSubscriberAdded,
+  emitTicketSubscriberRemoved,
+} from './ticket.webhooks'
 import { buildTicketContext, ticketToDTO, toRequesterTicketDTO } from './ticket.dto'
 import { insertTicketMessage, type SendTicketMessageInput } from './ticket-message.service'
 import type { RequesterTicketDTO, TicketStageRef } from './ticket.types'
@@ -446,9 +450,11 @@ export async function getMyTicketWatchStatus(actor: Actor, ticketId: TicketId) {
 /** Re-watch the requester's own ticket (reason 'manual' — an explicit opt-in). */
 export async function watchMyTicket(actor: Actor, ticketId: TicketId): Promise<void> {
   const principalId = requireRequester(actor)
-  await loadOwnedTicketOr404(ticketId, principalId)
+  const ticket = await loadOwnedTicketOr404(ticketId, principalId)
   const { subscribeToTicket } = await import('./ticket-subscription.service')
-  await subscribeToTicket(principalId, ticketId, 'manual')
+  if (await subscribeToTicket(principalId, ticketId, 'manual')) {
+    void emitTicketSubscriberAdded(actor, ticket, principalId, 'manual')
+  }
 }
 
 /**
@@ -461,7 +467,8 @@ export async function watchMyTicket(actor: Actor, ticketId: TicketId): Promise<v
  */
 export async function unwatchMyTicket(actor: Actor, ticketId: TicketId): Promise<void> {
   const principalId = requireRequester(actor)
-  await loadOwnedTicketOr404(ticketId, principalId)
+  const ticket = await loadOwnedTicketOr404(ticketId, principalId)
   const { unsubscribeFromTicket } = await import('./ticket-subscription.service')
-  await unsubscribeFromTicket(principalId, ticketId)
+  const reason = await unsubscribeFromTicket(principalId, ticketId)
+  if (reason) void emitTicketSubscriberRemoved(actor, ticket, principalId, reason)
 }

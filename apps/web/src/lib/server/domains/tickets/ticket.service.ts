@@ -30,6 +30,7 @@ import {
   ticketStatuses,
   conversationMessages,
   ticketConversations,
+  ticketSubscriptions,
   conversations,
   principal,
   teams,
@@ -332,6 +333,17 @@ export async function listTickets(filter: TicketListFilter, actor: Actor): Promi
           ? eq(tickets.requesterPrincipalId, filter.requesterPrincipalId)
           : undefined,
         filter.companyId ? eq(tickets.companyId, filter.companyId) : undefined,
+        // Watching: a subscription row, muted or not, on
+        // ticket_subscriptions_principal_idx.
+        filter.watcherPrincipalId
+          ? inArray(
+              tickets.id,
+              db
+                .select({ id: ticketSubscriptions.ticketId })
+                .from(ticketSubscriptions)
+                .where(eq(ticketSubscriptions.principalId, filter.watcherPrincipalId))
+            )
+          : undefined,
         searchCondition,
         // Keyset comparison for the active sort (re-resolved cursor row). id is
         // always the final tiebreak so a page boundary never dupes or skips.
