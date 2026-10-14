@@ -16,6 +16,8 @@ export const TOOL_SCOPES: Readonly<Record<string, McpScope>> = {
   delete_post: 'write:feedback',
   restore_post: 'write:feedback',
   get_post_activity: 'read:feedback',
+  list_post_subscribers: 'read:feedback',
+  subscribe_post: 'write:feedback',
   add_comment: 'write:feedback',
   update_comment: 'write:feedback',
   delete_comment: 'write:feedback',

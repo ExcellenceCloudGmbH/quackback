@@ -100,6 +100,13 @@ export type UntrustedSpec = readonly UntrustedRule[]
 const NONE: UntrustedSpec = []
 
 /** Ticket watchers' names, marked unless the watcher is a teammate today. */
+/** Post subscribers off the team chose their own names and addresses. */
+const POST_SUBSCRIBER_NAMES: UntrustedItemsRule = {
+  each: 'subscribers',
+  where: (subscriber) => subscriber.isTeamMember !== true,
+  fields: ['displayName', 'email'],
+}
+
 const TICKET_WATCHER_NAMES: UntrustedItemsRule = {
   each: 'watchers',
   where: (watcher) => watcher.isTeamMember !== true,
@@ -269,6 +276,8 @@ export const UNTRUSTED_TOOL_FIELDS = {
   triage_post: ['title'],
   vote_post: NONE,
   proxy_vote: NONE,
+  list_post_subscribers: [POST_SUBSCRIBER_NAMES],
+  subscribe_post: NONE,
   create_post: NONE,
   merge_post: NONE,
   unmerge_post: NONE,

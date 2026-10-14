@@ -12,7 +12,8 @@
  * - search.ts        search, get_details
  * - posts.ts         triage_post, vote_post, proxy_vote, create_post,
  *                    merge_post, unmerge_post, delete_post, restore_post,
- *                    get_post_activity
+ *                    get_post_activity, list_post_subscribers,
+ *                    subscribe_post
  * - comments.ts      add_comment, update_comment, delete_comment,
  *                    react_to_comment
  * - changelog.ts     create_changelog, update_changelog, delete_changelog

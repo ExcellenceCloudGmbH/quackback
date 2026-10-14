@@ -83,6 +83,11 @@ function assertCan(actor: Actor, permission: PermissionKey, action: string): voi
   if (!can(actor, permission)) throw new ForbiddenError('FORBIDDEN', `You cannot ${action}`)
 }
 
+function requirePrincipal(actor: Actor): PrincipalId {
+  if (!actor.principalId) throw new ForbiddenError('FORBIDDEN', 'You must be signed in')
+  return actor.principalId
+}
+
 async function assertCanManageSubscribers(postId: PostId, actor: Actor): Promise<void> {
   assertCan(actor, PERMISSIONS.POST_VOTE_ON_BEHALF, "change this post's subscribers")
   await assertPostViewable(postId, actor)
@@ -267,5 +272,33 @@ export async function removePostSubscriber(
       metadata: { subscriberName: await displayName(principalId) },
     })
   }
+  return { removed: true }
+}
+
+/**
+ * Follow a post yourself (reason 'manual'), as the bell does: you must be able
+ * to see the post. A follow you already have, and its level, is kept.
+ */
+export async function followPost(
+  postId: PostId,
+  actor: Actor,
+  opts?: { level?: Exclude<SubscriptionLevel, 'none'> }
+): Promise<{ added: boolean }> {
+  const me = requirePrincipal(actor)
+  await assertPostViewable(postId, actor)
+  if ((await getSubscriptionStatus(me, postId)).subscribed) return { added: false }
+  const added = await subscribeToPost(me, postId, 'manual', { level: opts?.level })
+  if (added) await announcePostSubscriberChange('added', actor, postId, me, 'manual')
+  return { added }
+}
+
+/** Stop following a post yourself, whatever made you follow it. */
+export async function unfollowPost(postId: PostId, actor: Actor): Promise<{ removed: boolean }> {
+  const me = requirePrincipal(actor)
+  await assertPostViewable(postId, actor)
+  const before = await getSubscriptionStatus(me, postId)
+  if (!before.subscribed) return { removed: false }
+  await unsubscribeFromPost(me, postId)
+  await announcePostSubscriberChange('removed', actor, postId, me, before.reason)
   return { removed: true }
 }

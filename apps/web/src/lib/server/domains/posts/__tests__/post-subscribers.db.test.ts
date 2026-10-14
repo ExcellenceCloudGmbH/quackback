@@ -23,7 +23,13 @@ const dispatch = vi.hoisted(() => ({
 }))
 vi.mock('@/lib/server/events/dispatch', () => dispatch)
 
-import { addPostSubscriber, listPostSubscribers, removePostSubscriber } from '../post.subscribers'
+import {
+  addPostSubscriber,
+  followPost,
+  listPostSubscribers,
+  removePostSubscriber,
+  unfollowPost,
+} from '../post.subscribers'
 import { subscribeToPost } from '../../subscriptions/subscription.service'
 
 const fixture = await createDbTestFixture({
@@ -225,6 +231,31 @@ describe.skipIf(!fixture.available)('post subscribers (real DB, rolled back)', (
     const agent = await seedPerson('Agent', { role: 'member' })
     const postId = await seedPost(agent)
     await addPostSubscriber(postId, agent, teammate(agent, PERMISSIONS.POST_VOTE_ON_BEHALF))
+    expect(createActivity).not.toHaveBeenCalled()
+  })
+
+  it('follows and unfollows a post for yourself, only one you can see', async () => {
+    const ada = await seedPerson('Ada')
+    const open = await seedPost(ada)
+    const hidden = await seedPost(ada, TEAM_ONLY)
+    const me: Actor = {
+      principalId: ada,
+      role: 'user',
+      principalType: 'user',
+      segmentIds: new Set(),
+    }
+
+    expect(await followPost(open, me, { level: 'status_only' })).toEqual({ added: true })
+    expect(await followPost(open, me)).toEqual({ added: false })
+    expect(dispatch.dispatchPostSubscriberAdded).toHaveBeenCalledWith(
+      expect.objectContaining({ principalId: ada }),
+      expect.objectContaining({ id: open }),
+      ada,
+      'manual'
+    )
+    expect(await unfollowPost(open, me)).toEqual({ removed: true })
+    expect(await unfollowPost(open, me)).toEqual({ removed: false })
+    await expect(followPost(hidden, me)).rejects.toMatchObject({ code: 'POST_NOT_FOUND' })
     expect(createActivity).not.toHaveBeenCalled()
   })
 })

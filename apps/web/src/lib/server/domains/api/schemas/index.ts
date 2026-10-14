@@ -11,6 +11,7 @@ export * from './common'
 // Resource schemas (register paths on import)
 import './posts'
 import './posts.votes'
+import './posts-subscribers'
 import './boards'
 import './comments'
 import './companies'

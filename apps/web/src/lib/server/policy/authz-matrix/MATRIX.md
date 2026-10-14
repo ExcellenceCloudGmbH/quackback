@@ -876,7 +876,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/workspace-copilot.ts`::undoWorkspaceSettingsProposalFn | DYNAMIC (copilot.use | settings.manage | settings.branding | office_hours.manage | changelog.manage) |
 | `lib/server/functions/workspace-wipe.ts`::wipeCloudWorkspaceFn | END_USER (any authenticated) |
 
-### Public REST API (`withApiKeyAuth`) — 140 surfaces
+### Public REST API (`withApiKeyAuth`) — 143 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -941,6 +941,9 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `routes/api/v1/posts/$postId.comments.ts`::GET | post.view_private |
 | `routes/api/v1/posts/$postId.comments.ts`::POST | comment.moderate |
 | `routes/api/v1/posts/$postId.merge.ts`::POST | post.merge |
+| `routes/api/v1/posts/$postId.subscribers.$principalId.ts`::DELETE | post.vote_on_behalf |
+| `routes/api/v1/posts/$postId.subscribers.ts`::GET | post.view_private |
+| `routes/api/v1/posts/$postId.subscribers.ts`::POST | post.vote_on_behalf |
 | `routes/api/v1/posts/$postId.ts`::GET | post.view_private |
 | `routes/api/v1/posts/$postId.ts`::PATCH | DYNAMIC (post.edit | post.set_status | post.set_tags | post.set_owner) |
 | `routes/api/v1/posts/$postId.ts`::DELETE | post.delete |
@@ -1042,7 +1045,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 
 ## 3. MCP tools
 
-55 tools. "Team" = requires an admin/member role in addition to the scope.
+57 tools. "Team" = requires an admin/member role in addition to the scope.
 
 | Tool | Scope(s) | Team |
 | --- | --- | :---: |
@@ -1069,6 +1072,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | link_ticket | write:chat | ✓ |
 | list_approvals | read:settings | ✓ |
 | list_conversations | read:chat | ✓ |
+| list_post_subscribers | read:feedback | ✓ |
 | list_ticket_participants | read:chat | ✓ |
 | list_ticket_watchers | read:chat | ✓ |
 | list_tickets | read:chat | ✓ |
@@ -1088,6 +1092,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | set_conversation_status | write:chat | ✓ |
 | set_ticket_due_date | write:chat | ✓ |
 | share_post | write:chat | ✓ |
+| subscribe_post | write:feedback | ✓ |
 | suggest_post | write:chat | ✓ |
 | triage_post | write:feedback | ✓ |
 | unlink_ticket | write:chat | ✓ |
@@ -1114,7 +1119,7 @@ Key scopes are enforced: an API key holds exactly its stored scopes (owner permi
 
 ## 4. Entry points without a requireAuth/key gate
 
-228 of 1123 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
+228 of 1126 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
 Each is expected to be intentionally public, a pre-auth flow, a signature-verified webhook, or a handler that delegates auth (e.g. the MCP route).
 **Adding a row here is an access-control change** — confirm the new entry point is meant to be reachable without a gate.
 
