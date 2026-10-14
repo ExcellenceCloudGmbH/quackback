@@ -31,6 +31,7 @@ import {
   unfollowPost,
 } from '../post.subscribers'
 import { subscribeToPost } from '../../subscriptions/subscription.service'
+import { listInboxPosts } from '../post.inbox'
 
 const fixture = await createDbTestFixture({
   probe: async (db) => {
@@ -257,5 +258,30 @@ describe.skipIf(!fixture.available)('post subscribers (real DB, rolled back)', (
     expect(await unfollowPost(open, me)).toEqual({ removed: false })
     await expect(followPost(hidden, me)).rejects.toMatchObject({ code: 'POST_NOT_FOUND' })
     expect(createActivity).not.toHaveBeenCalled()
+  })
+
+  it("lists the posts a teammate follows in the inbox, a merged source's follow included", async () => {
+    const agent = await seedPerson('Agent', { role: 'member' })
+    const ada = await seedPerson('Ada')
+    const followed = await seedPost(ada)
+    const viaSource = await seedPost(ada)
+    const other = await seedPost(ada)
+    const [{ boardId }] = await testDb.select().from(posts).where(eq(posts.id, viaSource))
+    const [source] = await testDb
+      .insert(posts)
+      .values({
+        boardId,
+        title: 'Same ask',
+        content: '',
+        principalId: ada,
+        canonicalPostId: viaSource,
+      })
+      .returning()
+    await subscribeToPost(agent, followed, 'manual')
+    await subscribeToPost(agent, source.id as PostId, 'vote')
+    await subscribeToPost(ada, other, 'author')
+
+    const { items } = await listInboxPosts({ followerId: agent, limit: 50 })
+    expect(items.map((p) => p.id).sort()).toEqual([followed, viaSource].sort())
   })
 })
