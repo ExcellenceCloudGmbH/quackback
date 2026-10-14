@@ -18,11 +18,8 @@ import {
   eq,
   and,
   inArray,
-  isNull,
   principal,
   user,
-  posts,
-  boards,
   userSegments,
   conversations,
   tickets,
@@ -37,7 +34,8 @@ import {
 import { formatTicketNumber } from '@/lib/shared/tickets'
 import { isTeamMember } from '@/lib/shared/roles'
 import { isSupportTicketsEnabled } from '@/lib/server/domains/settings/settings.support'
-import { canViewPost, type Actor } from '@/lib/server/policy'
+import { type Actor } from '@/lib/server/policy'
+import { principalsWhoCanViewPost } from '@/lib/server/domains/posts/post.access'
 import {
   getSubscribersForEvent,
   batchGetNotificationPreferences,
@@ -60,87 +58,19 @@ const log = logger.child({ component: 'targets' })
  * Drop subscribers who can't view the post under its current board
  * audience + moderation state. Used by every notification fan-out path
  * (subscriber + @-mention) so an audience flip after the subscription
- * was created doesn't keep leaking content via email/in-app.
- *
- * Fast path: when the post is on a public-audience board AND published,
- * every authenticated subscriber passes — skip the per-principal
- * actor/segment lookup entirely. This is the common case for most
- * workspaces; only the audience-restricted minority pays the per-row
- * cost.
+ * was created doesn't keep leaking content via email/in-app. The rule
+ * lives in `principalsWhoCanViewPost`.
  */
 async function filterSubscribersByPostAudience(
   postId: PostId,
   subscribers: Subscriber[]
 ): Promise<Subscriber[]> {
   if (subscribers.length === 0) return subscribers
-
-  const postRows = await db
-    .select({
-      moderationState: posts.moderationState,
-      principalId: posts.principalId,
-      access: boards.access,
-    })
-    .from(posts)
-    .innerJoin(boards, eq(posts.boardId, boards.id))
-    .where(and(eq(posts.id, postId), isNull(posts.deletedAt), isNull(boards.deletedAt)))
-    .limit(1)
-
-  const post = postRows[0]
-  if (!post) {
-    // Post was deleted or its board was deleted — drop everyone (no
-    // delivery for a target that no longer exists).
-    return []
-  }
-
-  // Fast path: anonymous-tier view + published post — everyone is in.
-  // (anonymous view tier is the access-matrix equivalent of the legacy
-  // 'public' audience kind.)
-  if (post.access?.view === 'anonymous' && post.moderationState === 'published') {
-    return subscribers
-  }
-
-  // Batch-load each subscriber's role + segments in one query.
-  const principalIds = subscribers.map((s) => s.principalId)
-  const principals = await db
-    .select({
-      id: principal.id,
-      role: principal.role,
-      type: principal.type,
-    })
-    .from(principal)
-    .where(inArray(principal.id, principalIds))
-  const principalMap = new Map(principals.map((p) => [String(p.id), p]))
-
-  const segmentRows = await db
-    .select({
-      principalId: userSegments.principalId,
-      segmentId: userSegments.segmentId,
-    })
-    .from(userSegments)
-    .where(inArray(userSegments.principalId, principalIds))
-  const segmentsByPrincipal = new Map<string, Set<SegmentId>>()
-  for (const row of segmentRows) {
-    const key = String(row.principalId)
-    const set = segmentsByPrincipal.get(key) ?? new Set<SegmentId>()
-    set.add(row.segmentId as SegmentId)
-    segmentsByPrincipal.set(key, set)
-  }
-
-  return subscribers.filter((sub) => {
-    const principalRow = principalMap.get(String(sub.principalId))
-    if (!principalRow) return false
-    const actor: Actor = {
-      principalId: principalRow.id,
-      role: (principalRow.role ?? null) as Actor['role'],
-      principalType: principalRow.type as Actor['principalType'],
-      segmentIds: segmentsByPrincipal.get(String(sub.principalId)) ?? new Set(),
-    }
-    return canViewPost(
-      actor,
-      { moderationState: post.moderationState, principalId: post.principalId },
-      { access: post.access }
-    ).allowed
-  })
+  const allowed = await principalsWhoCanViewPost(
+    postId,
+    subscribers.map((s) => s.principalId)
+  )
+  return subscribers.filter((sub) => allowed.has(sub.principalId))
 }
 
 /**

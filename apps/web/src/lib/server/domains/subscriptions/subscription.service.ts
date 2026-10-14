@@ -71,13 +71,14 @@ interface SubscribeOptions {
  * @param postId - The post ID to subscribe to
  * @param reason - Why the subscription was created
  * @param options - Optional existing database transaction and notification level
+ * @returns Whether a subscription was created (false when one already existed)
  */
 export async function subscribeToPost(
   principalId: PrincipalId,
   postId: PostId,
   reason: SubscriptionReason,
   options?: SubscribeOptions
-): Promise<void> {
+): Promise<boolean> {
   log.debug({ post_id: postId, principal_id: principalId, reason }, 'subscribe to post')
   const executor = options?.tx ?? db
   const level = options?.level ?? 'all'
@@ -85,7 +86,7 @@ export async function subscribeToPost(
   const notifyComments = level === 'all'
   const notifyStatusChanges = level === 'all' || level === 'status_only'
 
-  await executor
+  const inserted = await executor
     .insert(postSubscriptions)
     .values({
       postId,
@@ -95,6 +96,8 @@ export async function subscribeToPost(
       notifyStatusChanges,
     })
     .onConflictDoNothing()
+    .returning({ id: postSubscriptions.id })
+  return inserted.length > 0
 }
 
 /**

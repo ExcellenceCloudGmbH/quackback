@@ -165,6 +165,8 @@ const ACTIVITY_METADATA = {
   'comment.removed': [],
   'comment.restored': [],
   'external.status_changed': ['externalStatus', 'externalDisplayId', 'externalUrl'],
+  'subscriber.added': ['subscriberName'],
+  'subscriber.removed': ['subscriberName'],
   'roadmap.added': [],
   'roadmap.removed': [],
 } satisfies Record<ActivityType | 'roadmap.added' | 'roadmap.removed', readonly string[]>
