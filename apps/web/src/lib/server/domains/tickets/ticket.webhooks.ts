@@ -265,11 +265,13 @@ export async function emitTicketSubscriberAdded(
   actor: Actor,
   ticket: Ticket,
   subscriberPrincipalId: string,
-  reason: string | null
+  reason: string | null,
+  /** Who added them, as the person added sees it (the shared-ticket email). */
+  actorName?: string | null
 ): Promise<void> {
   await safe('ticket.subscriber_added', () =>
     dispatchTicketSubscriberAdded(
-      toEventActor(actor),
+      { ...toEventActor(actor), ...(actorName ? { displayName: actorName } : {}) },
       ticketRef(ticket),
       ticket.title,
       subscriberPrincipalId,

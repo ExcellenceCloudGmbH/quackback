@@ -34,6 +34,7 @@ import { loadAuthors, fallbackAuthor } from '../principals/principal-display'
 import { autoReopenOnRequesterReply } from './ticket.service'
 import { resolvePairTicketIdForConversation } from './pair-thread.service'
 import { safeSubscribeToTicket } from './ticket-subscription.service'
+import { hasParticipantThreadAccess } from '../conversation/conversation-participant.service'
 import { emitTicketRepliedAs } from './ticket.webhooks'
 
 const log = logger.child({ component: 'ticket-event-hooks' })
@@ -83,7 +84,8 @@ export async function autoReopenPairTicketFromEvent(event: EventData): Promise<v
  *
  * The same watch rules as the ticket paths: an agent reply subscribes the
  * teammate (reason 'replier'), a requester reply re-subscribes the requester
- * (B18's interaction re-opt-in). Both are insert-if-absent, so a repeat of
+ * (B18's interaction re-opt-in), and a reply from a customer the ticket was
+ * shared with re-subscribes them (reason 'participant'). Both are insert-if-absent, so a repeat of
  * the event (a retried job) changes nothing, and a muted row stays muted.
  * A retried job does re-dispatch the reply; the reactions queue only retries
  * when another reaction on the same event failed, the same window the reopen
@@ -141,6 +143,12 @@ export async function emitPairTicketRepliedFromEvent(event: EventData): Promise<
       }
     } else if (authorId && authorId === ticket.requesterPrincipalId) {
       await safeSubscribeToTicket(authorId, ticketId, 'requester')
+    } else if (
+      authorId &&
+      (await hasParticipantThreadAccess(sent.conversationId as ConversationId, authorId))
+    ) {
+      // A customer the ticket was shared with re-opts in the same way.
+      await safeSubscribeToTicket(authorId, ticketId, 'participant')
     }
 
     await emitTicketRepliedAs(event.actor, ticket, toMessageDTO(row, author))

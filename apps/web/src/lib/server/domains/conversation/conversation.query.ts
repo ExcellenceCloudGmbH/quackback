@@ -6,6 +6,7 @@ import {
   db,
   conversations,
   conversationMessages,
+  conversationParticipants,
   principal,
   eq,
   and,
@@ -66,6 +67,7 @@ import {
   linkedCustomerTicketDueSql,
   loadLinkedCustomerTicketDueAt,
   pairTicketWatchedBySql,
+  participantThreadAccessSql,
 } from '@/lib/server/messages/pair-link'
 import type { TicketDueFilter } from '@/lib/shared/ticket-due'
 import { conversationFilter } from '@/lib/server/policy/conversations'
@@ -802,6 +804,107 @@ export async function listConversationsForVisitor(
   return Promise.all(rows.map((c) => conversationToDTO(c, side)))
 }
 
+/** How a customer reaches a conversation: as its visitor, or as a customer
+ *  its paired ticket was shared with (ticket sharing). */
+export type CustomerConversationRole = 'owner' | 'participant'
+
+export interface CustomerConversationResult extends ActiveConversationResult {
+  /** Null exactly when `conversation` is. */
+  role: CustomerConversationRole | null
+}
+
+/**
+ * A conversation a customer asked for by id (history row / ?c= deep link):
+ * their own, or a shared ticket thread they were given. Anything else is
+ * hidden exactly as `getConversationForVisitor` hides it. Never used to pick a
+ * customer's default thread: a ticket shared with them must not take over
+ * their own Messenger conversation.
+ */
+export async function getConversationForCustomer(
+  conversationId: ConversationId,
+  principalId: PrincipalId
+): Promise<CustomerConversationResult> {
+  const [row] = await db
+    .select()
+    .from(conversations)
+    .where(eq(conversations.id, conversationId))
+    .limit(1)
+  const owned = resolveVisitorConversation(row ?? null, principalId)
+  if (owned.conversation) return { ...owned, role: 'owner' }
+  if (!row) return { conversation: null, isReadOnly: false, role: null }
+  const [shared] = await db
+    .select({ id: conversations.id })
+    .from(conversations)
+    .where(and(eq(conversations.id, conversationId), participantThreadAccessSql(principalId)))
+    .limit(1)
+  if (!shared) return { conversation: null, isReadOnly: false, role: null }
+  return {
+    conversation: row,
+    isReadOnly: !RESUMABLE_STATUSES.has(row.status),
+    role: 'participant',
+  }
+}
+
+/**
+ * The visitor-side DTO of a shared ticket thread, as its participant sees it:
+ * unread counted from their own watermark, never the requester's, and no CSAT
+ * of the requester's.
+ */
+export async function participantConversationToDTO(
+  conversation: Conversation,
+  principalId: PrincipalId
+): Promise<ConversationDTO> {
+  const [dto, readRow] = await Promise.all([
+    conversationToDTO(conversation, 'visitor'),
+    db
+      .select({ lastReadAt: conversationParticipants.lastReadAt })
+      .from(conversationParticipants)
+      .where(
+        and(
+          eq(conversationParticipants.conversationId, conversation.id),
+          eq(conversationParticipants.principalId, principalId)
+        )
+      )
+      .limit(1),
+  ])
+  const lastReadAt = readRow[0]?.lastReadAt ?? null
+  const unread = await unreadCountFor({ ...conversation, visitorLastReadAt: lastReadAt }, 'visitor')
+  return {
+    ...dto,
+    unreadCount: unread,
+    visitorLastReadAt: lastReadAt?.toISOString() ?? null,
+    csatRating: null,
+  }
+}
+
+/**
+ * A customer's conversations for their Messages list, newest-first: their own
+ * plus the shared ticket threads they were given (`sharedIds`). Visitor-side
+ * DTOs, each from the caller's point of view.
+ */
+export async function listConversationsForCustomer(
+  principalId: PrincipalId,
+  limit = 50
+): Promise<{ conversations: ConversationDTO[]; sharedIds: ConversationId[] }> {
+  const rows = await db
+    .select()
+    .from(conversations)
+    .where(
+      or(eq(conversations.visitorPrincipalId, principalId), participantThreadAccessSql(principalId))
+    )
+    .orderBy(desc(conversations.lastMessageAt))
+    .limit(limit)
+  const sharedIds = rows.filter((c) => c.visitorPrincipalId !== principalId).map((c) => c.id)
+  const dtos = await Promise.all(
+    rows.map((c) =>
+      c.visitorPrincipalId === principalId
+        ? conversationToDTO(c, 'visitor')
+        : participantConversationToDTO(c, principalId)
+    )
+  )
+  return { conversations: dtos, sharedIds }
+}
+
 /**
  * Total unread across ALL of a visitor's conversations — the aggregate the
  * messenger launcher/tab badge needs (`conversationToDTO`'s per-thread
@@ -810,8 +913,47 @@ export async function listConversationsForVisitor(
  * agent messages newer than each conversation's visitor read watermark, summed.
  * A never-read conversation (null watermark) counts all its agent messages,
  * mirroring `unreadCountFor`; internal notes and deleted rows never count.
+ * Shared ticket threads the customer was given count from their own
+ * participant watermark.
  */
 export async function countVisitorUnreadMessages(visitorPrincipalId: PrincipalId): Promise<number> {
+  const [owned, shared] = await Promise.all([
+    countOwnedUnreadMessages(visitorPrincipalId),
+    countSharedUnreadMessages(visitorPrincipalId),
+  ])
+  return owned + shared
+}
+
+/** The shared ticket threads' part of the badge: agent messages newer than
+ *  each participant row's own watermark. */
+async function countSharedUnreadMessages(principalId: PrincipalId): Promise<number> {
+  const [row] = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(conversationMessages)
+    .innerJoin(conversations, eq(conversationMessages.conversationId, conversations.id))
+    .innerJoin(
+      conversationParticipants,
+      and(
+        eq(conversationParticipants.conversationId, conversations.id),
+        eq(conversationParticipants.principalId, principalId)
+      )
+    )
+    .where(
+      and(
+        participantThreadAccessSql(principalId),
+        eq(conversationMessages.senderType, 'agent'),
+        eq(conversationMessages.isInternal, false),
+        isNull(conversationMessages.deletedAt),
+        or(
+          isNull(conversationParticipants.lastReadAt),
+          gt(conversationMessages.createdAt, conversationParticipants.lastReadAt)
+        )
+      )
+    )
+  return row?.c ?? 0
+}
+
+async function countOwnedUnreadMessages(visitorPrincipalId: PrincipalId): Promise<number> {
   const [row] = await db
     .select({ c: sql<number>`count(*)::int` })
     .from(conversationMessages)

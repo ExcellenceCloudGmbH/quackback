@@ -14,6 +14,7 @@ import {
   isNull,
   sql,
   conversations,
+  conversationParticipants,
   tickets,
   ticketConversations,
   ticketSubscriptions,
@@ -116,5 +117,43 @@ export function pairTicketWatchedBySql(principalId: PrincipalId) {
     WHERE tc.conversation_id = ${conversations.id}
       AND tc.ticket_type = 'customer'
       AND ${eq(ticketSubscriptions.principalId, principalId)}
+  )`
+}
+
+/**
+ * "`principalId` was given this customer ticket's thread" (ticket sharing): a
+ * participant row with `thread_access` on a conversation that is still a live
+ * customer pair. Both halves are required, so a plain group-thread participant
+ * (thread_access false) never qualifies, and deleting the ticket or its link
+ * takes the shared thread away from everyone it was shared with. The one place
+ * the rule is written: the access check, the customer's Messages list and its
+ * unread badge all read it.
+ */
+export function participantThreadAccessSql(principalId: PrincipalId) {
+  return and(
+    sql`EXISTS (
+      SELECT 1 FROM ${conversationParticipants}
+      WHERE ${conversationParticipants.conversationId} = ${conversations.id}
+        AND ${eq(conversationParticipants.principalId, principalId)}
+        AND ${conversationParticipants.threadAccess}
+    )`,
+    hasLinkedCustomerTicketSql()
+  )!
+}
+
+/**
+ * For a `conversation_participants` row: the participant watches the customer
+ * ticket paired with that conversation (a ticket_subscriptions row whose mute,
+ * if any, has passed). A participant with the shared thread follows the ticket
+ * like its requester does, so "Stop watching" quiets their reply emails too.
+ */
+export function participantWatchesPairTicketSql() {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM ${ticketConversations} tc
+    INNER JOIN ${ticketSubscriptions} ON ${ticketSubscriptions.ticketId} = tc.ticket_id
+    WHERE tc.conversation_id = ${conversationParticipants.conversationId}
+      AND tc.ticket_type = 'customer'
+      AND ${ticketSubscriptions.principalId} = ${conversationParticipants.principalId}
+      AND (${ticketSubscriptions.mutedUntil} IS NULL OR ${ticketSubscriptions.mutedUntil} < now())
   )`
 }
