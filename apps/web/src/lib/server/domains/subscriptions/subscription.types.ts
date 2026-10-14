@@ -8,7 +8,13 @@
 import type { PrincipalId, PostId, PostSubscriptionId } from '@quackback/ids'
 import type { NotificationMatrix } from './notification-matrix'
 
-export type SubscriptionReason = 'author' | 'vote' | 'comment' | 'manual' | 'feedback_author'
+/**
+ * Why someone follows a post: they wrote it, voted, commented, followed it
+ * themselves ('manual'), own it ('owner'), or a teammate added them ('added').
+ * 'feedback_author' is a legacy value no path writes any more.
+ */
+export type SubscriptionReason =
+  'author' | 'vote' | 'comment' | 'manual' | 'owner' | 'added' | 'feedback_author'
 
 export interface Subscriber {
   principalId: PrincipalId

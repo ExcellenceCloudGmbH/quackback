@@ -46,7 +46,7 @@ export const postSubscriptions = pgTable(
     principalId: typeIdColumn('principal')('principal_id')
       .notNull()
       .references(() => principal.id, { onDelete: 'cascade' }),
-    reason: varchar('reason', { length: 20 }).notNull(), // 'author' | 'vote' | 'comment' | 'manual'
+    reason: varchar('reason', { length: 20 }).notNull(), // 'author' | 'vote' | 'comment' | 'manual' | 'owner' | 'added'
     notifyComments: boolean('notify_comments').default(true).notNull(),
     notifyStatusChanges: boolean('notify_status_changes').default(true).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
