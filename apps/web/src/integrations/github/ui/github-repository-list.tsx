@@ -15,7 +15,14 @@ import { adminQueries } from '@/lib/client/queries/admin'
 import { GitHubRepositoryCard } from '@/integrations/github/ui/github-repository-card'
 import { GitHubAddRepositoryDialog } from '@/integrations/github/ui/github-add-repository-dialog'
 
-export function GitHubRepositoryList({ disabled }: { disabled?: boolean }) {
+export function GitHubRepositoryList({
+  disabled,
+  inboxOff,
+}: {
+  disabled?: boolean
+  /** The GitHub inbox channel is off, so no repository brings issues in yet. */
+  inboxOff?: boolean
+}) {
   const [adding, setAdding] = useState(false)
   const destinations = useQuery(adminQueries.integrationDestinations('github'))
   const repositories = (destinations.data ?? []).filter((d) => d.kind === 'repo')
@@ -46,7 +53,7 @@ export function GitHubRepositoryList({ disabled }: { disabled?: boolean }) {
         </p>
       )}
       {repositories.map((destination) => (
-        <GitHubRepositoryCard key={destination.id} destination={destination} />
+        <GitHubRepositoryCard key={destination.id} destination={destination} inboxOff={inboxOff} />
       ))}
       <GitHubAddRepositoryDialog
         open={adding}

@@ -140,17 +140,42 @@ export async function disableGitHubConnectionAccount(): Promise<void> {
 }
 
 /**
- * Whether a repository brings its issues and comments into the inbox. Only
- * acted on while the inbox channel connection is live. Further modes (such as
- * opening tickets) join this union as they land.
+ * What a repository does with its issues while the inbox channel is live:
+ * nothing, open an inbox conversation for each, or open a conversation and a
+ * customer ticket paired with it (`tickets`).
  */
-export const GITHUB_INBOUND_MODES = ['off', 'conversations'] as const
+export const GITHUB_INBOUND_MODES = ['off', 'conversations', 'tickets'] as const
 export type GitHubInboundMode = (typeof GITHUB_INBOUND_MODES)[number]
 
 export function githubInboundMode(
   config: { inboundMode?: unknown } | null | undefined
 ): GitHubInboundMode {
-  return config?.inboundMode === 'conversations' ? 'conversations' : 'off'
+  const mode = config?.inboundMode
+  return mode === 'conversations' || mode === 'tickets' ? mode : 'off'
+}
+
+/** Whether a repository's issues come into the inbox at all (as conversations, or with tickets). */
+export function githubBringsIssuesIn(
+  config: { inboundMode?: unknown } | null | undefined
+): boolean {
+  return githubInboundMode(config) !== 'off'
+}
+
+/** The team and ticket type a `tickets`-mode repository stamps on the tickets it opens. */
+export interface GitHubTicketScope {
+  teamId: string | null
+  ticketTypeId: string | null
+}
+
+export function githubTicketScope(
+  config: { ticketScope?: unknown } | null | undefined
+): GitHubTicketScope {
+  const scope = (config?.ticketScope ?? {}) as Record<string, unknown>
+  return {
+    teamId: typeof scope.teamId === 'string' && scope.teamId ? scope.teamId : null,
+    ticketTypeId:
+      typeof scope.ticketTypeId === 'string' && scope.ticketTypeId ? scope.ticketTypeId : null,
+  }
 }
 
 /**
@@ -161,20 +186,21 @@ export function githubInboundMode(
 export function githubRepositoryIngests(
   repository: Pick<IntegrationDestination, 'config' | 'enabled'>
 ): boolean {
-  return githubInboundMode(repository.config) === 'conversations' && destinationReceives(repository)
+  return githubBringsIssuesIn(repository.config) && destinationReceives(repository)
 }
 
 /**
  * The events one repository's hook subscribes to: `issues` always (status
  * sync, issue lifecycle), `issue_comment` only while the inbox channel is
- * live and this repository brings its issues in. The one place a feature
- * that needs another event per repository adds it.
+ * live and this repository brings its issues in (as conversations or
+ * tickets). The one place a feature that needs another event per repository
+ * adds it.
  */
 export function githubWebhookEvents(
   repository: { inboundMode?: unknown },
   opts: { inboxLive: boolean }
 ): string[] {
-  return opts.inboxLive && githubInboundMode(repository) === 'conversations'
+  return opts.inboxLive && githubBringsIssuesIn(repository)
     ? ['issues', 'issue_comment']
     : ['issues']
 }
@@ -189,7 +215,7 @@ export async function optInDefaultGitHubRepository(integration: {
   config: unknown
 }): Promise<void> {
   const repositories = await listDestinations(integration.id, 'repo')
-  if (repositories.some((r) => githubInboundMode(r.config) === 'conversations')) return
+  if (repositories.some((r) => githubBringsIssuesIn(r.config))) return
   const channelId = (integration.config as Record<string, unknown> | null)?.channelId
   const chosen =
     repositories.find(

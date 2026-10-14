@@ -16,6 +16,7 @@ import {
   useSetGitHubInbox,
   useSetGitHubRepositoryInbox,
 } from '@/integrations/github/ui/use-github-inbox'
+import { GitHubInboundModeControl } from '@/integrations/github/ui/github-inbound-mode'
 import type { GitHubChannelRepository } from '@/integrations/github/server/functions'
 
 export function GitHubChannelPage() {
@@ -125,7 +126,8 @@ export function GitHubChannelPage() {
             })}
             description={intl.formatMessage({
               id: 'admin.githubChannel.repositoriesDescription',
-              defaultMessage: 'Choose which repositories bring their issues into the inbox.',
+              defaultMessage:
+                'Choose which repositories bring their issues into the inbox, as conversations or as tickets.',
             })}
           >
             {repositories.length === 0 ? (
@@ -167,9 +169,10 @@ export function GitHubChannelPage() {
 }
 
 /**
- * One repository's inbox switch. Notes why issues may still not arrive: the
- * repository is switched off or send-only, or its webhook does not deliver
- * comments yet.
+ * What one repository's issues open in the inbox: nothing, conversations, or
+ * tickets (with their team and type). Notes why issues may still not arrive:
+ * the repository is switched off or send-only, or its webhook does not
+ * deliver comments yet.
  */
 function RepositoryInboxRow({
   repository,
@@ -180,9 +183,10 @@ function RepositoryInboxRow({
 }) {
   const intl = useIntl()
   const setRepositoryInbox = useSetGitHubRepositoryInbox()
-  const optedIn = setRepositoryInbox.isPending
-    ? !!setRepositoryInbox.variables?.enabled
-    : repository.inboundMode === 'conversations'
+  const pending = setRepositoryInbox.isPending ? setRepositoryInbox.variables : undefined
+  const inboundMode = pending?.inboundMode ?? repository.inboundMode
+  const ticketScope = pending?.ticketScope ?? repository.ticketScope
+  const optedIn = inboundMode !== 'off'
   const note = !repository.enabled
     ? intl.formatMessage({
         id: 'admin.githubChannel.repositoryPaused',
@@ -203,7 +207,6 @@ function RepositoryInboxRow({
   return (
     <SettingRow
       label={repository.repo}
-      htmlFor={`github-inbox-${repository.id}`}
       description={
         note ??
         (repository.lastInboundAt ? (
@@ -220,19 +223,13 @@ function RepositoryInboxRow({
         ))
       }
       control={
-        <Switch
-          id={`github-inbox-${repository.id}`}
-          checked={optedIn}
-          onCheckedChange={(enabled) =>
-            setRepositoryInbox.mutate({ destinationId: repository.id, enabled })
+        <GitHubInboundModeControl
+          repository={repository.repo}
+          inboundMode={inboundMode}
+          ticketScope={ticketScope}
+          onChange={(setting) =>
+            setRepositoryInbox.mutate({ destinationId: repository.id, ...setting })
           }
-          aria-label={intl.formatMessage(
-            {
-              id: 'admin.githubChannel.repositoryInbox',
-              defaultMessage: 'Bring issues from {repository} into the inbox',
-            },
-            { repository: repository.repo }
-          )}
         />
       }
     />

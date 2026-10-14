@@ -4,6 +4,10 @@
 import { createServerFn } from '@tanstack/react-start'
 import { z } from 'zod'
 import type { IntegrationDestinationId, PrincipalId } from '@quackback/ids'
+import type {
+  GitHubInboundMode,
+  GitHubTicketScope,
+} from '@/lib/server/domains/channel-accounts/github-connection'
 import { PERMISSIONS } from '@/lib/shared/permissions'
 import { ValidationError } from '@/lib/shared/errors'
 
@@ -64,8 +68,10 @@ export interface GitHubChannelRepository {
   repo: string
   /** Switched on for sync at all (the integration's own switch). */
   enabled: boolean
-  /** Whether its issues and comments come into the inbox. */
-  inboundMode: 'off' | 'conversations'
+  /** Whether its issues and comments come into the inbox, and whether each opens a ticket. */
+  inboundMode: GitHubInboundMode
+  /** The team and ticket type its tickets get, in `tickets` mode. */
+  ticketScope: GitHubTicketScope
   /** False for a send-only repository, whose deliveries are never read. */
   receives: boolean
   /** The events its webhook was last registered for. */
@@ -92,8 +98,12 @@ export const getGitHubChannelStatusFn = createServerFn({ method: 'GET' }).handle
   async (): Promise<GitHubChannelStatus> => {
     const { requireAuth } = await import('@/lib/server/functions/auth-helpers')
     const { db, integrations, eq } = await import('@/lib/server/db')
-    const { getLiveGitHubConnectionAccount, githubAccessTokenPresent, githubInboundMode } =
-      await import('@/lib/server/domains/channel-accounts/github-connection')
+    const {
+      getLiveGitHubConnectionAccount,
+      githubAccessTokenPresent,
+      githubInboundMode,
+      githubTicketScope,
+    } = await import('@/lib/server/domains/channel-accounts/github-connection')
     const { listDestinations, destinationReceives } =
       await import('@/lib/server/integrations/destinations')
 
@@ -133,6 +143,7 @@ export const getGitHubChannelStatusFn = createServerFn({ method: 'GET' }).handle
         repo: repository.externalId,
         enabled: repository.enabled,
         inboundMode: githubInboundMode(repository.config),
+        ticketScope: githubTicketScope(repository.config),
         receives: destinationReceives({ ...repository, enabled: true }),
         webhookEvents: repository.webhookEvents ?? [],
         lastInboundAt: repository.lastInboundAt?.toISOString() ?? null,
@@ -191,12 +202,24 @@ export const setGitHubInboxEnabledFn = createServerFn({ method: 'POST' })
   })
 
 /**
- * Bring one repository's issues and comments into the inbox, or stop. A
- * channel setting (`channel_account.manage`), like the inbox switch itself;
- * only that repository's webhook is resubscribed.
+ * What one repository does with its issues: nothing, inbox conversations, or
+ * conversations each paired with a ticket (with the team and ticket type
+ * those tickets get). A channel setting (`channel_account.manage`), like the
+ * inbox switch itself; only that repository's webhook is resubscribed.
  */
 export const setGitHubRepositoryInboxFn = createServerFn({ method: 'POST' })
-  .validator(z.object({ destinationId: z.string().max(100), enabled: z.boolean() }))
+  .validator(
+    z.object({
+      destinationId: z.string().max(100),
+      inboundMode: z.enum(['off', 'conversations', 'tickets']),
+      ticketScope: z
+        .object({
+          teamId: z.string().max(100).nullable(),
+          ticketTypeId: z.string().max(100).nullable(),
+        })
+        .optional(),
+    })
+  )
   .handler(async ({ data }): Promise<{ ok: true }> => {
     const { requireAuth } = await import('@/lib/server/functions/auth-helpers')
     const { db, eq, integrationDestinations, integrations } = await import('@/lib/server/db')
@@ -213,7 +236,8 @@ export const setGitHubRepositoryInboxFn = createServerFn({ method: 'POST' })
       throw new NotFoundError('DESTINATION_NOT_FOUND', 'Repository not found')
     const { updateDestinationConfig } = await import('@/lib/server/integrations/destination-admin')
     await updateDestinationConfig(data.destinationId, {
-      inboundMode: data.enabled ? 'conversations' : 'off',
+      inboundMode: data.inboundMode,
+      ...(data.ticketScope ? { ticketScope: data.ticketScope } : {}),
     })
     return { ok: true }
   })

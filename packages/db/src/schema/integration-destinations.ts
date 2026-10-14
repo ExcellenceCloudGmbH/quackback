@@ -32,8 +32,19 @@ export interface IntegrationDestinationConfig {
    * (the default when unset) does both.
    */
   direction?: 'both' | 'outbound' | 'inbound'
-  /** GitHub: whether this repository's issues and comments open inbox conversations. */
-  inboundMode?: 'conversations' | 'off'
+  /**
+   * GitHub: whether this repository's issues and comments open inbox
+   * conversations, and with `tickets` a customer ticket paired with each one.
+   */
+  inboundMode?: 'conversations' | 'tickets' | 'off'
+  /** GitHub, `tickets` mode: the team and ticket type a ticket opened from an issue gets. */
+  ticketScope?: { teamId?: string | null; ticketTypeId?: string | null }
+  /**
+   * GitHub issue state (`Open`, `Closed`, `Closed (not planned)`) → ticket
+   * status id for this repository, over the connection's own
+   * `ticketStatusMappings`. Null ignores that state.
+   */
+  ticketStatusMappings?: Record<string, string | null>
   [key: string]: unknown
 }
 

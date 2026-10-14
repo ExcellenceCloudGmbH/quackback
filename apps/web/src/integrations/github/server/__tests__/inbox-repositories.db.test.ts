@@ -38,6 +38,7 @@ import {
   integrationDestinations,
   channelAccounts,
   teams,
+  ticketTypes,
   user,
   eq,
 } from '@/lib/server/db'
@@ -139,7 +140,9 @@ describe.skipIf(!fixture.available)('GitHub inbox per repository', () => {
     const api = await seedRepo(integration, 'acme/api', { externalWebhookId: '2' })
     github({ 'PATCH /repos/acme/api/hooks/2': hookPatch() })
 
-    await setGitHubRepositoryInboxFn({ data: { destinationId: api.id, enabled: true } })
+    await setGitHubRepositoryInboxFn({
+      data: { destinationId: api.id, inboundMode: 'conversations' },
+    })
 
     expect(calls.map((c) => c.call)).toEqual(['PATCH /repos/acme/api/hooks/2'])
     expect((calls[0].body as { events: string[] }).events).toEqual(['issues', 'issue_comment'])
@@ -150,9 +153,58 @@ describe.skipIf(!fixture.available)('GitHub inbox per repository', () => {
 
     calls = []
     github({ 'PATCH /repos/acme/api/hooks/2': hookPatch() })
-    await setGitHubRepositoryInboxFn({ data: { destinationId: api.id, enabled: false } })
+    await setGitHubRepositoryInboxFn({ data: { destinationId: api.id, inboundMode: 'off' } })
     expect((calls[0].body as { events: string[] }).events).toEqual(['issues'])
     expect((await reread(api.id)).webhookEvents).toEqual(['issues'])
+  })
+
+  it('opens tickets with a team and type, keeping the comment events', async () => {
+    const integration = await seedGitHub()
+    await seedTeam(true)
+    const api = await seedRepo(integration, 'acme/api', { externalWebhookId: '2' })
+    const [billing] = await testDb.insert(teams).values({ name: 'Billing' }).returning()
+    const [question] = await testDb
+      .insert(ticketTypes)
+      .values({ name: 'Question', slug: 'question', category: 'customer' })
+      .returning()
+    github({ 'PATCH /repos/acme/api/hooks/2': hookPatch() })
+
+    await setGitHubRepositoryInboxFn({
+      data: {
+        destinationId: api.id,
+        inboundMode: 'tickets',
+        ticketScope: { teamId: billing.id, ticketTypeId: question.id },
+      },
+    })
+
+    expect((calls[0].body as { events: string[] }).events).toEqual(['issues', 'issue_comment'])
+    expect((await reread(api.id)).config).toEqual({
+      inboundMode: 'tickets',
+      ticketScope: { teamId: billing.id, ticketTypeId: question.id },
+    })
+  })
+
+  it('refuses a ticket scope naming a missing team or a non-customer type', async () => {
+    const integration = await seedGitHub()
+    await seedTeam(true)
+    const api = await seedRepo(integration, 'acme/api', { externalWebhookId: '2' })
+    const [task] = await testDb
+      .insert(ticketTypes)
+      .values({ name: 'Task', slug: 'task', category: 'back_office' })
+      .returning()
+    const set = (ticketScope: { teamId: string | null; ticketTypeId: string | null }) =>
+      setGitHubRepositoryInboxFn({
+        data: { destinationId: api.id, inboundMode: 'tickets', ticketScope },
+      })
+
+    await expect(
+      set({ teamId: 'team_01h455vb4pex5vsknk084sn02q', ticketTypeId: null })
+    ).rejects.toThrow('Choose a team that exists')
+    await expect(set({ teamId: null, ticketTypeId: task.id })).rejects.toThrow(
+      'Choose a customer ticket type'
+    )
+    expect((await reread(api.id)).config).toEqual({})
+    expect(calls).toEqual([])
   })
 
   it('registers a hook for a repository that newly brings its issues in', async () => {
@@ -161,7 +213,9 @@ describe.skipIf(!fixture.available)('GitHub inbox per repository', () => {
     const api = await seedRepo(integration, 'acme/api')
     github({ 'POST /repos/acme/api/hooks': () => Response.json({ id: 9 }, { status: 201 }) })
 
-    await setGitHubRepositoryInboxFn({ data: { destinationId: api.id, enabled: true } })
+    await setGitHubRepositoryInboxFn({
+      data: { destinationId: api.id, inboundMode: 'conversations' },
+    })
 
     expect((calls[0].body as { events: string[] }).events).toEqual(['issues', 'issue_comment'])
     expect(await reread(api.id)).toMatchObject({
@@ -251,7 +305,7 @@ describe.skipIf(!fixture.available)('GitHub inbox per repository', () => {
       .returning()
     const team = await seedRepo(linear as IntegrationRow, 'team-1', { kind: 'team' })
     await expect(
-      setGitHubRepositoryInboxFn({ data: { destinationId: team.id, enabled: true } })
+      setGitHubRepositoryInboxFn({ data: { destinationId: team.id, inboundMode: 'conversations' } })
     ).rejects.toThrow('Repository not found')
   })
 })

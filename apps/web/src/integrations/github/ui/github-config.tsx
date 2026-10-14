@@ -37,9 +37,11 @@ const EVENT_CONFIG = [
   },
 ]
 
+/** The issue states GitHub sync maps (see `GITHUB_ISSUE_STATES` on the server). */
 const GITHUB_STATUSES = [
   { id: 'Open', name: 'Open' },
   { id: 'Closed', name: 'Closed' },
+  { id: 'Closed (not planned)', name: 'Closed (not planned)' },
 ]
 
 export function GitHubConfig({
@@ -117,7 +119,10 @@ export function GitHubConfig({
           </div>
 
           <div className="space-y-2">
-            <GitHubRepositoryList disabled={!integrationEnabled} />
+            <GitHubRepositoryList
+              disabled={!integrationEnabled}
+              inboxOff={!!inbox && !inbox.inboxEnabled}
+            />
             <p className="text-xs text-muted-foreground">
               <FormattedMessage
                 id="admin.githubRepository.listHelp"

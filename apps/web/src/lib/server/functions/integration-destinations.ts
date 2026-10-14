@@ -15,6 +15,10 @@ import { db, integrations, integrationDestinations, eq } from '@/lib/server/db'
 import type { IntegrationDestinationId } from '@quackback/ids'
 import type { DestinationItem } from '@/lib/server/integrations/types'
 import type { DestinationDirection } from '@/lib/server/integrations/destinations'
+import type {
+  GitHubInboundMode,
+  GitHubTicketScope,
+} from '@/lib/server/domains/channel-accounts/github-connection'
 import { getRequestHeaders } from '@tanstack/react-start/server'
 import { recordAuditEvent, actorFromAuth } from '@/lib/server/audit/log'
 import { PERMISSIONS } from '@/lib/shared/permissions'
@@ -62,8 +66,10 @@ export interface IntegrationDestinationSummary {
   enabled: boolean
   /** Which way it syncs (`both` unless its settings say otherwise). */
   direction: DestinationDirection
-  /** GitHub: whether its issues and comments come into the inbox. */
-  inboundMode: 'off' | 'conversations'
+  /** GitHub: whether its issues and comments come into the inbox, and whether each opens a ticket. */
+  inboundMode: GitHubInboundMode
+  /** GitHub: the team and ticket type its tickets get, in `tickets` mode. */
+  ticketScope: GitHubTicketScope
   /** The connection's default destination (`config.channelId`). */
   isDefault: boolean
   webhookRegistered: boolean
@@ -123,6 +129,8 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
 
     const { listDestinations, destinationDirection } =
       await import('@/lib/server/integrations/destinations')
+    const { githubInboundMode, githubTicketScope } =
+      await import('@/lib/server/domains/channel-accounts/github-connection')
     const defaultId = (integration.config as Record<string, unknown>).channelId
     return (await listDestinations(integration.id)).map((destination) => ({
       id: destination.id,
@@ -130,7 +138,8 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
       externalId: destination.externalId,
       enabled: destination.enabled,
       direction: destinationDirection(destination),
-      inboundMode: destination.config.inboundMode === 'conversations' ? 'conversations' : 'off',
+      inboundMode: githubInboundMode(destination.config),
+      ticketScope: githubTicketScope(destination.config),
       isDefault:
         typeof defaultId === 'string' &&
         defaultId.toLowerCase() === destination.externalId.toLowerCase(),

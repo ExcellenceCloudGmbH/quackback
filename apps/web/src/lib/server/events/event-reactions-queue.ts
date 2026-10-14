@@ -1,6 +1,7 @@
 /**
  * `event-reactions` job handler: one event's reactions that read state an
- * earlier event left (SLA clocks, pair-ticket reopen and reply, CSAT confirm; see
+ * earlier event left (SLA clocks, pair-ticket reopen and reply, CSAT confirm,
+ * the GitHub issue state of a ticket opened from an issue; see
  * `event-reactions.ts`, including why they do not rely on the queue's order).
  */
 import type { ConversationId } from '@quackback/ids'
@@ -10,6 +11,7 @@ import {
   autoReopenPairTicketFromEvent,
   emitPairTicketRepliedFromEvent,
 } from '@/lib/server/domains/tickets/ticket.event-hooks'
+import { syncGitHubIssueFromTicketEvent } from '@/lib/server/domains/conversation/conversation.github-tickets'
 import type { ClaimedJob } from '@/lib/server/jobs/job-queue'
 import { EVENT_REACTIONS_QUEUE, runReactionJob } from './event-reactions'
 
@@ -18,6 +20,7 @@ export function runEventReactions(job: ClaimedJob): Promise<void> {
     sla: (event) => recordSlaFromEvent(event),
     'pair-ticket-reopen': (event) => autoReopenPairTicketFromEvent(event),
     'pair-ticket-replied': (event) => emitPairTicketRepliedFromEvent(event),
+    'github-issue-state': (event) => syncGitHubIssueFromTicketEvent(event),
     // Bound to the involvement the rating was given about, by its time.
     'assistant-csat-confirm': (event) => {
       if (event.type !== 'conversation.csat_submitted') return undefined

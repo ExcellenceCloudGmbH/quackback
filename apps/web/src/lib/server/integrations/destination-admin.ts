@@ -324,7 +324,8 @@ export async function setDestinationEnabled(
 
 /**
  * Patch a destination's settings. The provider's `configSchema` decides which
- * keys exist and what they may hold; anything else is refused.
+ * keys exist and what they may hold, and its `validateConfig` checks what
+ * they name; anything else is refused.
  */
 export async function updateDestinationConfig(
   destinationId: string,
@@ -335,6 +336,7 @@ export async function updateDestinationConfig(
   const parsed = multiple.configSchema.safeParse(patch)
   if (!parsed.success)
     throw new ValidationError('INVALID_DESTINATION_CONFIG', 'These settings are not valid here')
+  await multiple.validateConfig?.(parsed.data)
   const [updated] = await db
     .update(integrationDestinations)
     .set({

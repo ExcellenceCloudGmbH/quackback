@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { channelDestination } from '@/lib/server/integrations/destination'
 import type { IntegrationDefinition } from '@/lib/server/integrations/types'
-import { fetchGitHubStatuses } from '@/integrations/github/server/statuses'
+import { fetchGitHubStatuses, GITHUB_ISSUE_STATES } from '@/integrations/github/server/statuses'
 import {
   registerGitHubWebhook,
   deleteGitHubWebhook,
@@ -11,7 +11,7 @@ import {
 import {
   GITHUB_INBOUND_MODES,
   getLiveGitHubConnectionAccount,
-  githubInboundMode,
+  githubBringsIssuesIn,
   githubWebhookEvents,
   syncGitHubWebhookEvents,
 } from '@/lib/server/domains/channel-accounts/github-connection'
@@ -43,9 +43,27 @@ export const githubIntegration: IntegrationDefinition = {
         .object({
           direction: z.enum(DESTINATION_DIRECTIONS),
           inboundMode: z.enum(GITHUB_INBOUND_MODES),
+          ticketScope: z
+            .object({
+              teamId: z.string().max(100).nullable(),
+              ticketTypeId: z.string().max(100).nullable(),
+            })
+            .partial()
+            .strict(),
+          ticketStatusMappings: z.partialRecord(
+            z.enum(GITHUB_ISSUE_STATES),
+            z.string().max(100).nullable()
+          ),
         })
         .partial()
         .strict(),
+      // The ticket scope and status mappings must name a live team, a
+      // customer ticket type and live statuses.
+      validateConfig: async (patch) => {
+        const { validateGitHubRepositorySettings } =
+          await import('@/lib/server/domains/conversation/conversation.github-tickets')
+        await validateGitHubRepositorySettings(patch)
+      },
       // Status sync listens to every repository's hook; the inbox only to
       // the hooks of repositories that bring their issues in.
       webhookWanted: async (config) =>
@@ -59,7 +77,7 @@ export const githubIntegration: IntegrationDefinition = {
         if (!(await getLiveGitHubConnectionAccount())) return { inboundMode: 'off' }
         const repositories = await listDestinations(integrationId, 'repo')
         return {
-          inboundMode: repositories.some((r) => githubInboundMode(r.config) === 'conversations')
+          inboundMode: repositories.some((r) => githubBringsIssuesIn(r.config))
             ? 'off'
             : 'conversations',
         }

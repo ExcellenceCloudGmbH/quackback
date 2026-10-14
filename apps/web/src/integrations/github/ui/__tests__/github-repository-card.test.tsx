@@ -2,10 +2,13 @@
 /**
  * One repository's card: its state badges, whether a webhook is registered,
  * the last delivery, the recorded error, a repair that reports its outcome,
- * the on/off switch, and removal behind a confirmation.
+ * the on/off switch, what its issues open in the inbox (with the team and
+ * ticket type of its tickets), and removal behind a confirmation.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { IntlProvider } from 'react-intl'
 import type { IntegrationDestinationSummary } from '@/lib/server/functions/integration-destinations'
 
@@ -24,9 +27,26 @@ vi.mock('@/lib/client/mutations', () => ({
   useSetIntegrationDestinationEnabled: () => ({ mutate: mocks.setEnabled, isPending: false }),
   useSetIntegrationDestinationConfig: () => ({ mutate: mocks.setConfig, isPending: false }),
 }))
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    children,
+    className,
+  }: {
+    to: string
+    children: React.ReactNode
+    className?: string
+  }) => (
+    <a href={to} className={className}>
+      {children}
+    </a>
+  ),
+}))
 vi.mock('sonner', () => ({ toast: { success: mocks.toastSuccess, error: mocks.toastError } }))
 
 import { GitHubRepositoryCard } from '../github-repository-card'
+import { inboxTeamsQueryOptions } from '@/lib/client/queries/inbox-teams'
+import { ticketQueries } from '@/lib/client/queries/inbox'
 
 const repo: IntegrationDestinationSummary = {
   id: 'integration_destination_1',
@@ -35,6 +55,7 @@ const repo: IntegrationDestinationSummary = {
   enabled: true,
   direction: 'both',
   inboundMode: 'off',
+  ticketScope: { teamId: null, ticketTypeId: null },
   isDefault: false,
   webhookRegistered: true,
   webhookEvents: ['issues'],
@@ -43,15 +64,30 @@ const repo: IntegrationDestinationSummary = {
   lastInboundAt: null,
 }
 
-function renderCard(destination: IntegrationDestinationSummary) {
+function renderCard(destination: IntegrationDestinationSummary, inboxOff = false) {
+  const client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity } } })
+  client.setQueryData(inboxTeamsQueryOptions().queryKey, [
+    { id: 'team_billing', name: 'Billing', icon: null, color: 'gray', memberCount: 2 },
+  ] as never)
+  client.setQueryData(ticketQueries.types().queryKey, [
+    { id: 'ticket_type_question', name: 'Question', category: 'customer', icon: null },
+    { id: 'ticket_type_task', name: 'Task', category: 'back_office', icon: null },
+  ] as never)
   render(
     <IntlProvider locale="en" messages={{}}>
-      <GitHubRepositoryCard destination={destination} />
+      <QueryClientProvider client={client}>
+        <GitHubRepositoryCard destination={destination} inboxOff={inboxOff} />
+      </QueryClientProvider>
     </IntlProvider>
   )
 }
 
-beforeEach(() => vi.clearAllMocks())
+beforeEach(() => {
+  vi.clearAllMocks()
+  // Radix Select measures and captures pointers, which happy-dom does not.
+  Element.prototype.scrollIntoView = vi.fn()
+  Element.prototype.hasPointerCapture = vi.fn(() => false)
+})
 afterEach(cleanup)
 
 describe('GitHubRepositoryCard', () => {
@@ -107,14 +143,60 @@ describe('GitHubRepositoryCard', () => {
     })
   })
 
-  it('brings the repository into the inbox', () => {
+  it('brings the repository into the inbox as conversations or tickets', async () => {
     renderCard(repo)
-    fireEvent.click(
-      screen.getByRole('switch', { name: 'Bring issues from acme/app into the inbox' })
-    )
+    const mode = screen.getByRole('combobox', {
+      name: 'What issues from acme/app open in the inbox',
+    })
+    expect(mode).toHaveTextContent('Off')
+    expect(screen.queryByRole('combobox', { name: 'Team for tickets from acme/app' })).toBeNull()
+
+    await userEvent.click(mode)
+    await userEvent.click(screen.getByRole('option', { name: 'Tickets' }))
     expect(mocks.setConfig.mock.calls[0][0]).toEqual({
       destinationId: 'integration_destination_1',
-      config: { inboundMode: 'conversations' },
+      config: { inboundMode: 'tickets' },
+    })
+  })
+
+  it('says when the inbox channel is off for a repository that brings issues in', () => {
+    renderCard({ ...repo, inboundMode: 'tickets' }, true)
+    expect(screen.getByText(/The GitHub inbox channel is off/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Turn it on' }).getAttribute('href')).toBe(
+      '/admin/settings/channels/github'
+    )
+    cleanup()
+
+    renderCard(repo, true)
+    expect(screen.queryByText(/The GitHub inbox channel is off/)).toBeNull()
+    cleanup()
+
+    renderCard({ ...repo, inboundMode: 'conversations' })
+    expect(screen.queryByText(/The GitHub inbox channel is off/)).toBeNull()
+  })
+
+  it('chooses the team and customer ticket type of its tickets', async () => {
+    renderCard({ ...repo, inboundMode: 'tickets' })
+    const team = screen.getByRole('combobox', { name: 'Team for tickets from acme/app' })
+    expect(team).toHaveTextContent('No team')
+    await userEvent.click(team)
+    await userEvent.click(screen.getByRole('option', { name: 'Billing' }))
+    expect(mocks.setConfig.mock.calls[0][0]).toEqual({
+      destinationId: 'integration_destination_1',
+      config: {
+        inboundMode: 'tickets',
+        ticketScope: { teamId: 'team_billing', ticketTypeId: null },
+      },
+    })
+
+    const type = screen.getByRole('combobox', { name: 'Ticket type for tickets from acme/app' })
+    expect(type).toHaveTextContent('Default ticket type')
+    await userEvent.click(type)
+    expect(screen.queryByRole('option', { name: 'Task' })).toBeNull()
+    await userEvent.click(screen.getByRole('option', { name: 'Question' }))
+    expect(mocks.setConfig.mock.calls[1][0].config.ticketScope).toEqual({
+      teamId: null,
+      ticketTypeId: 'ticket_type_question',
     })
   })
 

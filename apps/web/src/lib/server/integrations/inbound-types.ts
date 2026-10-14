@@ -17,6 +17,12 @@ export interface InboundWebhookResult {
   externalId: string
   /** The new status name from the external platform */
   externalStatus: string
+  /**
+   * A broader status name to map when `externalStatus` has no mapping of its
+   * own (GitHub's `Closed (not planned)` falls back to `Closed`), so a
+   * mapping made before the finer status existed keeps applying.
+   */
+  fallbackStatus?: string
   /** Event type for logging (e.g. 'issue.updated', 'taskStatusUpdated') */
   eventType: string
   /**

@@ -294,6 +294,14 @@ export interface IntegrationDefinition {
         Partial<import('@/lib/server/db').IntegrationDestinationConfig>
       >
       /**
+       * Checks a patch that passed `configSchema` against the workspace (GitHub:
+       * the ticket scope names a live team and a customer ticket type). Throws
+       * a `ValidationError` to refuse it.
+       */
+      validateConfig?: (
+        patch: Partial<import('@/lib/server/db').IntegrationDestinationConfig>
+      ) => Promise<void>
+      /**
        * Whether anything listens to one destination's webhook, so a newly
        * added destination should get one. Receives that destination's config
        * (`destinationConfig`: the connection's config with the destination's

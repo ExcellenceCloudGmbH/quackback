@@ -5,10 +5,13 @@
  * webhook is registered, when it last delivered and the error its last
  * registration hit, with a repair that registers the webhook again. Below
  * that, its own switches: on or off (off keeps the webhook, so switching back
- * is immediate), whether its issues come into the inbox, which way it syncs,
- * and removing it.
+ * is immediate), whether its issues come into the inbox (as conversations,
+ * or as tickets with their team and type), which way it syncs, and removing
+ * it. A repository set to bring issues in while the GitHub inbox channel is
+ * off says so, with a link to the channel.
  */
 import { useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { FormattedMessage, useIntl } from 'react-intl'
 import { toast } from 'sonner'
 import { ArrowPathIcon, FolderIcon, TrashIcon } from '@heroicons/react/24/solid'
@@ -24,6 +27,7 @@ import {
 } from '@/components/ui/select'
 import { TimeAgo } from '@/components/ui/time-ago'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
+import { GitHubInboundModeControl } from '@/integrations/github/ui/github-inbound-mode'
 import {
   useReconnectIntegrationDestination,
   useRemoveIntegrationDestination,
@@ -34,9 +38,11 @@ import type { IntegrationDestinationSummary } from '@/lib/server/functions/integ
 
 interface GitHubRepositoryCardProps {
   destination: IntegrationDestinationSummary
+  /** The GitHub inbox channel is off: nothing a repository brings in arrives. */
+  inboxOff?: boolean
 }
 
-export function GitHubRepositoryCard({ destination }: GitHubRepositoryCardProps) {
+export function GitHubRepositoryCard({ destination, inboxOff }: GitHubRepositoryCardProps) {
   const intl = useIntl()
   const repair = useReconnectIntegrationDestination()
   const remove = useRemoveIntegrationDestination()
@@ -175,6 +181,21 @@ export function GitHubRepositoryCard({ destination }: GitHubRepositoryCardProps)
       {destination.lastError && (
         <p className="mt-2 break-words text-xs text-destructive">{destination.lastError}</p>
       )}
+      {inboxOff && destination.inboundMode !== 'off' && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          <FormattedMessage
+            id="admin.githubRepository.inboxChannelOff"
+            defaultMessage="The GitHub inbox channel is off, so new issues are not brought in. <link>Turn it on</link>"
+            values={{
+              link: (chunks) => (
+                <Link to="/admin/settings/channels/github" className="font-medium underline">
+                  {chunks}
+                </Link>
+              ),
+            }}
+          />
+        </p>
+      )}
       <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-border/50 pt-3">
         <div className="flex items-center gap-2 text-xs">
           <Switch
@@ -193,29 +214,21 @@ export function GitHubRepositoryCard({ destination }: GitHubRepositoryCardProps)
           </span>
         </div>
         <div className="flex items-center gap-2 text-xs">
-          <Switch
-            checked={destination.inboundMode === 'conversations'}
-            disabled={setConfig.isPending}
-            onCheckedChange={(on) =>
-              setConfig.mutate(
-                {
-                  destinationId: destination.id,
-                  config: { inboundMode: on ? 'conversations' : 'off' },
-                },
-                { onError: saveFailed }
-              )
-            }
-            aria-label={intl.formatMessage(
-              {
-                id: 'admin.githubChannel.repositoryInbox',
-                defaultMessage: 'Bring issues from {repository} into the inbox',
-              },
-              { repository: destination.externalId }
-            )}
-          />
           <span aria-hidden>
             <FormattedMessage id="admin.githubRepository.inbox" defaultMessage="Inbox" />
           </span>
+          <GitHubInboundModeControl
+            repository={destination.externalId}
+            inboundMode={destination.inboundMode}
+            ticketScope={destination.ticketScope}
+            disabled={setConfig.isPending}
+            onChange={(config) =>
+              setConfig.mutate(
+                { destinationId: destination.id, config: { ...config } },
+                { onError: saveFailed }
+              )
+            }
+          />
         </div>
         <Select
           value={destination.direction}

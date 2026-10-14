@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { IntlProvider } from 'react-intl'
 
@@ -35,11 +36,15 @@ vi.mock('@/integrations/github/ui/github-connection-actions', () => ({
 const { GitHubChannelPage } = await import('../github-channel-page')
 const { githubChannelStatusQuery } =
   await import('@/integrations/github/ui/github-channel-status-query')
+const { inboxTeamsQueryOptions } = await import('@/lib/client/queries/inbox-teams')
+const { ticketQueries } = await import('@/lib/client/queries/inbox')
 
 let client: QueryClient
 
 function renderPage(status: Record<string, unknown>) {
   client.setQueryData(githubChannelStatusQuery().queryKey, status as never)
+  client.setQueryData(inboxTeamsQueryOptions().queryKey, [])
+  client.setQueryData(ticketQueries.types().queryKey, [])
   return render(
     <IntlProvider locale="en" defaultLocale="en">
       <QueryClientProvider client={client}>
@@ -68,6 +73,7 @@ const repository = (over: Record<string, unknown>) => ({
   repo: 'acme/inbox',
   enabled: true,
   inboundMode: 'conversations',
+  ticketScope: { teamId: null, ticketTypeId: null },
   receives: true,
   webhookEvents: ['issues', 'issue_comment'],
   lastInboundAt: null,
@@ -80,6 +86,9 @@ beforeEach(() => {
   setRepositoryInbox.mockReset()
   setRepositoryInbox.mockResolvedValue({ ok: true })
   client = new QueryClient({ defaultOptions: { queries: { staleTime: Infinity, retry: false } } })
+  // Radix Select measures and captures pointers, which happy-dom does not.
+  Element.prototype.scrollIntoView = vi.fn()
+  Element.prototype.hasPointerCapture = vi.fn(() => false)
 })
 afterEach(cleanup)
 
@@ -117,7 +126,7 @@ describe('GitHubChannelPage', () => {
     })
   })
 
-  it('lists each repository with its own inbox switch', async () => {
+  it('lists each repository with what its issues open in the inbox', async () => {
     renderPage({
       ...CONNECTED,
       repositories: [
@@ -125,17 +134,20 @@ describe('GitHubChannelPage', () => {
         repository({ id: 'dest_docs', repo: 'acme/docs', inboundMode: 'off' }),
       ],
     })
-    const inbox = screen.getByRole('switch', {
-      name: 'Bring issues from acme/inbox into the inbox',
+    const inbox = screen.getByRole('combobox', {
+      name: 'What issues from acme/inbox open in the inbox',
     })
-    const docs = screen.getByRole('switch', { name: 'Bring issues from acme/docs into the inbox' })
-    expect(inbox).toBeChecked()
-    expect(docs).not.toBeChecked()
+    const docs = screen.getByRole('combobox', {
+      name: 'What issues from acme/docs open in the inbox',
+    })
+    expect(inbox).toHaveTextContent('Conversations')
+    expect(docs).toHaveTextContent('Off')
 
-    fireEvent.click(docs)
+    await userEvent.click(docs)
+    await userEvent.click(screen.getByRole('option', { name: 'Tickets' }))
     await waitFor(() =>
       expect(setRepositoryInbox).toHaveBeenCalledWith({
-        data: { destinationId: 'dest_docs', enabled: true },
+        data: { destinationId: 'dest_docs', inboundMode: 'tickets' },
       })
     )
   })
