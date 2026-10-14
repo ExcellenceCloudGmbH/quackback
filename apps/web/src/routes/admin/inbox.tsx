@@ -789,7 +789,11 @@ function InboxPage() {
             queryKey: conversationKeys.agentConversationFiles(conversationId),
           })
         }
-      } else if (evt.kind === 'ticket_message' || evt.kind === 'ticket_message_updated') {
+      } else if (
+        evt.kind === 'ticket_message' ||
+        evt.kind === 'ticket_message_updated' ||
+        evt.kind === 'ticket_message_deleted'
+      ) {
         reconcileCachedThread<TicketThreadCache>(
           queryClient,
           ticketKeys.thread(evt.ticketId),

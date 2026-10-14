@@ -82,6 +82,9 @@ describe('event catalogue coverage', () => {
     'note_added',
     'published',
     'replied',
+    // a public ticket reply edited or deleted (ticket.reply_updated/_deleted)
+    'reply_updated',
+    'reply_deleted',
     'handed_off',
     'resolved',
     'csat_submitted',

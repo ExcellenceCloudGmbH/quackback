@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Ticket } from '@/lib/server/db'
 import type { Actor } from '@/lib/server/policy/types'
 import type { ConversationMessageDTO } from '@/lib/shared/conversation/types'
-import type { PrincipalId } from '@quackback/ids'
+import type { PrincipalId, TicketId } from '@quackback/ids'
 
 const loadAuthors = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/server/domains/principals/principal-display', () => ({ loadAuthors }))
@@ -16,6 +16,19 @@ const dispatch = vi.hoisted(() => ({
   dispatchTicketDueChanged: vi.fn().mockResolvedValue(undefined),
   dispatchTicketUpdated: vi.fn().mockResolvedValue(undefined),
   dispatchTicketPriorityChanged: vi.fn().mockResolvedValue(undefined),
+  dispatchTicketReplyUpdated: vi.fn().mockResolvedValue(undefined),
+  dispatchTicketReplyDeleted: vi.fn().mockResolvedValue(undefined),
+}))
+
+// The reply emitters load the live ticket row; serve it from a settable stub.
+const ticketRows = vi.hoisted(() => ({ rows: [] as unknown[] }))
+vi.mock('@/lib/server/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/server/db')>()),
+  db: {
+    select: () => ({
+      from: () => ({ where: () => ({ limit: async () => ticketRows.rows }) }),
+    }),
+  },
 }))
 vi.mock('@/lib/server/events/dispatch', () => dispatch)
 
@@ -29,6 +42,8 @@ import {
   ticketRef,
   emitTicketUpdated,
   emitTicketPriorityChanged,
+  emitTicketReplyUpdated,
+  emitTicketReplyDeleted,
 } from '../ticket.webhooks'
 
 const now = new Date('2026-07-04T00:00:00.000Z')
@@ -389,5 +404,59 @@ describe('ticket.webhooks due date', () => {
   it('emitTicketDueChanged swallows a dispatch failure (fire-and-forget)', async () => {
     dispatch.dispatchTicketDueChanged.mockRejectedValueOnce(new Error('bus down'))
     await expect(emitTicketDueChanged(agentActor, baseTicket, null)).resolves.toBeUndefined()
+  })
+})
+
+describe('ticket.webhooks reply edit + delete emit helpers', () => {
+  beforeEach(() => {
+    Object.values(dispatch).forEach((m) => m.mockClear())
+    ticketRows.rows = [baseTicket]
+  })
+
+  it('emitTicketReplyUpdated carries the new body in the ticket.replied shape plus editedAt', async () => {
+    const edited = { ...baseMessage, content: 'Updated text' }
+    await emitTicketReplyUpdated(
+      agentActor,
+      'ticket_1' as TicketId,
+      edited,
+      new Date('2026-07-05T00:00:00.000Z')
+    )
+    const [, ref, messageId, content, , senderType, title, , editedAt] =
+      dispatch.dispatchTicketReplyUpdated.mock.calls[0]
+    expect(ref).toMatchObject({ id: 'ticket_1' })
+    expect(messageId).toBe('conversation_message_1')
+    expect(content).toBe('Updated text')
+    expect(senderType).toBe('agent')
+    expect(title).toBe('Cannot log in')
+    expect(editedAt).toBe('2026-07-05T00:00:00.000Z')
+  })
+
+  it('emitTicketReplyDeleted names the deleted reply and its side', async () => {
+    await emitTicketReplyDeleted(
+      agentActor,
+      'ticket_1' as TicketId,
+      'conversation_message_1',
+      'visitor'
+    )
+    expect(dispatch.dispatchTicketReplyDeleted).toHaveBeenCalledWith(
+      { type: 'user', principalId: 'principal_a' },
+      expect.objectContaining({ id: 'ticket_1' }),
+      'conversation_message_1',
+      'visitor',
+      'Cannot log in'
+    )
+  })
+
+  it('announces nothing for a ticket that is gone', async () => {
+    ticketRows.rows = []
+    await emitTicketReplyUpdated(agentActor, 'ticket_1' as TicketId, baseMessage, new Date())
+    await emitTicketReplyDeleted(
+      agentActor,
+      'ticket_1' as TicketId,
+      'conversation_message_1',
+      'agent'
+    )
+    expect(dispatch.dispatchTicketReplyUpdated).not.toHaveBeenCalled()
+    expect(dispatch.dispatchTicketReplyDeleted).not.toHaveBeenCalled()
   })
 })

@@ -743,6 +743,40 @@ export async function dispatchTicketPriorityChanged(
   })
 }
 
+/** A public reply on a ticket thread was edited (ticket.replied's shape + editedAt). */
+export async function dispatchTicketReplyUpdated(
+  actor: EventActor,
+  ticket: EventTicketRef,
+  messageId: string,
+  content: string,
+  attachments: EventTicketMessageAttachment[] | null,
+  senderType: 'agent' | 'visitor',
+  title: string,
+  authorName: string | null,
+  editedAt: string
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.reply_updated',
+    data: { ticket, messageId, content, attachments, senderType, title, authorName, editedAt },
+  })
+}
+
+/** A public reply was deleted from a ticket thread. */
+export async function dispatchTicketReplyDeleted(
+  actor: EventActor,
+  ticket: EventTicketRef,
+  messageId: string,
+  senderType: 'agent' | 'visitor',
+  title: string
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.reply_deleted',
+    data: { ticket, messageId, senderType, title },
+  })
+}
+
 export async function dispatchTicketNoteAdded(
   actor: EventActor,
   ticket: EventTicketRef,

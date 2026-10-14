@@ -290,6 +290,16 @@ export const WEBHOOK_EVENT_CONFIG = [
     description: "When a ticket's priority changes",
   },
   {
+    id: 'ticket.reply_updated',
+    label: 'Ticket Reply Edited',
+    description: 'When a public reply on a ticket thread is edited',
+  },
+  {
+    id: 'ticket.reply_deleted',
+    label: 'Ticket Reply Deleted',
+    description: 'When a public reply on a ticket thread is deleted',
+  },
+  {
     id: 'approval.requested',
     label: 'Approval Requested',
     description: 'When an AI assistant or API key asks a person to approve a change',

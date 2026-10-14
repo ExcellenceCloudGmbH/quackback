@@ -95,6 +95,9 @@ export const EVENT_TYPES = [
   // A teammate, the API or an integration renamed the ticket.
   'ticket.updated',
   'ticket.priority_changed',
+  // A public reply on the ticket thread was edited or deleted.
+  'ticket.reply_updated',
+  'ticket.reply_deleted',
   'assistant.handed_off',
   'assistant.resolved',
   // Timer-driven triggers (see TIMER_DRIVEN_EVENT_TYPES above for the rationale).
@@ -613,6 +616,23 @@ export interface TicketPriorityChangedPayload {
   newPriority: string
 }
 
+/** Payload for ticket.reply_updated: a public reply's body was edited. Carries
+ *  the reply's new body in the same shape ticket.replied delivers it. */
+export interface TicketReplyUpdatedPayload extends EventTicketMessageData {
+  /** When the edit landed (ISO). */
+  editedAt: string
+}
+
+/** Payload for ticket.reply_deleted: a public reply was removed from the
+ *  thread. Carries no body: the content is gone. */
+export interface TicketReplyDeletedPayload {
+  ticket: EventTicketRef
+  messageId: string
+  senderType: 'agent' | 'visitor'
+  /** Ticket title, for consumer copy (the ref carries no title). */
+  title: string
+}
+
 /** A message attachment carried on a ticket reply/note event. */
 export interface EventTicketMessageAttachment {
   name: string
@@ -876,6 +896,12 @@ export interface TicketUpdatedEvent extends EventBase<'ticket.updated'> {
 export interface TicketPriorityChangedEvent extends EventBase<'ticket.priority_changed'> {
   data: TicketPriorityChangedPayload
 }
+export interface TicketReplyUpdatedEvent extends EventBase<'ticket.reply_updated'> {
+  data: TicketReplyUpdatedPayload
+}
+export interface TicketReplyDeletedEvent extends EventBase<'ticket.reply_deleted'> {
+  data: TicketReplyDeletedPayload
+}
 
 export interface AssistantHandedOffEvent extends EventBase<'assistant.handed_off'> {
   data: AssistantHandedOffPayload
@@ -991,6 +1017,8 @@ export type EventData =
   | TicketSubscriberRemovedEvent
   | TicketUpdatedEvent
   | TicketPriorityChangedEvent
+  | TicketReplyUpdatedEvent
+  | TicketReplyDeletedEvent
   | AssistantHandedOffEvent
   | AssistantResolvedEvent
   | ConversationCustomerUnresponsiveEvent

@@ -23,6 +23,7 @@ import {
   principal,
   user,
   type Conversation,
+  type ConversationMessage,
   type ConversationSystemEvent,
   withWorkflowAttribution,
   type AssistantPendingActionSurface,
@@ -39,6 +40,7 @@ import type {
   PrincipalId,
   SegmentId,
   TeamId,
+  TicketId,
 } from '@quackback/ids'
 import { NotFoundError, ValidationError, ForbiddenError } from '@/lib/shared/errors'
 import {
@@ -81,6 +83,7 @@ import {
   publishAgentConversationEvent,
   publishConversationUpdate,
   publishTyping,
+  publishTicketEvent,
 } from '@/lib/server/realtime/conversation-channels'
 import {
   validateContent,
@@ -1832,7 +1835,7 @@ export async function deleteConversationMessage(
     const decision = canDeleteMessage(actor, authored, null)
     if (!decision.allowed) throw new ForbiddenError('FORBIDDEN', decision.reason)
 
-    await db
+    const [deleted] = await db
       .update(conversationMessages)
       .set({
         deletedAt: new Date(),
@@ -1840,11 +1843,8 @@ export async function deleteConversationMessage(
         updatedAt: new Date(),
       })
       .where(and(eq(conversationMessages.id, messageId), isNull(conversationMessages.deletedAt)))
-
-    // No realtime broadcast and no webhook here: ticket-thread update routing
-    // (and its message.deleted webhook analogue) arrives with the customer
-    // loop, mirroring message.actions.ts's identical deferral for ticket
-    // reactions/flags. The acting client applies the deletion optimistically.
+      .returning({ id: conversationMessages.id })
+    if (deleted) await announceTicketThreadDelete(message.ticketId, message, actor)
     return
   }
 
@@ -1897,6 +1897,33 @@ export async function deleteConversationMessage(
   if (!message.isInternal) {
     void emitMessageDeleted(actor, message, conversation)
   }
+
+  // A linked pair's thread also renders in its customer ticket.
+  const { resolvePairTicketIdForConversation } =
+    await import('@/lib/server/domains/tickets/pair-thread.service')
+  const pairTicketId = await resolvePairTicketIdForConversation(conversationId)
+  if (pairTicketId) await announceTicketThreadDelete(pairTicketId, message, actor)
+}
+
+/**
+ * A message shown in a ticket thread was deleted: drop it from open ticket
+ * threads, and tell the ticket's integrations when it was a public reply
+ * (ticket.reply_deleted). An internal note's deletion stays inside the inbox.
+ */
+async function announceTicketThreadDelete(
+  ticketId: TicketId,
+  message: ConversationMessage,
+  actor: Actor
+): Promise<void> {
+  publishTicketEvent(ticketId, { kind: 'ticket_message_deleted', ticketId, messageId: message.id })
+  if (message.isInternal || message.senderType === 'system') return
+  const { emitTicketReplyDeleted } = await import('@/lib/server/domains/tickets/ticket.webhooks')
+  void emitTicketReplyDeleted(
+    actor,
+    ticketId,
+    message.id,
+    message.senderType === 'visitor' ? 'visitor' : 'agent'
+  )
 }
 
 /** Record a visitor CSAT rating (1-5) on their conversation. */

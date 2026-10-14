@@ -86,3 +86,8 @@ export const ticketSubscriberRemoved = decl(
 export const ticketUpdated = decl('ticket.updated', 'ticket', { webhook: true }, S)
 // Triage priority moved (mirrors conversation.priority_changed).
 export const ticketPriorityChanged = decl('ticket.priority_changed', 'ticket', { webhook: true }, S)
+// A public reply on the ticket thread was edited or deleted (internal notes are
+// never announced, as with message.updated/deleted). Lets integrations that
+// mirror the thread (a linked issue's comments) follow the change.
+export const ticketReplyUpdated = decl('ticket.reply_updated', 'ticket', { webhook: true }, S)
+export const ticketReplyDeleted = decl('ticket.reply_deleted', 'ticket', { webhook: true }, S)

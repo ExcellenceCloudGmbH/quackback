@@ -14,7 +14,8 @@
  * EventTicketMessageData): ticket events only ever reach admin-configured
  * consumers, never a per-user or public subscription.
  */
-import type { Ticket } from '@/lib/server/db'
+import { db, eq, and, isNull, tickets, type Ticket } from '@/lib/server/db'
+import type { TicketId } from '@quackback/ids'
 import type { Actor } from '@/lib/server/policy/types'
 import type { ConversationMessageDTO } from '@/lib/shared/conversation/types'
 import type {
@@ -35,6 +36,8 @@ import {
   dispatchTicketSubscriberRemoved,
   dispatchTicketUpdated,
   dispatchTicketPriorityChanged,
+  dispatchTicketReplyUpdated,
+  dispatchTicketReplyDeleted,
 } from '@/lib/server/events/dispatch'
 import { contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { logger } from '@/lib/server/logger'
@@ -327,4 +330,65 @@ export async function emitTicketSubscriberRemoved(
       reason
     )
   )
+}
+
+/** The live ticket row a reply edit/delete is announced against, or null when
+ *  the ticket is gone (a deleted ticket's thread changes are not announced). */
+async function liveTicket(ticketId: TicketId): Promise<Ticket | null> {
+  const [row] = await db
+    .select()
+    .from(tickets)
+    .where(and(eq(tickets.id, ticketId), isNull(tickets.deletedAt)))
+    .limit(1)
+  return row ?? null
+}
+
+/**
+ * A public reply on a ticket thread was edited: a ticket-parented reply, or a
+ * conversation-parented reply on a linked pair (both render in the ticket
+ * thread). The caller passes only public visitor/agent replies; internal notes
+ * and system lines are never announced.
+ */
+export async function emitTicketReplyUpdated(
+  actor: Actor,
+  ticketId: TicketId,
+  message: ConversationMessageDTO,
+  editedAt: Date
+): Promise<void> {
+  await safe('ticket.reply_updated', async () => {
+    const ticket = await liveTicket(ticketId)
+    if (!ticket) return
+    return dispatchTicketReplyUpdated(
+      toEventActor(actor),
+      ticketRef(ticket),
+      message.id,
+      contentJsonToMarkdown(message.contentJson, message.content),
+      messageAttachments(message),
+      message.senderType === 'visitor' ? 'visitor' : 'agent',
+      ticket.title,
+      message.author?.displayName ?? null,
+      editedAt.toISOString()
+    )
+  })
+}
+
+/** A public reply was deleted from a ticket thread (same audience rule as
+ *  emitTicketReplyUpdated). */
+export async function emitTicketReplyDeleted(
+  actor: Actor,
+  ticketId: TicketId,
+  messageId: string,
+  senderType: 'agent' | 'visitor'
+): Promise<void> {
+  await safe('ticket.reply_deleted', async () => {
+    const ticket = await liveTicket(ticketId)
+    if (!ticket) return
+    return dispatchTicketReplyDeleted(
+      toEventActor(actor),
+      ticketRef(ticket),
+      messageId,
+      senderType,
+      ticket.title
+    )
+  })
 }

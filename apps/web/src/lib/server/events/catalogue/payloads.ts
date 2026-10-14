@@ -327,6 +327,22 @@ export const P = {
     previousPriority: z.string(),
     newPriority: z.string(),
   }),
+  'ticket.reply_updated': z.looseObject({
+    ticket: ticketRef,
+    messageId: id,
+    content: z.string(),
+    attachments: z.array(attachment).nullable(),
+    senderType: z.enum(['agent', 'visitor']),
+    title: z.string(),
+    authorName: nullableStr,
+    editedAt: z.string(),
+  }),
+  'ticket.reply_deleted': z.looseObject({
+    ticket: ticketRef,
+    messageId: id,
+    senderType: z.enum(['agent', 'visitor']),
+    title: z.string(),
+  }),
   // assistant + sla
   'assistant.handed_off': z.looseObject({ conversationId: id, reason: z.string() }),
   'assistant.resolved': z.looseObject({ conversationId: id, outcome: z.string() }),
