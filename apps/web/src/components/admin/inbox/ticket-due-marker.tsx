@@ -1,5 +1,7 @@
 import { useIntl } from 'react-intl'
-import { ClockIcon } from '@heroicons/react/16/solid'
+// The inbox detail panel's own clock (24/outline): one icon module for the
+// whole inbox, so the row marker adds no chunk to the list.
+import { ClockIcon } from '@heroicons/react/24/outline'
 import { formatSlaCountdown } from '@/lib/shared/conversation/sla'
 import { ticketDueState } from '@/lib/shared/ticket-due'
 import { useNow } from '@/lib/client/hooks/use-now'

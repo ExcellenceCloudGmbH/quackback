@@ -4,11 +4,13 @@ import {
   PlusIcon,
   ArrowPathIcon,
   ArrowsRightLeftIcon,
-  ClockIcon,
   FlagIcon,
   TrashIcon,
   UserIcon,
 } from '@heroicons/react/16/solid'
+// The due-date rows reuse the inbox's own clock (24/outline) rather than adding
+// a 16/solid clock module, which would ship as an extra chunk.
+import { ClockIcon } from '@heroicons/react/24/outline'
 import type { IntlShape } from 'react-intl'
 import type { TicketId } from '@quackback/ids'
 import type { TicketActivityType } from '@/lib/server/domains/tickets'

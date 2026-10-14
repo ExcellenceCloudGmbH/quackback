@@ -1,13 +1,13 @@
 // @vitest-environment happy-dom
 /**
- * The customer-facing due date (ticket-due-label.tsx): "Due {date}" in a
+ * The customer-facing due date (ticket-stage.tsx): "Due {date}" in a
  * neutral tone, hidden without a date or once the ticket is closed, and never
  * an overdue alarm.
  */
 import { afterEach, describe, expect, it } from 'vitest'
 import { cleanup, render } from '@testing-library/react'
 import { IntlProvider } from 'react-intl'
-import { TicketDueLabel } from '../ticket-due-label'
+import { TicketDueLabel } from '../ticket-stage'
 
 afterEach(cleanup)
 

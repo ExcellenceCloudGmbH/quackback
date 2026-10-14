@@ -6,8 +6,7 @@ import { getWidgetAuthHeaders } from '@/lib/client/widget-auth'
 import { useWidgetAuth } from './widget-auth-provider'
 import { widgetMyTicketsKey } from './widget-tickets'
 import { TimeAgo } from '@/components/ui/time-ago'
-import { StageChip } from '@/components/shared/ticket-stage'
-import { TicketDueLabel } from '@/components/shared/ticket-due-label'
+import { StageChip, TicketDueLabel } from '@/components/shared/ticket-stage'
 
 /** How many tickets the Home card lists — a glanceable recency strip, not the
  *  full index (that is the Tickets tab). */

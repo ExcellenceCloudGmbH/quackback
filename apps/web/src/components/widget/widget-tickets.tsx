@@ -14,8 +14,7 @@ import {
 } from './ticket-stage-seen'
 import { TimeAgo } from '@/components/ui/time-ago'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import { StageChip } from '@/components/shared/ticket-stage'
-import { TicketDueLabel } from '@/components/shared/ticket-due-label'
+import { StageChip, TicketDueLabel } from '@/components/shared/ticket-stage'
 import { cn } from '@/lib/shared/utils'
 import { WidgetTicketListSkeleton } from './widget-skeletons'
 
