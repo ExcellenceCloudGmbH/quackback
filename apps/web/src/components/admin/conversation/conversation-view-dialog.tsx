@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useIntl, type IntlShape } from 'react-intl'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { PlusIcon, TrashIcon } from '@heroicons/react/24/solid'
@@ -166,15 +167,23 @@ const TICKET_STAGE_OPTIONS: Array<{ value: string; label: string }> = TICKET_STA
   label: DEFAULT_TICKET_STAGE_LABELS[s],
 }))
 
-const TICKET_DUE_LABELS: Record<TicketDueFilter, string> = {
-  overdue: 'Overdue',
-  due_soon: 'Due in the next 24 hours',
-  none: 'No due date',
+// The due-date rule ships translated (the rest of this dialog is English for
+// now); its options reuse the inbox Due date filter's wording.
+const TICKET_DUE_FIELD_LABEL = {
+  id: 'admin.inbox.views.field.ticketDue',
+  defaultMessage: 'Ticket due date',
+} as const
+const TICKET_DUE_LABELS: Record<TicketDueFilter, { id: string; defaultMessage: string }> = {
+  overdue: { id: 'admin.inbox.filter.due.overdue', defaultMessage: 'Overdue' },
+  due_soon: { id: 'admin.inbox.filter.due.dueSoon', defaultMessage: 'Due in the next 24 hours' },
+  none: { id: 'admin.inbox.filter.due.none', defaultMessage: 'No due date' },
 }
-const TICKET_DUE_OPTIONS: Array<{ value: string; label: string }> = TICKET_DUE_FILTERS.map((d) => ({
-  value: d,
-  label: TICKET_DUE_LABELS[d],
-}))
+function ticketDueOptions(intl: IntlShape): Array<{ value: string; label: string }> {
+  return TICKET_DUE_FILTERS.map((d) => ({
+    value: d,
+    label: intl.formatMessage(TICKET_DUE_LABELS[d]),
+  }))
+}
 
 /** The default value for a freshly-picked field (so a new row is valid at once). */
 function defaultValueFor(field: ConversationViewRuleField): string {
@@ -253,6 +262,7 @@ interface Props {
  * (rules → list filter) happens in the route; this dialog only defines it.
  */
 export function ConversationViewDialog({ open, onOpenChange, editing, onSaved }: Props) {
+  const intl = useIntl()
   const queryClient = useQueryClient()
   const { data: tags } = useConversationTagsWithCounts()
   const { data: teams } = useInboxTeams()
@@ -396,7 +406,9 @@ export function ConversationViewDialog({ open, onOpenChange, editing, onSaved }:
                       <SelectGroup>
                         {visibleFields.map((f) => (
                           <SelectItem key={f} value={f}>
-                            {FIELD_LABELS[f]}
+                            {f === 'ticket_due'
+                              ? intl.formatMessage(TICKET_DUE_FIELD_LABEL)
+                              : FIELD_LABELS[f]}
                           </SelectItem>
                         ))}
                       </SelectGroup>
@@ -519,6 +531,7 @@ function RuleValue({
   teams: Array<{ id: string; name: string }>
   onChange: (value: string) => void
 }) {
+  const intl = useIntl()
   if (rule.field === 'waiting') {
     return <span className="flex-1 text-xs text-muted-foreground">is waiting on a reply</span>
   }
@@ -542,7 +555,7 @@ function RuleValue({
                     : rule.field === 'ticket_stage'
                       ? TICKET_STAGE_OPTIONS
                       : rule.field === 'ticket_due'
-                        ? TICKET_DUE_OPTIONS
+                        ? ticketDueOptions(intl)
                         : teams.map((t) => ({ value: t.id, label: t.name }))
 
   const empty = options.length === 0
