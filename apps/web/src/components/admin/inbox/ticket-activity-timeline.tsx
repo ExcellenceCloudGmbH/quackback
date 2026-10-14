@@ -4,6 +4,7 @@ import {
   PlusIcon,
   ArrowPathIcon,
   ArrowsRightLeftIcon,
+  ClockIcon,
   FlagIcon,
   TrashIcon,
   UserIcon,
@@ -14,6 +15,8 @@ import type { TicketActivityType } from '@/lib/server/domains/tickets'
 import type { ConversationPriority } from '@/lib/shared/conversation/types'
 import { activityQueries } from '@/lib/client/queries/activity'
 import { priorityMeta } from '@/lib/shared/conversation/priority-meta'
+import { TICKET_DUE_DATE_TIME } from '@/components/admin/inbox/ticket-due-marker'
+import { useLocalDateFormatter, type LocalDateFormatter } from '@/components/ui/local-date'
 import { Skeleton } from '@/components/ui/skeleton'
 import { TimeAgo } from '@/components/ui/time-ago'
 
@@ -46,6 +49,24 @@ function fromTo(intl: IntlShape, from: string | null, to: string | null): string
   )
 }
 
+/** "{from} → {to}" for a due date change, with "No due date" for a missing side. */
+function dueFromTo(
+  intl: IntlShape,
+  formatDate: LocalDateFormatter,
+  from: string | null,
+  to: string | null
+): string {
+  const none = intl.formatMessage({
+    id: 'admin.ticketActivity.noDueDate',
+    defaultMessage: 'No due date',
+  })
+  const show = (iso: string | null) => (iso ? formatDate(iso, TICKET_DUE_DATE_TIME) || none : none)
+  return intl.formatMessage(
+    { id: 'admin.ticketActivity.fromTo', defaultMessage: '{from} → {to}' },
+    { from: show(from), to: show(to) }
+  )
+}
+
 interface RowContent {
   icon: React.ComponentType<{ className?: string }>
   label: string
@@ -53,20 +74,33 @@ interface RowContent {
 }
 
 /** Human-readable label + detail lines for one activity row. */
-function rowContent(intl: IntlShape, item: TicketActivityItem): RowContent | null {
+function rowContent(
+  intl: IntlShape,
+  formatDate: LocalDateFormatter,
+  item: TicketActivityItem
+): RowContent | null {
   const actor = actorLabel(intl, item.actorName)
   const m = item.metadata
 
   switch (item.type) {
-    case 'ticket.created':
+    case 'ticket.created': {
+      const dueAt = str(m.dueAt)
       return {
         icon: PlusIcon,
         label: intl.formatMessage(
           { id: 'admin.ticketActivity.created', defaultMessage: '{actor} created this ticket' },
           { actor }
         ),
-        details: [],
+        details: dueAt
+          ? [
+              intl.formatMessage(
+                { id: 'admin.ticketActivity.createdDue', defaultMessage: 'Due {date}' },
+                { date: formatDate(dueAt, TICKET_DUE_DATE_TIME) }
+              ),
+            ]
+          : [],
       }
+    }
     case 'status.changed':
       return {
         icon: ArrowsRightLeftIcon,
@@ -154,6 +188,23 @@ function rowContent(intl: IntlShape, item: TicketActivityItem): RowContent | nul
         ),
         details: [],
       }
+    case 'due.changed':
+      return {
+        icon: ClockIcon,
+        label: m.to
+          ? intl.formatMessage(
+              { id: 'admin.ticketActivity.dueSet', defaultMessage: '{actor} set the due date' },
+              { actor }
+            )
+          : intl.formatMessage(
+              {
+                id: 'admin.ticketActivity.dueCleared',
+                defaultMessage: '{actor} cleared the due date',
+              },
+              { actor }
+            ),
+        details: [dueFromTo(intl, formatDate, str(m.from), str(m.to))],
+      }
     case 'ticket.reopened':
       return {
         icon: ArrowPathIcon,
@@ -200,6 +251,7 @@ export function TicketActivityTimeline({
   enabled?: boolean
 }) {
   const intl = useIntl()
+  const formatDate = useLocalDateFormatter()
   const { data, isLoading } = useQuery({
     ...activityQueries.forTicket(ticketId),
     enabled,
@@ -236,7 +288,7 @@ export function TicketActivityTimeline({
   return (
     <div className="space-y-2.5">
       {activities.map((activity) => {
-        const content = rowContent(intl, activity)
+        const content = rowContent(intl, formatDate, activity)
         if (!content) return null
         const Icon = content.icon
         return (

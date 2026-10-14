@@ -20,7 +20,7 @@ import type { TermSegment } from '@/lib/shared/utils/keyword-context'
 /** The unified inbox's sorts. All but 'relevance' are a subset of both
  *  `ConversationSort` and `TicketSort`, so they type-check as either branch's
  *  `sort` param directly (see `resolveInboxSort` for 'relevance'). */
-export type InboxSort = 'recent' | 'oldest' | 'created' | 'priority' | 'relevance'
+export type InboxSort = 'recent' | 'oldest' | 'created' | 'priority' | 'due' | 'relevance'
 
 /** The order a unified list actually runs in. Relevance is the DEFAULT for a
  *  searched list, never an override: a pinned sort still wins, so a team can
