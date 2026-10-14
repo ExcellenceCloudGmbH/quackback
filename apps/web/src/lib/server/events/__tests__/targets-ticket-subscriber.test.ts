@@ -1,7 +1,8 @@
 /**
  * Target resolution for the added-as-watcher bell (ticket.subscriber_added):
- * the person a teammate (or a workflow) added hears about it, once; nobody is
- * belled for their own watch; and the bell stays on the team.
+ * the person a teammate (or a workflow) added hears about it, once, named by
+ * who added them; nobody is belled for their own watch; and the bell stays on
+ * the team.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { EventData } from '../types'
@@ -59,6 +60,22 @@ describe('getTicketSubscriberAddedTargets', () => {
       target: { principalIds: ['principal_mate'] },
       config: { ticketId: 'ticket_1', title: 'Refund not received', authorName: 'Lea' },
     })
+  })
+
+  it('reads who added them from their principal, as the relayed event carries no name', async () => {
+    principalRows.push([{ type: 'user', role: 'member' }], [{ displayName: 'Lea' }])
+    const target = await getTicketSubscriberAddedTargets(
+      addedEvent({ type: 'user', principalId: 'principal_lead' })
+    )
+    expect(target?.config).toMatchObject({ authorName: 'Lea' })
+  })
+
+  it('falls back to "A teammate" for a principal with no name', async () => {
+    principalRows.push([{ type: 'user', role: 'member' }], [{ displayName: null }])
+    const target = await getTicketSubscriberAddedTargets(
+      addedEvent({ type: 'user', principalId: 'principal_lead' })
+    )
+    expect(target?.config).toMatchObject({ authorName: 'A teammate' })
   })
 
   it('names a workflow add as an automation', async () => {

@@ -404,6 +404,24 @@ async function filterToTeamMembers(subscribers: Subscriber[]): Promise<Subscribe
 }
 
 /**
+ * Who did it, for a bell or an email that names them. Targets run on the event
+ * the outbox relays, which keeps the actor's type and id but not their name
+ * (to-legacy-event.ts), so a user actor's name is read from their principal.
+ * A service actor (a workflow, an API key) is an automation.
+ */
+async function actorNameOf(actor: EventActor, fallback: string): Promise<string> {
+  if (actor.displayName) return actor.displayName
+  if (actor.type === 'service') return 'An automation'
+  if (!actor.principalId) return fallback
+  const [row] = await db
+    .select({ displayName: principal.displayName })
+    .from(principal)
+    .where(eq(principal.id, actor.principalId as PrincipalId))
+    .limit(1)
+  return row?.displayName?.trim() || fallback
+}
+
+/**
  * Check if actor is a team member (non-user role).
  */
 async function isActorTeamMember(actor: EventActor): Promise<boolean> {
@@ -1090,10 +1108,7 @@ export async function getTicketSubscriberAddedTargets(
     config: {
       ticketId: ticket.id,
       title,
-      // A workflow's add runs as a nameless service actor.
-      authorName:
-        event.actor.displayName ??
-        (event.actor.type === 'service' ? 'An automation' : 'A teammate'),
+      authorName: await actorNameOf(event.actor, 'A teammate'),
     },
   }
 }
