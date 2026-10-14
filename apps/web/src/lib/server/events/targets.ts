@@ -51,6 +51,7 @@ import { type HookContext } from './hook-context'
 import type { EventData, EventActor, PostMergedPayload, PostUnmergedPayload } from './types'
 import { logger } from '@/lib/server/logger'
 import { isTestEvent } from './test-event'
+import { getBaseUrl } from '@/lib/server/config'
 
 const log = logger.child({ component: 'targets' })
 
@@ -795,6 +796,33 @@ export function getPostOwnerAssignedTargets(event: EventData): HookTarget | null
     type: 'notification',
     target: { principalIds: [ownerPrincipalId as PrincipalId] },
     config: { postId: postId as PostId, postTitle, boardSlug, postUrl },
+  }
+}
+
+/**
+ * Notification target for `post.subscriber_added`: the person a teammate (or
+ * an automation) subscribed, never someone who followed the post themselves.
+ * Re-checks that they can still see the post, as every post fan-out does.
+ * Exported for direct unit testing.
+ */
+export async function getPostSubscriberAddedTargets(event: EventData): Promise<HookTarget | null> {
+  if (event.type !== 'post.subscriber_added') return null
+  const { post, subscriberPrincipalId } = event.data
+  if (subscriberPrincipalId === event.actor.principalId) return null
+  const subscriber = subscriberPrincipalId as PrincipalId
+  if (!(await principalsWhoCanViewPost(post.id as PostId, [subscriber])).has(subscriber)) {
+    return null
+  }
+  return {
+    type: 'notification',
+    target: { principalIds: [subscriber] },
+    config: {
+      postId: post.id as PostId,
+      postTitle: post.title,
+      boardSlug: post.boardSlug,
+      postUrl: buildPostUrl(getBaseUrl(), post),
+      authorName: await actorNameOf(event.actor, 'A teammate'),
+    },
   }
 }
 

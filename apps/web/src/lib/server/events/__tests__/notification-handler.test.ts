@@ -1013,3 +1013,42 @@ describe('notificationHook — ticket.subscriber_added (the teammate someone add
     ])
   })
 })
+
+describe('notificationHook — post.subscriber_added (someone a teammate subscribed)', () => {
+  it('names who subscribed them and carries the post for the bell link', async () => {
+    const event = {
+      id: 'evt-post-sub-1',
+      type: 'post.subscriber_added',
+      timestamp: new Date().toISOString(),
+      actor: { type: 'user', principalId: 'principal_lead', displayName: 'Lea' },
+      data: {
+        post: { id: 'post_1', title: 'Dark mode', boardId: 'board_1', boardSlug: 'ideas' },
+        subscriberPrincipalId: 'principal_ada',
+        reason: 'added',
+      },
+    } as EventData
+    const target: NotificationTarget = { principalIds: ['principal_ada' as never] }
+    await notificationHook.run(event, target, {
+      postId: 'post_1',
+      postTitle: 'Dark mode',
+      boardSlug: 'ideas',
+      postUrl: 'https://acme.test/b/ideas/posts/post_1',
+      authorName: 'Lea',
+    })
+    expect(batchSpy).toHaveBeenCalledWith([
+      expect.objectContaining({
+        principalId: 'principal_ada',
+        type: 'post_subscriber_added',
+        title: 'Lea subscribed you to a post',
+        body: 'Dark mode',
+        postId: 'post_1',
+        metadata: {
+          postTitle: 'Dark mode',
+          boardSlug: 'ideas',
+          postUrl: 'https://acme.test/b/ideas/posts/post_1',
+          actorName: 'Lea',
+        },
+      }),
+    ])
+  })
+})

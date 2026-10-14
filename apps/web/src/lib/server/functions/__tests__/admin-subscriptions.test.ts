@@ -42,8 +42,14 @@ const mockSubscribeToPost = vi.fn()
 const mockUnsubscribeFromPost = vi.fn()
 const mockUpdateSubscriptionLevel = vi.fn()
 
+const mockGetSubscriptionStatus = vi.fn()
+const mockAnnounce = vi.fn()
+vi.mock('@/lib/server/domains/posts/post.subscribers', () => ({
+  announcePostSubscriberChange: (...args: unknown[]) => mockAnnounce(...args),
+}))
+
 vi.mock('@/lib/server/domains/subscriptions/subscription.service', () => ({
-  getSubscriptionStatus: vi.fn(),
+  getSubscriptionStatus: (...args: unknown[]) => mockGetSubscriptionStatus(...args),
   subscribeToPost: (...args: unknown[]) => mockSubscribeToPost(...args),
   unsubscribeFromPost: (...args: unknown[]) => mockUnsubscribeFromPost(...args),
   updateSubscriptionLevel: (...args: unknown[]) => mockUpdateSubscriptionLevel(...args),
@@ -177,6 +183,63 @@ describe('adminUpdateVoterSubscriptionFn', () => {
       principalId: 'principal_xyz456',
       level: 'status_only',
     })
+  })
+})
+
+describe('following a post by hand', () => {
+  const me = { principal: { id: 'principal_me' } }
+
+  it('announces a new follow once, and nothing for a repeat', async () => {
+    mockRequireAuth.mockResolvedValue(me)
+    mockSubscribeToPost.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    await handlersByIndex[1]({ data: { postId: 'post_abc123', level: 'all' } })
+    await handlersByIndex[1]({ data: { postId: 'post_abc123', level: 'all' } })
+    expect(mockAnnounce).toHaveBeenCalledTimes(1)
+    expect(mockAnnounce).toHaveBeenCalledWith(
+      'added',
+      { principalId: 'principal_me' },
+      'post_abc123',
+      'principal_me',
+      'manual'
+    )
+  })
+
+  it('announces an unfollow with the reason the follow had', async () => {
+    mockRequireAuth.mockResolvedValue(me)
+    mockGetSubscriptionStatus.mockResolvedValueOnce({ subscribed: true, reason: 'vote' })
+    await handlersByIndex[2]({ data: { postId: 'post_abc123' } })
+    expect(mockAnnounce).toHaveBeenCalledWith(
+      'removed',
+      expect.anything(),
+      'post_abc123',
+      'principal_me',
+      'vote'
+    )
+  })
+
+  it('treats a level change to or from none as an unfollow or a follow', async () => {
+    mockRequireAuth.mockResolvedValue(me)
+    mockGetSubscriptionStatus.mockResolvedValueOnce({ subscribed: false, reason: null })
+    await handlersByIndex[3]({ data: { postId: 'post_abc123', level: 'status_only' } })
+    expect(mockAnnounce).toHaveBeenLastCalledWith(
+      'added',
+      expect.anything(),
+      'post_abc123',
+      'principal_me',
+      'manual'
+    )
+    mockGetSubscriptionStatus.mockResolvedValueOnce({ subscribed: true, reason: 'manual' })
+    await handlersByIndex[3]({ data: { postId: 'post_abc123', level: 'all' } })
+    expect(mockAnnounce).toHaveBeenCalledTimes(1)
+    mockGetSubscriptionStatus.mockResolvedValueOnce({ subscribed: true, reason: 'manual' })
+    await handlersByIndex[3]({ data: { postId: 'post_abc123', level: 'none' } })
+    expect(mockAnnounce).toHaveBeenLastCalledWith(
+      'removed',
+      expect.anything(),
+      'post_abc123',
+      'principal_me',
+      'manual'
+    )
   })
 })
 

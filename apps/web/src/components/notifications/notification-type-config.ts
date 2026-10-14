@@ -11,6 +11,7 @@ import {
   SparklesIcon,
   LinkIcon,
   EyeIcon,
+  BellAlertIcon,
 } from '@heroicons/react/24/solid'
 import type { NotificationType } from '@/lib/shared/types'
 
@@ -41,6 +42,11 @@ export const notificationTypeConfigs: Record<NotificationType, NotificationTypeC
     icon: AtSymbolIcon,
     iconClass: 'text-amber-500',
     bgClass: 'bg-amber-500/10',
+  },
+  post_subscriber_added: {
+    icon: BellAlertIcon,
+    iconClass: 'text-sky-500',
+    bgClass: 'bg-sky-500/10',
   },
   post_owner_assigned: {
     icon: InboxArrowDownIcon,

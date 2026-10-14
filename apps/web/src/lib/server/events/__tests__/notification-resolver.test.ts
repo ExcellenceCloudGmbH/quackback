@@ -12,6 +12,7 @@ const h = vi.hoisted(() => ({
   getConversationAssignedTargets: vi.fn(),
   getTicketAssignedTargets: vi.fn(),
   getPostOwnerAssignedTargets: vi.fn(),
+  getPostSubscriberAddedTargets: vi.fn(),
   getAssistantHandedOffTargets: vi.fn(),
   getConversationNoteMentionedTargets: vi.fn(),
   getTicketStatusChangedTargets: vi.fn(),
@@ -42,6 +43,7 @@ vi.mock('../targets', () => ({
   getConversationAssignedTargets: h.getConversationAssignedTargets,
   getTicketAssignedTargets: h.getTicketAssignedTargets,
   getPostOwnerAssignedTargets: h.getPostOwnerAssignedTargets,
+  getPostSubscriberAddedTargets: h.getPostSubscriberAddedTargets,
   getAssistantHandedOffTargets: h.getAssistantHandedOffTargets,
   getConversationNoteMentionedTargets: h.getConversationNoteMentionedTargets,
   getTicketStatusChangedTargets: h.getTicketStatusChangedTargets,
@@ -193,6 +195,14 @@ describe('notification resolver routing (WO-8c)', () => {
     expect(out.map((t) => t.type)).toEqual(['post_owner_bell'])
     expect(h.getPostOwnerAssignedTargets).toHaveBeenCalledTimes(1)
     expect(notificationResolver.interestedIn('post.owner_assigned')).toBe(true)
+  })
+
+  it('routes post.subscriber_added to the subscribed-you bell, and post.subscriber_removed nowhere', async () => {
+    h.getPostSubscriberAddedTargets.mockResolvedValue(T('post_subscriber_bell')[0])
+    const out = await notificationResolver.resolve(evt('post.subscriber_added'))
+    expect(out.map((t) => t.type)).toEqual(['post_subscriber_bell'])
+    expect(notificationResolver.interestedIn('post.subscriber_added')).toBe(true)
+    expect(notificationResolver.interestedIn('post.subscriber_removed')).toBe(false)
   })
 
   it('routes ticket.created to the email builder only (no bell for it)', async () => {

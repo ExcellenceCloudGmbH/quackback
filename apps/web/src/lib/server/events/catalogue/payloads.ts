@@ -119,6 +119,16 @@ export const P = {
     ownerPrincipalId: id,
     previousOwnerPrincipalId: nullableStr,
   }),
+  'post.subscriber_added': z.looseObject({
+    post: postRef,
+    subscriberPrincipalId: id,
+    reason: nullableStr,
+  }),
+  'post.subscriber_removed': z.looseObject({
+    post: postRef,
+    subscriberPrincipalId: id,
+    reason: nullableStr,
+  }),
   // comment family
   'comment.created': z.looseObject({ comment: commentData, post: postRef }),
   'comment.updated': z.looseObject({ comment: commentData, post: postRef }),

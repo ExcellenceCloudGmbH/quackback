@@ -16,8 +16,25 @@
  * it), so adding someone already following any of them is a clean no-op, and
  * removing them removes every row in the thread. Following a post yourself
  * stays the bell's job (functions/subscriptions.ts).
+ *
+ * Every hand-made change, a teammate's or someone's own through the bell,
+ * announces itself once on a real change: `post.subscriber_added` /
+ * `post.subscriber_removed` (webhook, plus a bell for the person a teammate
+ * subscribed). Automatic subscriptions (author, vote, comment, owner) stay
+ * quiet side effects of the writes that make them.
  */
-import { db, and, asc, eq, sql, postSubscriptions, principal, user } from '@/lib/server/db'
+import {
+  db,
+  and,
+  asc,
+  eq,
+  sql,
+  boards,
+  posts,
+  postSubscriptions,
+  principal,
+  user,
+} from '@/lib/server/db'
 import { toUuid, type PostId, type PrincipalId } from '@quackback/ids'
 import { can } from '@/lib/server/policy/authorize'
 import type { Actor } from '@/lib/server/policy/types'
@@ -40,6 +57,13 @@ import {
 } from '@/lib/server/domains/subscriptions/subscription.types'
 import { relatedPostIdsSql } from './post.merge-ids'
 import { assertPostViewable, principalsWhoCanViewPost } from './post.access'
+import {
+  dispatchPostSubscriberAdded,
+  dispatchPostSubscriberRemoved,
+} from '@/lib/server/events/dispatch'
+import { logger } from '@/lib/server/logger'
+
+const log = logger.child({ component: 'post-subscribers' })
 
 /** Someone subscribed to a post, as the team sees them. */
 export interface PostSubscriberInfo {
@@ -71,6 +95,43 @@ async function displayName(principalId: PrincipalId): Promise<string | null> {
     .where(eq(principal.id, principalId))
     .limit(1)
   return row?.displayName ?? null
+}
+
+/**
+ * Announce a subscription someone changed by hand. Never throws: the change
+ * is already made, and a lost announcement must not undo or fail it.
+ */
+export async function announcePostSubscriberChange(
+  change: 'added' | 'removed',
+  actor: Actor,
+  postId: PostId,
+  subscriberPrincipalId: PrincipalId,
+  reason: string | null
+): Promise<void> {
+  try {
+    const [row] = await db
+      .select({ title: posts.title, boardId: posts.boardId, boardSlug: boards.slug })
+      .from(posts)
+      .innerJoin(boards, eq(boards.id, posts.boardId))
+      .where(eq(posts.id, postId))
+      .limit(1)
+    if (!row) return
+    const post = { id: postId, title: row.title, boardId: row.boardId, boardSlug: row.boardSlug }
+    const principalId = actor.principalId ?? undefined
+    const eventActor =
+      actor.principalType === 'service'
+        ? { type: 'service' as const, principalId }
+        : {
+            type: 'user' as const,
+            principalId,
+            displayName: principalId ? ((await displayName(principalId)) ?? undefined) : undefined,
+          }
+    const dispatch =
+      change === 'added' ? dispatchPostSubscriberAdded : dispatchPostSubscriberRemoved
+    await dispatch(eventActor, post, subscriberPrincipalId, reason)
+  } catch (err) {
+    log.warn({ err, post_id: postId, change }, 'post subscriber event not dispatched')
+  }
 }
 
 /** Everyone subscribed to the post's thread, oldest subscription first. */
@@ -172,6 +233,7 @@ export async function addPostSubscriber(
   }
   if ((await getSubscriptionStatus(principalId, postId)).subscribed) return { added: false }
   const added = await subscribeToPost(principalId, postId, 'added', { level: opts?.level })
+  if (added) await announcePostSubscriberChange('added', actor, postId, principalId, 'added')
   if (added && principalId !== actor.principalId) {
     createActivity({
       postId,
@@ -193,8 +255,10 @@ export async function removePostSubscriber(
   actor: Actor
 ): Promise<{ removed: boolean }> {
   await assertCanManageSubscribers(postId, actor)
-  if (!(await getSubscriptionStatus(principalId, postId)).subscribed) return { removed: false }
+  const before = await getSubscriptionStatus(principalId, postId)
+  if (!before.subscribed) return { removed: false }
   await unsubscribeFromPost(principalId, postId)
+  await announcePostSubscriberChange('removed', actor, postId, principalId, before.reason)
   if (principalId !== actor.principalId) {
     createActivity({
       postId,

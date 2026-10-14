@@ -80,6 +80,16 @@ export const TYPE_LABELS: Partial<
       defaultMessage: 'Someone @-mentions you in a post',
     },
   },
+  post_subscriber_added: {
+    label: {
+      id: 'portal.settings.notifications.type.postSubscriberAdded.label',
+      defaultMessage: 'Subscribed to a post',
+    },
+    description: {
+      id: 'portal.settings.notifications.type.postSubscriberAdded.description',
+      defaultMessage: 'A teammate subscribes you to a post',
+    },
+  },
   comment_mentioned: {
     label: {
       id: 'portal.settings.notifications.type.commentMention.label',

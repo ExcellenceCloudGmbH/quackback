@@ -73,6 +73,16 @@ export const WEBHOOK_EVENT_CONFIG = [
     description: 'When a post is assigned to a new owner',
   },
   {
+    id: 'post.subscriber_added',
+    label: 'Post Subscriber Added',
+    description: 'When someone follows a post, or a teammate subscribes them to it',
+  },
+  {
+    id: 'post.subscriber_removed',
+    label: 'Post Subscriber Removed',
+    description: 'When someone unfollows a post, or a teammate unsubscribes them from it',
+  },
+  {
     id: 'comment.created',
     label: 'New Comment',
     description: 'When a comment is posted',

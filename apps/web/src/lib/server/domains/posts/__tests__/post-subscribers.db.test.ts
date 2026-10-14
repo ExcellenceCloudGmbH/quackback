@@ -17,6 +17,11 @@ vi.mock('@/lib/server/db', async (importOriginal) => ({
 }))
 const createActivity = vi.hoisted(() => vi.fn())
 vi.mock('@/lib/server/domains/activity/activity.service', () => ({ createActivity }))
+const dispatch = vi.hoisted(() => ({
+  dispatchPostSubscriberAdded: vi.fn(async () => undefined),
+  dispatchPostSubscriberRemoved: vi.fn(async () => undefined),
+}))
+vi.mock('@/lib/server/events/dispatch', () => dispatch)
 
 import { addPostSubscriber, listPostSubscribers, removePostSubscriber } from '../post.subscribers'
 import { subscribeToPost } from '../../subscriptions/subscription.service'
@@ -97,6 +102,13 @@ describe.skipIf(!fixture.available)('post subscribers (real DB, rolled back)', (
       added: true,
     })
     expect(await addPostSubscriber(postId, ada, actor)).toEqual({ added: false })
+    expect(dispatch.dispatchPostSubscriberAdded).toHaveBeenCalledTimes(1)
+    expect(dispatch.dispatchPostSubscriberAdded).toHaveBeenCalledWith(
+      { type: 'user', principalId: agent, displayName: 'Agent' },
+      expect.objectContaining({ id: postId, title: 'Dark mode' }),
+      ada,
+      'added'
+    )
     expect(createActivity).toHaveBeenCalledTimes(1)
     expect(createActivity).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -119,6 +131,13 @@ describe.skipIf(!fixture.available)('post subscribers (real DB, rolled back)', (
 
     expect(await removePostSubscriber(postId, ada, actor)).toEqual({ removed: true })
     expect(await removePostSubscriber(postId, ada, actor)).toEqual({ removed: false })
+    expect(dispatch.dispatchPostSubscriberRemoved).toHaveBeenCalledTimes(1)
+    expect(dispatch.dispatchPostSubscriberRemoved).toHaveBeenCalledWith(
+      expect.objectContaining({ principalId: agent }),
+      expect.objectContaining({ id: postId }),
+      ada,
+      'added'
+    )
     expect(createActivity).toHaveBeenLastCalledWith(
       expect.objectContaining({ type: 'subscriber.removed' })
     )

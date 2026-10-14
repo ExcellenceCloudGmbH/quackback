@@ -20,6 +20,7 @@ export type NotificationType =
   | 'ticket_status_changed'
   | 'conversation_assigned'
   | 'post_owner_assigned'
+  | 'post_subscriber_added'
   | 'ticket_assigned'
   | 'ticket_replied'
   | 'ticket_note_added'

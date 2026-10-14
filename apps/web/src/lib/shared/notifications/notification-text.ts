@@ -90,6 +90,18 @@ export function notificationText(n: NotificationTextSource, intl: IntlShape): No
           { name }
         ),
       }
+    case 'post_subscriber_added':
+      if (!name) return stored
+      return {
+        ...stored,
+        title: intl.formatMessage(
+          {
+            id: 'portal.notifications.text.postSubscriberAdded',
+            defaultMessage: '{name} subscribed you to a post',
+          },
+          { name }
+        ),
+      }
     case 'changelog_published':
       if (!p.changelogTitle) return stored
       return {

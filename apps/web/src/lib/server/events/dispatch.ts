@@ -245,6 +245,33 @@ export async function dispatchPostOwnerAssigned(
   })
 }
 
+/** A post subscription changed by hand: see PostSubscriberChangedPayload. */
+export async function dispatchPostSubscriberAdded(
+  actor: EventActor,
+  post: EventPostRef,
+  subscriberPrincipalId: string,
+  reason: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'post.subscriber_added',
+    data: { post, subscriberPrincipalId, reason },
+  })
+}
+
+export async function dispatchPostSubscriberRemoved(
+  actor: EventActor,
+  post: EventPostRef,
+  subscriberPrincipalId: string,
+  reason: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'post.subscriber_removed',
+    data: { post, subscriberPrincipalId, reason },
+  })
+}
+
 export async function dispatchPostUpdated(
   actor: EventActor,
   post: EventPostRef,

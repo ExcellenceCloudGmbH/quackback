@@ -275,6 +275,18 @@ function buildNotifications(
     }))
   }
 
+  if (event.type === 'post.subscriber_added') {
+    const { authorName } = config
+    return principalIds.map((principalId) => ({
+      principalId,
+      type: 'post_subscriber_added' as NotificationType,
+      title: `${authorName} subscribed you to a post`,
+      body: postTitle ? truncate(postTitle, 150) : undefined,
+      postId,
+      metadata: { postTitle, boardSlug, postUrl, actorName: authorName },
+    }))
+  }
+
   if (event.type === 'conversation.assigned') {
     const { conversationId, assignedAgentPrincipalId } = config
     return principalIds.map((principalId) => {

@@ -59,6 +59,13 @@ export const NOTIFICATION_CATALOG: readonly NotificationTypeMeta[] = [
     surfaces: ['admin', 'portal'],
   },
   {
+    type: 'post_subscriber_added',
+    label: 'Subscribed to a post',
+    description: 'A teammate subscribes you to a post',
+    group: 'feedback',
+    surfaces: ['admin', 'portal'],
+  },
+  {
     type: 'post_owner_assigned',
     label: 'Post assigned',
     description: 'A post is assigned to you',

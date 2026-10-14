@@ -45,6 +45,11 @@ export const EVENT_TYPES = [
   'post.mentioned',
   'post.owner_assigned',
   'post.voted',
+  // Someone started or stopped following a post by hand (their own bell, or a
+  // teammate adding or removing them). Automatic subscriptions (author, vote,
+  // comment, owner) are side effects of other events and announce nothing.
+  'post.subscriber_added',
+  'post.subscriber_removed',
   'comment.created',
   'comment.updated',
   'comment.deleted',
@@ -194,6 +199,20 @@ export interface PostUpdatedPayload {
  * different principal. Self-contained (no DB round-trip needed downstream),
  * mirroring post.mentioned's shape rather than nesting an EventPostRef.
  */
+/**
+ * Payload for post.subscriber_added / post.subscriber_removed: a subscription
+ * to a post's thread changed by hand. The actor is whoever changed it, the
+ * subscriber whose subscription it is; they are the same person when someone
+ * follows or unfollows a post themselves. Ids only, no name or email:
+ * consumers hydrate the principal by id.
+ */
+export interface PostSubscriberChangedPayload {
+  post: EventPostRef
+  subscriberPrincipalId: string
+  /** Why the subscriber follows (added) or followed (removed) the post. */
+  reason: string | null
+}
+
 export interface PostOwnerAssignedPayload {
   postId: string
   postTitle: string
@@ -745,6 +764,12 @@ export interface StatusComponentChangedEvent extends EventBase<'status.component
 export interface PostMentionedEvent extends EventBase<'post.mentioned'> {
   data: EventPostMentionedData
 }
+export interface PostSubscriberAddedEvent extends EventBase<'post.subscriber_added'> {
+  data: PostSubscriberChangedPayload
+}
+export interface PostSubscriberRemovedEvent extends EventBase<'post.subscriber_removed'> {
+  data: PostSubscriberChangedPayload
+}
 export interface PostOwnerAssignedEvent extends EventBase<'post.owner_assigned'> {
   data: PostOwnerAssignedPayload
 }
@@ -896,6 +921,8 @@ export type EventData =
   | PostUnmergedEvent
   | PostMentionedEvent
   | PostOwnerAssignedEvent
+  | PostSubscriberAddedEvent
+  | PostSubscriberRemovedEvent
   | CommentCreatedEvent
   | CommentUpdatedEvent
   | CommentDeletedEvent
