@@ -7,7 +7,7 @@ import {
   badRequestResponse,
   handleDomainError,
 } from '@/lib/server/domains/api/responses'
-import { parseOptionalTypeId } from '@/lib/server/domains/api/validation'
+import { parseOptionalTypeId, parseTypeId } from '@/lib/server/domains/api/validation'
 import { serviceActorFromApiAuth } from '@/lib/server/domains/api/service-actor'
 import { PERMISSIONS } from '@/lib/shared/permissions'
 import { TICKET_TYPES } from '@/lib/shared/db-types'
@@ -81,6 +81,11 @@ export const Route = createFileRoute('/api/v1/tickets/')({
             return badRequestResponse('Invalid due filter')
           }
           const due = isTicketDueFilter(dueParam) ? dueParam : undefined
+          // Only the tickets a teammate watches; a malformed id is a 400.
+          const watcherParam = url.searchParams.get('watcherPrincipalId')
+          const watcherPrincipalId = watcherParam
+            ? parseTypeId<PrincipalId>(watcherParam, 'principal', 'watcher principal ID')
+            : undefined
 
           const actor = {
             principalId: auth.principalId,
@@ -102,6 +107,7 @@ export const Route = createFileRoute('/api/v1/tickets/')({
               requesterPrincipalId,
               companyId,
               due,
+              watcherPrincipalId,
               sort,
               limit,
             },

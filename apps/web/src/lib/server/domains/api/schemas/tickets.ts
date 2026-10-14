@@ -233,6 +233,12 @@ registerPath('/tickets', {
           '24 hours and still open), or none (no due date). Any other value returns 400.',
       },
       {
+        name: 'watcherPrincipalId',
+        in: 'query',
+        schema: { type: 'string' },
+        description: 'Only tickets this teammate watches',
+      },
+      {
         name: 'sort',
         in: 'query',
         schema: { type: 'string', enum: [...TICKET_SORTS], default: 'recent' },

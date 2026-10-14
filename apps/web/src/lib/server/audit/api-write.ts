@@ -109,6 +109,7 @@ export const API_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   'v1',
   'vote',
   'voters',
+  'watchers',
   'webhooks',
 ])
 
