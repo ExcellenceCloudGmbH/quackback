@@ -96,7 +96,7 @@ import {
   facetToStatusFilter,
   buildInboxListParams,
   usesUnifiedInboxList,
-  ticketTypeForView,
+  ticketCategoryForView,
   PRIORITY_VALUES,
   type InboxNavItem,
   type InboxSearch,
@@ -856,9 +856,7 @@ function InboxPage() {
   const ticketTypeOptions = useMemo(() => {
     if (!isTicketScope) return undefined
     const scopeCategory =
-      nav.kind === 'view' && nav.view !== 'tickets_all' && isTicketNavView(nav.view)
-        ? ticketTypeForView(nav.view)
-        : undefined
+      nav.kind === 'view' && isTicketNavView(nav.view) ? ticketCategoryForView(nav.view) : undefined
     return (registryTypes ?? []).filter((t) => !scopeCategory || t.category === scopeCategory)
   }, [isTicketScope, nav, registryTypes])
 

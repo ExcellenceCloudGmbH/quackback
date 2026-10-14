@@ -580,6 +580,7 @@ export const InboxDetailPanel = memo(function InboxDetailPanel({
                     <span className="text-xs text-muted-foreground">Internal only</span>
                   )}
                 </Row>
+                <LinkedTicketWatchersRow ticketId={ticket.id} />
               </>
             )}
             {/* The shared due date: always shown so a teammate can set it,
@@ -920,3 +921,20 @@ export const InboxDetailPanel = memo(function InboxDetailPanel({
     </aside>
   )
 })
+
+/**
+ * The watch control on a conversation's linked ticket card, so a pair (which
+ * lists as its conversation row) can be watched without opening the ticket.
+ * The conversation is visible to the caller, but its ticket may not be (it
+ * can be assigned to a team they are not on): when the watch status can't be
+ * read the row stays out rather than showing controls that would fail.
+ */
+function LinkedTicketWatchersRow({ ticketId }: { ticketId: TicketId }) {
+  const { isSuccess } = useQuery(ticketQueries.watchStatus(ticketId))
+  if (!isSuccess) return null
+  return (
+    <Row label="Watchers" align="start">
+      <TicketWatchControl ticketId={ticketId} />
+    </Row>
+  )
+}

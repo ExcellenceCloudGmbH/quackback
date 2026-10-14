@@ -43,6 +43,8 @@ export const listInboxItemsSchema = z.object({
   /** Convergence alias semantics: restrict the conversation branch to pair
    *  conversations (the Tickets-section customer-category scopes). */
   linkedPairsOnly: z.boolean().optional(),
+  /** The Watching view: only what the caller watches. */
+  watching: z.boolean().optional(),
   priority: prioritySchema.optional(),
   search: z.string().optional(),
   /** 'me' | 'unassigned' | a teammate principal id; validated in the handler
@@ -88,6 +90,7 @@ export const listInboxItemsFn = createServerFn({ method: 'GET' })
       ticketTypeId: coerceTicketTypeId(data.ticketTypeId),
       ticketStage: data.ticketStage,
       linkedPairsOnly: data.linkedPairsOnly,
+      watching: data.watching,
       priority: data.priority,
       search: data.search,
       assignee,

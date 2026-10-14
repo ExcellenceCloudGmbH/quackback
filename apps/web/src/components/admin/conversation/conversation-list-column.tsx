@@ -81,6 +81,8 @@ function emptyStateMessage(nav: InboxNavItem, facet: InboxTriageFacet, scopeLabe
         return `No ${facetPart}back office tickets`
       case 'tickets_tracker':
         return `No ${facetPart}trackers`
+      case 'tickets_watching':
+        return `No ${facetPart}tickets you watch`
     }
     return `No ${facetPart}conversations`
   }

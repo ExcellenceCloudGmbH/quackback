@@ -16,8 +16,9 @@ import {
   conversations,
   tickets,
   ticketConversations,
+  ticketSubscriptions,
 } from '@/lib/server/db'
-import type { ConversationId } from '@quackback/ids'
+import type { ConversationId, PrincipalId } from '@quackback/ids'
 import { ticketDueConditionSql } from '@/lib/server/db/ticket-due'
 import type { TicketDueFilter } from '@/lib/shared/ticket-due'
 
@@ -99,4 +100,21 @@ export async function loadLinkedCustomerTicketDueAt(
     )
     .limit(1)
   return row?.dueAt ?? null
+}
+
+/**
+ * "This conversation is a pair whose customer ticket `principalId` watches"
+ * (a ticket_subscriptions row, muted or not): the conversation branch of the
+ * inbox's Watching view, where a watched pair lists as its conversation row
+ * just as it does under the other Tickets-section scopes.
+ */
+export function pairTicketWatchedBySql(principalId: PrincipalId) {
+  return sql`EXISTS (
+    SELECT 1 FROM ${ticketConversations} tc
+    INNER JOIN ${tickets} t ON t.id = tc.ticket_id AND t.deleted_at IS NULL
+    INNER JOIN ${ticketSubscriptions} ON ${ticketSubscriptions.ticketId} = tc.ticket_id
+    WHERE tc.conversation_id = ${conversations.id}
+      AND tc.ticket_type = 'customer'
+      AND ${eq(ticketSubscriptions.principalId, principalId)}
+  )`
 }

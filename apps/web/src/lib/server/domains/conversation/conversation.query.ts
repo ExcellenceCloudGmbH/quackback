@@ -65,6 +65,7 @@ import {
   linkedCustomerTicketDueAtSql,
   linkedCustomerTicketDueSql,
   loadLinkedCustomerTicketDueAt,
+  pairTicketWatchedBySql,
 } from '@/lib/server/messages/pair-link'
 import type { TicketDueFilter } from '@/lib/shared/ticket-due'
 import { conversationFilter } from '@/lib/server/policy/conversations'
@@ -1192,6 +1193,9 @@ export interface ConversationListFilter {
    *  conversation's row (the one-row rule), so this is where most tickets
    *  meet the filter. */
   linkedTicketDue?: TicketDueFilter
+  /** The inbox's Watching view: only pairs whose customer ticket this
+   *  principal watches (see `pairTicketWatchedBySql`). */
+  pairTicketWatchedBy?: PrincipalId
   /** "Spam" view: only conversations ended as spam. Spam-ended threads are
    *  excluded from every other list (the triage facets, queues, and searches
    *  must never surface them) — this flag is the one opt-in that lists them. */
@@ -1866,6 +1870,7 @@ export async function listConversationsForAgent(
         filter.linkedTicketDue
           ? linkedCustomerTicketDueSql(filter.linkedTicketDue, new Date())
           : undefined,
+        filter.pairTicketWatchedBy ? pairTicketWatchedBySql(filter.pairTicketWatchedBy) : undefined,
         // Keyset comparison for the active order (re-resolved cursor row). id is
         // always the final tiebreak so a page boundary never dupes or skips.
         cursor

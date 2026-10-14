@@ -7,6 +7,8 @@ import {
   FlagIcon,
   TrashIcon,
   UserIcon,
+  EyeIcon,
+  EyeSlashIcon,
 } from '@heroicons/react/16/solid'
 // The due-date rows reuse the inbox's own clock (24/outline) rather than adding
 // a 16/solid clock module, which would ship as an extra chunk.
@@ -223,6 +225,30 @@ function rowContent(
               defaultMessage: 'Reopened by a requester reply',
             }),
         details: [fromTo(intl, str(m.fromName), str(m.toName))],
+      }
+    case 'watcher.added':
+      return {
+        icon: EyeIcon,
+        label: intl.formatMessage(
+          {
+            id: 'admin.ticketActivity.watcherAdded',
+            defaultMessage: '{actor} added {name} as a watcher',
+          },
+          { actor, name: str(m.watcherName) ?? '-' }
+        ),
+        details: [],
+      }
+    case 'watcher.removed':
+      return {
+        icon: EyeSlashIcon,
+        label: intl.formatMessage(
+          {
+            id: 'admin.ticketActivity.watcherRemoved',
+            defaultMessage: '{actor} removed {name} as a watcher',
+          },
+          { actor, name: str(m.watcherName) ?? '-' }
+        ),
+        details: [],
       }
     case 'ticket.deleted':
       return {

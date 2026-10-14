@@ -16,6 +16,8 @@ import {
   facetToStatusFilter,
   isTicketInboxView,
   ticketTypeForView,
+  ticketCategoryForView,
+  isInboxView,
   inboxNavKey,
   inboxScopeHasRefinements,
   type InboxNavItem,
@@ -298,6 +300,7 @@ describe('ticket inbox views', () => {
     expect(isTicketInboxView('tickets_customer')).toBe(true)
     expect(isTicketInboxView('tickets_back_office')).toBe(true)
     expect(isTicketInboxView('tickets_tracker')).toBe(true)
+    expect(isTicketInboxView('tickets_watching')).toBe(true)
     expect(isTicketInboxView('mine')).toBe(false)
     expect(isTicketInboxView('quinn')).toBe(false)
   })
@@ -306,6 +309,16 @@ describe('ticket inbox views', () => {
     expect(ticketTypeForView('tickets_customer')).toBe('customer')
     expect(ticketTypeForView('tickets_back_office')).toBe('back_office')
     expect(ticketTypeForView('tickets_tracker')).toBe('tracker')
+  })
+
+  it('ticketCategoryForView leaves the scopes that span every type unfiltered', () => {
+    expect(ticketCategoryForView('tickets_all')).toBeUndefined()
+    expect(ticketCategoryForView('tickets_watching')).toBeUndefined()
+    expect(ticketCategoryForView('tickets_customer')).toBe('customer')
+  })
+
+  it('accepts the Watching view in the URL', () => {
+    expect(isInboxView('tickets_watching')).toBe(true)
   })
 
   it('navFromSearch resolves a Tickets-section view like any other view', () => {
@@ -329,6 +342,7 @@ describe('usesUnifiedInboxList', () => {
     expect(usesUnifiedInboxList({ kind: 'view', view: 'tickets_customer' })).toBe(true)
     expect(usesUnifiedInboxList({ kind: 'view', view: 'tickets_back_office' })).toBe(true)
     expect(usesUnifiedInboxList({ kind: 'view', view: 'tickets_tracker' })).toBe(true)
+    expect(usesUnifiedInboxList({ kind: 'view', view: 'tickets_watching' })).toBe(true)
   })
 
   it('keeps mentions/quinn/saved and tag/segment/custom scopes on the legacy endpoint', () => {
@@ -480,6 +494,22 @@ describe('buildInboxListParams', () => {
       ticketType: 'customer',
       linkedPairsOnly: true,
     })
+  })
+
+  it('maps Watching to what the caller watches, a watched pair as its conversation row', () => {
+    const params = buildInboxListParams(
+      { kind: 'view', view: 'tickets_watching' },
+      'open',
+      'all',
+      ''
+    )
+    expect(params).toMatchObject({
+      facet: 'open',
+      kinds: ['conversation', 'ticket'],
+      linkedPairsOnly: true,
+      watching: true,
+    })
+    expect(params.ticketType).toBeUndefined()
   })
 
   it('keeps back-office/tracker scopes ticket-only (they never link to a conversation)', () => {

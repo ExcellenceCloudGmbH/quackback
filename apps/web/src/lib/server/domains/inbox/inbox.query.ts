@@ -90,6 +90,9 @@ export interface InboxListFilter {
    *  there as its ONE item, the conversation row, alongside the ticket
    *  branch's still-standalone rows. Unset everywhere else. */
   linkedPairsOnly?: boolean
+  /** The Watching view: only what the caller watches, in both branches — the
+   *  tickets they watch, and the pair conversations whose ticket they watch. */
+  watching?: boolean
   priority?: ConversationPriority
   search?: string
   /** 'me' | 'unassigned' | a teammate principal id — shared shape with
@@ -357,6 +360,12 @@ export async function loadLinkedCustomerTicketSummaries(
   return map
 }
 
+/** The principal the Watching view filters on, or undefined when it's off
+ *  (listInboxItems returns nothing for a watching caller with no principal). */
+function watchingPrincipal(actor: Actor, filter: InboxListFilter): PrincipalId | undefined {
+  return filter.watching ? (actor.principalId ?? undefined) : undefined
+}
+
 async function fetchConversationBranch(
   actor: Actor,
   filter: InboxListFilter,
@@ -388,6 +397,7 @@ async function fetchConversationBranch(
       // branch's exclusion keeps the pair off a second row).
       hasLinkedCustomerTicket: filter.linkedPairsOnly || undefined,
       linkedTicketDue: filter.due,
+      pairTicketWatchedBy: watchingPrincipal(actor, filter),
       sort,
       before: cursor ?? undefined,
       limit,
@@ -435,6 +445,7 @@ async function fetchTicketBranch(
       companyId: filter.companyId,
       search: filter.search,
       due: filter.due,
+      watcherPrincipalId: watchingPrincipal(actor, filter),
       // Ticket rows carry no relevance score, so this branch runs its own
       // default order and the merge fuses the two by within-branch rank.
       sort: sort === 'relevance' ? 'recent' : sort,
@@ -512,10 +523,12 @@ export async function listInboxItems(
   const sort = resolveInboxSort(filter.sort, filter.search)
   const cursorState = decodeInboxCursor(filter.cursor)
 
+  // Someone with no identity watches nothing.
+  const watchesNothing = filter.watching === true && !actor.principalId
   const wantConversations = !filter.kinds || filter.kinds.includes('conversation')
   const wantTickets = !filter.kinds || filter.kinds.includes('ticket')
-  const runConversationBranch = wantConversations && canViewConversations(actor)
-  const runTicketBranch = wantTickets && canViewTickets(actor)
+  const runConversationBranch = wantConversations && !watchesNothing && canViewConversations(actor)
+  const runTicketBranch = wantTickets && !watchesNothing && canViewTickets(actor)
 
   const [conversationBranch, ticketBranch] = await Promise.all([
     runConversationBranch
