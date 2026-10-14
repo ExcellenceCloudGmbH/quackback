@@ -48,6 +48,8 @@ const webhooks = vi.hoisted(() => ({
   emitTicketCreated: vi.fn().mockResolvedValue(undefined),
   emitTicketStatusChanged: vi.fn().mockResolvedValue(undefined),
   emitTicketAssigned: vi.fn().mockResolvedValue(undefined),
+  emitTicketUpdated: vi.fn().mockResolvedValue(undefined),
+  emitTicketPriorityChanged: vi.fn().mockResolvedValue(undefined),
   // Posting a message (activity-enrichment tests) also fires these two.
   emitTicketReplied: vi.fn().mockResolvedValue(undefined),
   emitTicketNoteAdded: vi.fn().mockResolvedValue(undefined),
@@ -84,6 +86,7 @@ import {
   setTicketStatus,
   assignTicket,
   setTicketPriority,
+  setTicketTitle,
   softDeleteTicket,
   autoReopenOnRequesterReply,
   listTickets,
@@ -635,6 +638,83 @@ describe.skipIf(!fixture.available)('ticket.service (real DB, rolled back)', () 
     // Re-assigning the identical teammate changes nothing → no second hook.
     await assignTicket(created.id, { assigneePrincipalId: teammate }, actor)
     expect(webhooks.emitTicketAssigned).toHaveBeenCalledTimes(1)
+  })
+
+  it('setTicketPriority fires ticket.priority_changed on a change but stays silent on a no-op', async () => {
+    await seedSettings()
+    await seedStatuses()
+    const actor = adminActor()
+    const created = await createTicket({ type: 'customer', title: 'Triage me' }, actor)
+
+    await setTicketPriority(created.id, 'high', actor)
+    expect(webhooks.emitTicketPriorityChanged).toHaveBeenCalledTimes(1)
+    const [, ticketArg, previous] = webhooks.emitTicketPriorityChanged.mock.calls[0]
+    expect(ticketArg.priority).toBe('high')
+    expect(previous).toBe('none')
+
+    await setTicketPriority(created.id, 'high', actor)
+    expect(webhooks.emitTicketPriorityChanged).toHaveBeenCalledTimes(1)
+  })
+
+  describe('setTicketTitle', () => {
+    it('renames the ticket, trims the title and fires ticket.updated with the previous title', async () => {
+      await seedSettings()
+      await seedStatuses()
+      const actor = adminActor()
+      const created = await createTicket({ type: 'customer', title: 'Login broken' }, actor)
+
+      const dto = await setTicketTitle(created.id, '  Cannot log in with SSO  ', actor)
+      expect(dto.title).toBe('Cannot log in with SSO')
+      const [row] = await testDb.select().from(tickets).where(eq(tickets.id, created.id))
+      expect(row.title).toBe('Cannot log in with SSO')
+      expect(webhooks.emitTicketUpdated).toHaveBeenCalledTimes(1)
+      const [, ticketArg, previousTitle] = webhooks.emitTicketUpdated.mock.calls[0]
+      expect(ticketArg.title).toBe('Cannot log in with SSO')
+      expect(previousTitle).toBe('Login broken')
+    })
+
+    it('treats a rename to the current title as a no-op', async () => {
+      await seedSettings()
+      await seedStatuses()
+      const actor = adminActor()
+      const created = await createTicket({ type: 'customer', title: 'Same' }, actor)
+      realtime.publishTicketEvent.mockClear()
+
+      const dto = await setTicketTitle(created.id, 'Same ', actor)
+      expect(dto.title).toBe('Same')
+      expect(webhooks.emitTicketUpdated).not.toHaveBeenCalled()
+      expect(realtime.publishTicketEvent).not.toHaveBeenCalled()
+    })
+
+    it('refuses an empty or over-long title', async () => {
+      await seedSettings()
+      await seedStatuses()
+      const actor = adminActor()
+      const created = await createTicket({ type: 'customer', title: 'Keep me' }, actor)
+
+      await expect(setTicketTitle(created.id, '   ', actor)).rejects.toThrow(/needs a title/i)
+      await expect(setTicketTitle(created.id, 'x'.repeat(301), actor)).rejects.toThrow(
+        /at most 300/i
+      )
+      expect(webhooks.emitTicketUpdated).not.toHaveBeenCalled()
+    })
+
+    it('refuses an actor without ticket.set_status', async () => {
+      await seedSettings()
+      await seedStatuses()
+      const created = await createTicket({ type: 'customer', title: 'Guarded' }, adminActor())
+      const noPermission: Actor = { ...adminActor(), role: 'member', permissions: new Set() }
+
+      await expect(setTicketTitle(created.id, 'Renamed', noPermission)).rejects.toThrow(
+        /cannot rename/i
+      )
+    })
+
+    it('404s an unknown ticket', async () => {
+      await expect(
+        setTicketTitle(createId('ticket') as TicketId, 'Renamed', adminActor())
+      ).rejects.toBeInstanceOf(NotFoundError)
+    })
   })
 
   describe('watcher auto-subscribe (ticket subscriptions)', () => {

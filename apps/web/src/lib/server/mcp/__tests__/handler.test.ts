@@ -728,6 +728,7 @@ describe('MCP HTTP Handler', () => {
       expect(toolNames).toContain('list_tickets')
       expect(toolNames).toContain('get_ticket')
       expect(toolNames).toContain('create_ticket')
+      expect(toolNames).toContain('update_ticket')
       expect(toolNames).toContain('reply_to_ticket')
       expect(toolNames).toContain('add_ticket_note')
       expect(toolNames).toContain('link_ticket')
@@ -751,7 +752,7 @@ describe('MCP HTTP Handler', () => {
       expect(toolNames).toContain('navigate_workspace')
       expect(toolNames).toContain('get_approval')
       expect(toolNames).toContain('list_approvals')
-      expect(toolNames).toHaveLength(57)
+      expect(toolNames).toHaveLength(58)
     })
 
     it('should handle resources/list request', async () => {

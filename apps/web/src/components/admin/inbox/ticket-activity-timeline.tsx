@@ -5,6 +5,7 @@ import {
   ArrowPathIcon,
   ArrowsRightLeftIcon,
   FlagIcon,
+  PencilSquareIcon,
   TrashIcon,
   UserIcon,
   EyeIcon,
@@ -208,6 +209,18 @@ function rowContent(
               { actor }
             ),
         details: [dueFromTo(intl, formatDate, str(m.from), str(m.to))],
+      }
+    case 'title.changed':
+      return {
+        icon: PencilSquareIcon,
+        label: intl.formatMessage(
+          {
+            id: 'admin.ticketActivity.titleChanged',
+            defaultMessage: '{actor} renamed this ticket',
+          },
+          { actor }
+        ),
+        details: [fromTo(intl, str(m.from), str(m.to))],
       }
     case 'ticket.reopened':
       return {

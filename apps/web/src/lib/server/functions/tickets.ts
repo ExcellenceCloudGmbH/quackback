@@ -310,6 +310,15 @@ export const setTicketDueAtFn = createServerFn({ method: 'POST' })
     )
   })
 
+export const setTicketTitleFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ ticketId: z.string(), title: z.string().trim().min(1).max(300) }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_SET_STATUS })
+    const actor = await policyActorFromAuth(ctx)
+    const { setTicketTitle } = await import('@/lib/server/domains/tickets/ticket.service')
+    return setTicketTitle(data.ticketId as TicketId, data.title, actor)
+  })
+
 // ---------------------------------------------------------------------------
 // Bulk mutation (support platform §4.6, ticket axis — mirrors
 // bulkUpdateConversationsFn's contract in functions/conversation.ts)

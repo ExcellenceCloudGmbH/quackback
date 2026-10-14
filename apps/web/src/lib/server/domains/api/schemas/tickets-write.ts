@@ -113,6 +113,13 @@ const TicketDueBodySchema = createRequestBodySchema({
     }),
 })
 
+const TicketTitleBodySchema = createRequestBodySchema({
+  title: z.string().min(1).max(300).meta({
+    description: 'The new title, trimmed. Renaming to the current title changes nothing',
+    example: 'Cannot log in with SSO',
+  }),
+})
+
 // Standard error responses reused across the write routes.
 const writeErrorResponses = {
   400: {
@@ -297,6 +304,29 @@ registerPath('/tickets/{ticketId}/due', {
     requestBody: {
       required: true,
       content: { 'application/json': { schema: asSchema(TicketDueBodySchema) } },
+    },
+    responses: {
+      200: {
+        description: 'Updated ticket',
+        content: {
+          'application/json': { schema: createItemResponseSchema(TicketSchema, 'Updated ticket') },
+        },
+      },
+      ...writeErrorResponses,
+    },
+  },
+})
+
+// Register POST /tickets/{ticketId}/title
+registerPath('/tickets/{ticketId}/title', {
+  post: {
+    tags: ['Tickets'],
+    summary: 'Rename a ticket',
+    description: 'Change the title of a ticket. Fires the ticket.updated webhook.',
+    parameters: [ticketIdParam],
+    requestBody: {
+      required: true,
+      content: { 'application/json': { schema: asSchema(TicketTitleBodySchema) } },
     },
     responses: {
       200: {

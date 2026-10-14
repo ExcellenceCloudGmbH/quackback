@@ -5,6 +5,7 @@ const mockCreateTicket = vi.fn()
 const mockSetStatus = vi.fn()
 const mockAssign = vi.fn()
 const mockSetPriority = vi.fn()
+const mockSetTitle = vi.fn()
 const mockSendMessage = vi.fn()
 const mockAddNote = vi.fn()
 const mockSetDueAt = vi.fn()
@@ -20,6 +21,7 @@ vi.mock('@/lib/server/domains/tickets/ticket.service', () => ({
   setTicketStatus: (...a: unknown[]) => mockSetStatus(...a),
   assignTicket: (...a: unknown[]) => mockAssign(...a),
   setTicketPriority: (...a: unknown[]) => mockSetPriority(...a),
+  setTicketTitle: (...a: unknown[]) => mockSetTitle(...a),
 }))
 vi.mock('@/lib/server/domains/tickets/ticket-due.service', () => ({
   setTicketDueAt: (...a: unknown[]) => mockSetDueAt(...a),
@@ -44,6 +46,7 @@ import { Route as StatusRoute } from '../$ticketId.status'
 import { Route as AssignRoute } from '../$ticketId.assign'
 import { Route as PriorityRoute } from '../$ticketId.priority'
 import { Route as DueRoute } from '../$ticketId.due'
+import { Route as TitleRoute } from '../$ticketId.title'
 import { ValidationError } from '@/lib/shared/errors'
 
 type Handler = (a: { request: Request; params: Record<string, string> }) => Promise<Response>
@@ -420,6 +423,39 @@ describe('POST /api/v1/tickets/:id/due', () => {
     expect(res.status).toBe(400)
     expect(mockSetDueAt).not.toHaveBeenCalled()
   })
+})
+
+describe('POST /api/v1/tickets/:id/title', () => {
+  it('renames gated ticket.set_status, passing the trimmed title', async () => {
+    mockSetTitle.mockResolvedValue({ ...ticketDTO, title: 'Cannot log in with SSO' })
+    const res = await post(TitleRoute)({
+      request: jsonReq(`https://x.test/api/v1/tickets/${TICKET_ID}/title`, {
+        title: '  Cannot log in with SSO ',
+      }),
+      params: { ticketId: TICKET_ID },
+    })
+    expect(res.status).toBe(200)
+    expect(mockAuth).toHaveBeenCalledWith(expect.anything(), { permission: 'ticket.set_status' })
+    expect(mockSetTitle).toHaveBeenCalledWith(
+      TICKET_ID,
+      'Cannot log in with SSO',
+      expect.anything()
+    )
+    const body = await res.json()
+    expect(body.data.title).toBe('Cannot log in with SSO')
+  })
+
+  it.each([{ title: '' }, { title: '   ' }, { title: 'x'.repeat(301) }, {}])(
+    '400s an invalid body %j',
+    async (body) => {
+      const res = await post(TitleRoute)({
+        request: jsonReq(`https://x.test/api/v1/tickets/${TICKET_ID}/title`, body),
+        params: { ticketId: TICKET_ID },
+      })
+      expect(res.status).toBe(400)
+      expect(mockSetTitle).not.toHaveBeenCalled()
+    }
+  )
 })
 
 describe('auth propagation', () => {

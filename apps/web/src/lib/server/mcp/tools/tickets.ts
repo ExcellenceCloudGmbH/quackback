@@ -24,10 +24,10 @@ import type {
 import type { TicketSort } from '@/lib/server/domains/tickets/ticket.types'
 import type { McpAuthContext } from '../types'
 import { getBaseUrl } from '@/lib/server/config'
+import { ValidationError } from '@/lib/shared/errors'
 import { markdownToTiptapJson, contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { sanitizeTiptapContent } from '@/lib/server/sanitize-tiptap'
 import type { TicketWatcher } from '@/lib/server/domains/tickets/ticket-subscription.service'
-import { ValidationError } from '@/lib/shared/errors'
 import {
   registerTool,
   attachmentsFromFileIds,
@@ -397,6 +397,39 @@ Example: create_ticket({ type: "customer", title: "Refund not received", descrip
         priority: dto.priority,
         dueAt: dto.dueAt,
       })
+    },
+  })
+
+  registerTool<{
+    ticketId: string
+    title?: string
+    priority?: 'none' | 'low' | 'medium' | 'high' | 'urgent'
+  }>(server, auth, {
+    name: 'update_ticket',
+    permissions: [PERMISSIONS.TICKET_SET_STATUS],
+    description: `Rename a ticket, change its triage priority, or both. Pass only the fields to change; a field equal to its current value changes nothing.
+
+Example: update_ticket({ ticketId: "ticket_01abc...", title: "Cannot log in with SSO", priority: "high" })`,
+    schema: {
+      ticketId: z.string().describe('Ticket TypeID'),
+      title: z.string().trim().min(1).max(300).optional().describe('New ticket title'),
+      priority: z.enum(TICKET_PRIORITIES).optional().describe('New triage priority'),
+    },
+    annotations: { ...WRITE, idempotentHint: true },
+    scope: 'write:chat',
+    teamOnly: true,
+    handler: async (args) => {
+      if (args.title === undefined && args.priority === undefined) {
+        throw new ValidationError('VALIDATION_ERROR', 'Pass a title, a priority, or both')
+      }
+      const { getTicket, setTicketTitle, setTicketPriority } =
+        await import('@/lib/server/domains/tickets/ticket.service')
+      const ticketId = args.ticketId as TicketId
+      const actor = mcpAgentActor(auth)
+      if (args.title !== undefined) await setTicketTitle(ticketId, args.title, actor)
+      if (args.priority !== undefined) await setTicketPriority(ticketId, args.priority, actor)
+      const dto = await getTicket(ticketId)
+      return jsonResult({ id: dto.id, title: dto.title, priority: dto.priority })
     },
   })
 

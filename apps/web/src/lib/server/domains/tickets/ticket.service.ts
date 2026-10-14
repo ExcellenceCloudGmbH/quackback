@@ -58,7 +58,12 @@ import {
 import { PRIORITY_RANK } from '@/lib/shared/conversation/priority-meta'
 import { ticketDueConditionSql } from '@/lib/server/db/ticket-due'
 import { getStageLabels } from '../settings/settings.tickets'
-import { emitTicketStatusChanged, emitTicketAssigned } from './ticket.webhooks'
+import {
+  emitTicketStatusChanged,
+  emitTicketAssigned,
+  emitTicketUpdated,
+  emitTicketPriorityChanged,
+} from './ticket.webhooks'
 import { buildTicketContext, ticketToDTO, ticketRowToDTO } from './ticket.dto'
 import { recordTicketActivity, statusMovedSince } from './ticket-activity.service'
 import { safeSubscribeToTicket } from './ticket-subscription.service'
@@ -953,7 +958,8 @@ export async function setTicketPriority(
   const stamp = firstResponseStamp(existing.firstResponseAt, isTeamMember(actor.role), now)
   if (stamp) patch.firstResponseAt = stamp
   const [updated] = await db.update(tickets).set(patch).where(eq(tickets.id, id)).returning()
-  // Durable timeline record (fire-and-forget); a no-op re-set records nothing.
+  // Durable timeline record and webhook (fire-and-forget); a no-op re-set
+  // records and fires nothing.
   if (existing.priority !== priority) {
     recordTicketActivity({
       ticketId: id,
@@ -961,7 +967,50 @@ export async function setTicketPriority(
       type: 'priority.changed',
       metadata: { from: existing.priority, to: priority },
     })
+    void emitTicketPriorityChanged(actor, updated, existing.priority)
   }
+  // Realtime signal (unified inbox §3.2, M3).
+  return publishTicketUpdated(updated)
+}
+
+/** The longest ticket title, matching createTicketSchema's title bound. */
+export const TICKET_TITLE_MAX_LENGTH = 300
+
+/**
+ * Rename a ticket. Gated like priority (TICKET_SET_STATUS: the ticket's
+ * triage properties share one permission). The title is trimmed; an empty
+ * or over-long title is refused. A rename to the same title is a no-op that
+ * records no activity and fires no event, but still returns the DTO.
+ */
+export async function setTicketTitle(
+  id: TicketId,
+  title: string,
+  actor: Actor
+): Promise<TicketDTO> {
+  assertCan(actor, PERMISSIONS.TICKET_SET_STATUS, 'rename this ticket')
+  const next = title.trim()
+  if (!next) throw new ValidationError('VALIDATION_ERROR', 'A ticket needs a title')
+  if (next.length > TICKET_TITLE_MAX_LENGTH) {
+    throw new ValidationError(
+      'VALIDATION_ERROR',
+      `A ticket title can be at most ${TICKET_TITLE_MAX_LENGTH} characters`
+    )
+  }
+  const existing = await loadTicketOr404(id)
+  if (existing.title === next) return ticketRowToDTO(existing)
+
+  const [updated] = await db
+    .update(tickets)
+    .set({ title: next, updatedAt: new Date() })
+    .where(eq(tickets.id, id))
+    .returning()
+  recordTicketActivity({
+    ticketId: id,
+    principalId: actor.principalId,
+    type: 'title.changed',
+    metadata: { from: existing.title, to: next },
+  })
+  void emitTicketUpdated(actor, updated, existing.title)
   // Realtime signal (unified inbox §3.2, M3).
   return publishTicketUpdated(updated)
 }

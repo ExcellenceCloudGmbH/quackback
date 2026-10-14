@@ -18,6 +18,7 @@ import {
   assignTicketFn,
   setTicketPriorityFn,
   setTicketDueAtFn,
+  setTicketTitleFn,
   createTicketFn,
   watchTicketFn,
   unwatchTicketFn,
@@ -76,6 +77,14 @@ export function useSetTicketDueAt() {
       setTicketDueAtFn({
         data: { ticketId: vars.ticketId, dueAt: vars.dueAt ? vars.dueAt.toISOString() : null },
       }),
+    onSuccess: (ticket) => applyTicket(queryClient, ticket),
+  })
+}
+
+export function useSetTicketTitle() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (vars: { ticketId: TicketId; title: string }) => setTicketTitleFn({ data: vars }),
     onSuccess: (ticket) => applyTicket(queryClient, ticket),
   })
 }

@@ -41,6 +41,7 @@ export const TOOL_SCOPES: Readonly<Record<string, McpScope>> = {
   list_tickets: 'read:chat',
   get_ticket: 'read:chat',
   create_ticket: 'write:chat',
+  update_ticket: 'write:chat',
   reply_to_ticket: 'write:chat',
   add_ticket_note: 'write:chat',
   link_ticket: 'write:chat',

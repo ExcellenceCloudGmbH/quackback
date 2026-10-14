@@ -280,6 +280,16 @@ export const WEBHOOK_EVENT_CONFIG = [
     description: 'When someone stops watching a ticket, or a teammate removes them as a watcher',
   },
   {
+    id: 'ticket.updated',
+    label: 'Ticket Updated',
+    description: 'When a ticket is renamed',
+  },
+  {
+    id: 'ticket.priority_changed',
+    label: 'Ticket Priority Changed',
+    description: "When a ticket's priority changes",
+  },
+  {
     id: 'approval.requested',
     label: 'Approval Requested',
     description: 'When an AI assistant or API key asks a person to approve a change',

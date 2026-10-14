@@ -92,6 +92,9 @@ export const EVENT_TYPES = [
   // announce nothing.
   'ticket.subscriber_added',
   'ticket.subscriber_removed',
+  // A teammate, the API or an integration renamed the ticket.
+  'ticket.updated',
+  'ticket.priority_changed',
   'assistant.handed_off',
   'assistant.resolved',
   // Timer-driven triggers (see TIMER_DRIVEN_EVENT_TYPES above for the rationale).
@@ -587,6 +590,29 @@ export interface TicketSubscriberChangedPayload {
   reason: string | null
 }
 
+/**
+ * Payload for ticket.updated: an editable ticket field changed. Today the only
+ * such field is the title, so `changedKeys` is always `['title']`; the list
+ * leaves room for more without a new event per field (CONTRACT.md §3).
+ */
+export interface TicketUpdatedPayload {
+  ticket: EventTicketRef
+  /** The title after the change. */
+  title: string
+  /** The title before the change. */
+  previousTitle: string
+  changedKeys: string[]
+}
+
+/** Payload for ticket.priority_changed (mirrors conversation.priority_changed). */
+export interface TicketPriorityChangedPayload {
+  ticket: EventTicketRef
+  /** Ticket title, for consumer copy (the ref carries no title). */
+  title: string
+  previousPriority: string
+  newPriority: string
+}
+
 /** A message attachment carried on a ticket reply/note event. */
 export interface EventTicketMessageAttachment {
   name: string
@@ -844,6 +870,13 @@ export interface TicketSubscriberRemovedEvent extends EventBase<'ticket.subscrib
   data: TicketSubscriberChangedPayload
 }
 
+export interface TicketUpdatedEvent extends EventBase<'ticket.updated'> {
+  data: TicketUpdatedPayload
+}
+export interface TicketPriorityChangedEvent extends EventBase<'ticket.priority_changed'> {
+  data: TicketPriorityChangedPayload
+}
+
 export interface AssistantHandedOffEvent extends EventBase<'assistant.handed_off'> {
   data: AssistantHandedOffPayload
 }
@@ -956,6 +989,8 @@ export type EventData =
   | TicketOverdueEvent
   | TicketSubscriberAddedEvent
   | TicketSubscriberRemovedEvent
+  | TicketUpdatedEvent
+  | TicketPriorityChangedEvent
   | AssistantHandedOffEvent
   | AssistantResolvedEvent
   | ConversationCustomerUnresponsiveEvent

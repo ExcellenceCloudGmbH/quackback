@@ -33,6 +33,8 @@ import {
   dispatchTicketDueChanged,
   dispatchTicketSubscriberAdded,
   dispatchTicketSubscriberRemoved,
+  dispatchTicketUpdated,
+  dispatchTicketPriorityChanged,
 } from '@/lib/server/events/dispatch'
 import { contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { logger } from '@/lib/server/logger'
@@ -172,6 +174,36 @@ export async function emitTicketAssigned(
       previousPrincipalId,
       ticket.assigneeTeamId ?? null,
       previousTeamId
+    )
+  )
+}
+
+/** The ticket was renamed (setTicketTitle). Only fired on an actual change. */
+export async function emitTicketUpdated(
+  actor: Actor,
+  ticket: Ticket,
+  previousTitle: string
+): Promise<void> {
+  await safe('ticket.updated', () =>
+    dispatchTicketUpdated(toEventActor(actor), ticketRef(ticket), ticket.title, previousTitle, [
+      'title',
+    ])
+  )
+}
+
+/** The triage priority moved (setTicketPriority). Only fired on an actual change. */
+export async function emitTicketPriorityChanged(
+  actor: Actor,
+  ticket: Ticket,
+  previousPriority: string
+): Promise<void> {
+  await safe('ticket.priority_changed', () =>
+    dispatchTicketPriorityChanged(
+      toEventActor(actor),
+      ticketRef(ticket),
+      ticket.title,
+      previousPriority,
+      ticket.priority
     )
   )
 }

@@ -315,6 +315,18 @@ export const P = {
     subscriberPrincipalId: id,
     reason: nullableStr,
   }),
+  'ticket.updated': z.looseObject({
+    ticket: ticketRef,
+    title: z.string(),
+    previousTitle: z.string(),
+    changedKeys: z.array(z.string()),
+  }),
+  'ticket.priority_changed': z.looseObject({
+    ticket: ticketRef,
+    title: z.string(),
+    previousPriority: z.string(),
+    newPriority: z.string(),
+  }),
   // assistant + sla
   'assistant.handed_off': z.looseObject({ conversationId: id, reason: z.string() }),
   'assistant.resolved': z.looseObject({ conversationId: id, outcome: z.string() }),

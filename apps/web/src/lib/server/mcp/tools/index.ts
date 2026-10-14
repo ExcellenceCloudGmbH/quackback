@@ -24,8 +24,8 @@
  *                    reply_to_conversation, suggest_post, share_post,
  *                    set_conversation_status
  * - tickets.ts       list_tickets, get_ticket, create_ticket,
- *                    reply_to_ticket, add_ticket_note, link_ticket,
- *                    unlink_ticket, set_ticket_due_date,
+ *                    update_ticket, reply_to_ticket, add_ticket_note,
+ *                    link_ticket, unlink_ticket, set_ticket_due_date,
  *                    list_ticket_watchers, watch_ticket,
  *                    unwatch_ticket, add_ticket_watcher,
  *                    remove_ticket_watcher, list_ticket_participants,

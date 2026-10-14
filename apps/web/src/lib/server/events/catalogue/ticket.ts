@@ -80,3 +80,9 @@ export const ticketSubscriberRemoved = decl(
   { webhook: true },
   S
 )
+// The title was renamed. `changedKeys` leaves room for further editable
+// ticket fields without a new event per field. Webhook-only: the teammate
+// who renamed it already knows, and the inbox re-renders off realtime.
+export const ticketUpdated = decl('ticket.updated', 'ticket', { webhook: true }, S)
+// Triage priority moved (mirrors conversation.priority_changed).
+export const ticketPriorityChanged = decl('ticket.priority_changed', 'ticket', { webhook: true }, S)

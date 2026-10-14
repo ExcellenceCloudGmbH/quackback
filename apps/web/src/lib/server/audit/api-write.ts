@@ -103,6 +103,7 @@ export const API_ROUTE_SEGMENTS: ReadonlySet<string> = new Set([
   'tags',
   'ticket-statuses',
   'tickets',
+  'title',
   'undo',
   'unlink',
   'updates',

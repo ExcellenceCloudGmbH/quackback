@@ -316,6 +316,8 @@ export const UNTRUSTED_TOOL_FIELDS = {
   list_tickets: ['tickets[].title'],
   get_ticket: ['ticket.title', ...THREAD_MESSAGES],
   create_ticket: NONE,
+  // The title may be a requester's own, unless this call just renamed it.
+  update_ticket: ['title'],
   reply_to_ticket: NONE,
   add_ticket_note: NONE,
   link_ticket: NONE,

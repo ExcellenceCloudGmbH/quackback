@@ -714,6 +714,35 @@ export async function dispatchTicketDueChanged(
   })
 }
 
+/** A ticket field was edited (today: the title). */
+export async function dispatchTicketUpdated(
+  actor: EventActor,
+  ticket: EventTicketRef,
+  title: string,
+  previousTitle: string,
+  changedKeys: string[]
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.updated',
+    data: { ticket, title, previousTitle, changedKeys },
+  })
+}
+
+export async function dispatchTicketPriorityChanged(
+  actor: EventActor,
+  ticket: EventTicketRef,
+  title: string,
+  previousPriority: string,
+  newPriority: string
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.priority_changed',
+    data: { ticket, title, previousPriority, newPriority },
+  })
+}
+
 export async function dispatchTicketNoteAdded(
   actor: EventActor,
   ticket: EventTicketRef,

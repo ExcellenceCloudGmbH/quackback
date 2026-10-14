@@ -7,11 +7,15 @@ const mockCreateTicket = vi.fn()
 const mockListMessages = vi.fn()
 const mockSendMessage = vi.fn()
 const mockAddNote = vi.fn()
+const mockSetTitle = vi.fn()
+const mockSetPriority = vi.fn()
 
 vi.mock('@/lib/server/domains/tickets/ticket.service', () => ({
   listTickets: (...a: unknown[]) => mockListTickets(...a),
   getTicket: (...a: unknown[]) => mockGetTicket(...a),
   createTicket: (...a: unknown[]) => mockCreateTicket(...a),
+  setTicketTitle: (...a: unknown[]) => mockSetTitle(...a),
+  setTicketPriority: (...a: unknown[]) => mockSetPriority(...a),
 }))
 vi.mock('@/lib/server/domains/tickets/ticket-message.service', () => ({
   listTicketMessages: (...a: unknown[]) => mockListMessages(...a),
@@ -124,8 +128,39 @@ describe('ticket MCP tools', () => {
       'set_ticket_due_date',
       'unlink_ticket',
       'unwatch_ticket',
+      'update_ticket',
       'watch_ticket',
     ])
+  })
+
+  it('update_ticket renames and re-prioritizes through the gated services, then reads back', async () => {
+    mockGetTicket.mockResolvedValue({ ...ticketDTO, title: 'SSO login fails', priority: 'urgent' })
+    const out = await collect(teamAuth).get('update_ticket')!({
+      ticketId: 'ticket_1',
+      title: 'SSO login fails',
+      priority: 'urgent',
+    })
+    expect(mockSetTitle).toHaveBeenCalledWith('ticket_1', 'SSO login fails', expect.anything())
+    expect(mockSetPriority).toHaveBeenCalledWith('ticket_1', 'urgent', expect.anything())
+    expect(mockSetTitle.mock.calls[0][2].principalId).toBe('principal_key')
+    const body = parse(out)
+    expect(body).toMatchObject({ id: 'ticket_1', title: 'SSO login fails', priority: 'urgent' })
+    // The title can be a requester's own, so the result marks it.
+    expect(body.untrusted.fields).toEqual(['title'])
+  })
+
+  it('update_ticket changes only the fields it is given', async () => {
+    mockGetTicket.mockResolvedValue(ticketDTO)
+    await collect(teamAuth).get('update_ticket')!({ ticketId: 'ticket_1', priority: 'low' })
+    expect(mockSetTitle).not.toHaveBeenCalled()
+    expect(mockSetPriority).toHaveBeenCalledTimes(1)
+  })
+
+  it('update_ticket refuses a call with nothing to change', async () => {
+    const out = await collect(teamAuth).get('update_ticket')!({ ticketId: 'ticket_1' })
+    expect(out.isError).toBe(true)
+    expect(mockSetTitle).not.toHaveBeenCalled()
+    expect(mockSetPriority).not.toHaveBeenCalled()
   })
 
   it('list_tickets maps filters, passes an actor, and returns a compact shape', async () => {
