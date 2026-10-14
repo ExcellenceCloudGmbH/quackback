@@ -44,6 +44,15 @@ vi.mock('@/lib/server/domains/tickets/ticket-watchers.service', () => ({
   removeTicketWatcher: (...a: unknown[]) => mockRemoveWatcher(...a),
 }))
 
+const mockListParticipants = vi.fn()
+const mockAddParticipant = vi.fn()
+const mockRemoveParticipant = vi.fn()
+vi.mock('@/lib/server/domains/tickets/ticket-sharing.service', () => ({
+  listTicketParticipants: (...a: unknown[]) => mockListParticipants(...a),
+  addTicketParticipantByEmail: (...a: unknown[]) => mockAddParticipant(...a),
+  removeTicketParticipant: (...a: unknown[]) => mockRemoveParticipant(...a),
+}))
+
 import { registerTicketTools } from '../tickets'
 import type { McpAuthContext } from '../../types'
 
@@ -101,12 +110,15 @@ describe('ticket MCP tools', () => {
     const handlers = collect(teamAuth)
     expect([...handlers.keys()].sort()).toEqual([
       'add_ticket_note',
+      'add_ticket_participant',
       'add_ticket_watcher',
       'create_ticket',
       'get_ticket',
       'link_ticket',
+      'list_ticket_participants',
       'list_ticket_watchers',
       'list_tickets',
+      'remove_ticket_participant',
       'remove_ticket_watcher',
       'reply_to_ticket',
       'set_ticket_due_date',
@@ -658,6 +670,71 @@ describe('ticket MCP tools', () => {
       expect(mockListTickets.mock.calls[0][0]).toMatchObject({
         watcherPrincipalId: 'principal_key',
       })
+    })
+  })
+
+  describe('participants', () => {
+    beforeEach(() =>
+      mockListParticipants.mockResolvedValue([
+        {
+          principalId: 'principal_c',
+          displayName: 'Cole',
+          email: 'cole@example.com',
+          avatarUrl: null,
+          addedByPrincipalId: 'principal_r',
+        },
+      ])
+    )
+
+    it('list_ticket_participants returns who the ticket is shared with, as outside text', async () => {
+      const out = await collect(teamAuth).get('list_ticket_participants')!({ ticketId: 'ticket_1' })
+      const body = parse(out)
+      expect(body.untrusted.fields).toEqual(['participants[].displayName', 'participants[].email'])
+      expect(body).toMatchObject({
+        ticketId: 'ticket_1',
+        participants: [
+          { principalId: 'principal_c', displayName: 'Cole', email: 'cole@example.com' },
+        ],
+      })
+    })
+
+    it('add_ticket_participant and remove_ticket_participant name the caller', async () => {
+      mockAddParticipant.mockResolvedValue({ principalId: 'principal_c', added: true })
+      mockRemoveParticipant.mockResolvedValue({ removed: true })
+      const handlers = collect(teamAuth)
+      await handlers.get('add_ticket_participant')!({
+        ticketId: 'ticket_1',
+        email: 'cole@example.com',
+      })
+      await handlers.get('remove_ticket_participant')!({
+        ticketId: 'ticket_1',
+        principalId: 'principal_c',
+      })
+      expect(mockAddParticipant).toHaveBeenCalledWith(
+        'ticket_1',
+        'cole@example.com',
+        expect.objectContaining({ principalId: 'principal_key' }),
+        { actorDisplayName: 'Agent' }
+      )
+      expect(mockRemoveParticipant).toHaveBeenCalledWith(
+        'ticket_1',
+        'principal_c',
+        expect.anything(),
+        { actorDisplayName: 'Agent' }
+      )
+    })
+
+    it('surfaces a ticket that cannot be shared as a tool error', async () => {
+      const { ValidationError } = await import('@/lib/shared/errors')
+      mockAddParticipant.mockRejectedValue(
+        new ValidationError('TICKET_NOT_SHAREABLE', 'Only a customer ticket can be shared')
+      )
+      const out = await collect(teamAuth).get('add_ticket_participant')!({
+        ticketId: 'ticket_1',
+        email: 'cole@example.com',
+      })
+      expect(out.isError).toBe(true)
+      expect((out.content[0] as { text: string }).text).toContain('TICKET_NOT_SHAREABLE')
     })
   })
 })

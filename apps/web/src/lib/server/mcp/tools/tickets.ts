@@ -2,9 +2,10 @@
  * Support-platform ticket tools: read the ticket list + a single ticket with its
  * thread, and write (open a ticket, reply, add an internal note, link/unlink a
  * tracker, set the shared due date), plus the ticket's watchers (list,
- * watch/unwatch yourself, add/remove a teammate). Team-only agent surfaces
- * gated on the chat scopes — tickets share the conversation scopes (see
- * api-key-scopes): reads need read:chat, writes need write:chat.
+ * watch/unwatch yourself, add/remove a teammate) and the customers it is shared
+ * with (list, share by email, stop sharing). Team-only agent surfaces gated on
+ * the chat scopes — tickets share the conversation scopes (see api-key-scopes):
+ * reads need read:chat, writes need write:chat.
  * Status changes + assignment need an id-discovery tool first; a later slice.
  */
 
@@ -103,6 +104,21 @@ async function watchersResult(ticketId: TicketId, auth: McpAuthContext) {
     await import('@/lib/server/domains/tickets/ticket-watchers.service')
   const watchers = await listWatchersOfTicket(ticketId, mcpAgentActor(auth))
   return jsonResult({ ticketId, watchers: watchers.map(watcherResult) })
+}
+
+/** The customers a ticket is shared with: names and the address it was shared with. */
+async function participantsResult(ticketId: TicketId, auth: McpAuthContext) {
+  const { listTicketParticipants } =
+    await import('@/lib/server/domains/tickets/ticket-sharing.service')
+  const participants = await listTicketParticipants(ticketId, mcpAgentActor(auth))
+  return jsonResult({
+    ticketId,
+    participants: participants.map((p) => ({
+      principalId: p.principalId,
+      displayName: p.displayName,
+      email: p.email,
+    })),
+  })
 }
 
 export function registerTicketTools(server: McpServer, auth: McpAuthContext) {
@@ -643,6 +659,73 @@ Example: remove_ticket_watcher({ ticketId: "ticket_01abc...", principalId: "prin
         mcpAgentActor(auth)
       )
       return watchersResult(args.ticketId as TicketId, auth)
+    },
+  })
+
+  registerTool<{ ticketId: string }>(server, auth, {
+    name: 'list_ticket_participants',
+    permissions: [PERMISSIONS.TICKET_VIEW],
+    description: `List the customers a customer ticket is shared with, besides its requester. They read and reply on the ticket's thread from the portal and the widget, and follow it.
+
+Example: list_ticket_participants({ ticketId: "ticket_01abc..." })`,
+    schema: { ticketId: z.string().describe('Ticket TypeID') },
+    annotations: READ_ONLY,
+    scope: 'read:chat',
+    teamOnly: true,
+    handler: async (args) => participantsResult(args.ticketId as TicketId, auth),
+  })
+
+  registerTool<{ ticketId: string; email: string }>(server, auth, {
+    name: 'add_ticket_participant',
+    permissions: [PERMISSIONS.TICKET_REPLY],
+    description: `Share a customer ticket with someone by email: they can read and reply on its thread from the portal and the widget, they follow it, and they get an email saying it was shared. Only a customer ticket with a conversation thread can be shared (TICKET_NOT_SHAREABLE), with up to 20 people. Returns the participants.
+
+Example: add_ticket_participant({ ticketId: "ticket_01abc...", email: "grace@example.com" })`,
+    schema: {
+      ticketId: z.string().describe('Ticket TypeID'),
+      email: z.string().email().describe("The person's email address"),
+    },
+    annotations: WRITE,
+    scope: 'write:chat',
+    teamOnly: true,
+    handler: async (args) => {
+      const { addTicketParticipantByEmail } =
+        await import('@/lib/server/domains/tickets/ticket-sharing.service')
+      await addTicketParticipantByEmail(
+        args.ticketId as TicketId,
+        args.email,
+        mcpAgentActor(auth),
+        {
+          actorDisplayName: auth.name,
+        }
+      )
+      return participantsResult(args.ticketId as TicketId, auth)
+    },
+  })
+
+  registerTool<{ ticketId: string; principalId: string }>(server, auth, {
+    name: 'remove_ticket_participant',
+    permissions: [PERMISSIONS.TICKET_REPLY],
+    description: `Stop sharing a customer ticket with someone: they lose its thread and stop following it. Returns the participants.
+
+Example: remove_ticket_participant({ ticketId: "ticket_01abc...", principalId: "principal_01abc..." })`,
+    schema: {
+      ticketId: z.string().describe('Ticket TypeID'),
+      principalId: z.string().describe("The participant's principal TypeID"),
+    },
+    annotations: WRITE,
+    scope: 'write:chat',
+    teamOnly: true,
+    handler: async (args) => {
+      const { removeTicketParticipant } =
+        await import('@/lib/server/domains/tickets/ticket-sharing.service')
+      await removeTicketParticipant(
+        args.ticketId as TicketId,
+        args.principalId as PrincipalId,
+        mcpAgentActor(auth),
+        { actorDisplayName: auth.name }
+      )
+      return participantsResult(args.ticketId as TicketId, auth)
     },
   })
 }

@@ -317,6 +317,10 @@ export const UNTRUSTED_TOOL_FIELDS = {
   unwatch_ticket: [TICKET_WATCHER_NAMES],
   add_ticket_watcher: [TICKET_WATCHER_NAMES],
   remove_ticket_watcher: [TICKET_WATCHER_NAMES],
+  // Customers chose their own names and addresses.
+  list_ticket_participants: ['participants[].displayName', 'participants[].email'],
+  add_ticket_participant: ['participants[].displayName', 'participants[].email'],
+  remove_ticket_participant: ['participants[].displayName', 'participants[].email'],
 
   upload_file: NONE,
   // Taken from the Origin or Referer of whichever page loaded the widget.
