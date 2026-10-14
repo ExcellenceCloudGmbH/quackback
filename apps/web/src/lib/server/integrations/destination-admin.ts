@@ -32,6 +32,7 @@ import { withIntegrationReadAuth, getIntegrationAuth } from './token-refresh'
 import { recordIntegrationLastError } from './webhook-registration'
 import { syncScopeFor } from './sync/identity'
 import {
+  destinationConfig,
   destinationTarget,
   ensureDestinations,
   findDestination,
@@ -194,6 +195,7 @@ export async function addDestination(input: {
         kind: input.kind,
         externalId: item.id,
         externalKey: item.key ?? null,
+        config: (await multiple.initialConfig?.(integration.id)) ?? {},
       })
       .returning()
     created = rows[0]
@@ -216,7 +218,7 @@ export async function addDestination(input: {
   await clearMappingCache()
 
   const webhookWanted = multiple.webhookWanted
-    ? await multiple.webhookWanted(config)
+    ? await multiple.webhookWanted(destinationConfig(integration, created))
     : !!config.statusSyncEnabled
   if (webhookWanted) {
     try {
@@ -329,7 +331,8 @@ export async function updateDestinationConfig(
   patch: Record<string, unknown>
 ): Promise<IntegrationDestination> {
   const { destination, integration } = await loadDestination(destinationId)
-  const parsed = multipleOf(integration.integrationType).configSchema.safeParse(patch)
+  const multiple = multipleOf(integration.integrationType)
+  const parsed = multiple.configSchema.safeParse(patch)
   if (!parsed.success)
     throw new ValidationError('INVALID_DESTINATION_CONFIG', 'These settings are not valid here')
   const [updated] = await db
@@ -341,5 +344,6 @@ export async function updateDestinationConfig(
     .where(eq(integrationDestinations.id, destination.id))
     .returning()
   await clearMappingCache()
+  await multiple.onConfigChanged?.(updated)
   return updated
 }

@@ -156,6 +156,58 @@ describe.skipIf(!fixture.available)('github channel ingest (real DB, rolled back
     expect(thread.externalThreadKey).toBe(githubThreadKey('acme/api', 201))
   })
 
+  // Each repository chooses whether its issues come into the inbox; the
+  // channel connection is the switch over all of them.
+  describe('per repository', () => {
+    const opened = (
+      integration: { id: string; config: unknown },
+      destination?: { externalId: string; enabled: boolean; config: Record<string, unknown> }
+    ) =>
+      ingestGitHubChannelEvent({
+        body: JSON.stringify(issuePayload({})),
+        eventName: 'issues',
+        integration: { id: integration.id as IntegrationId, config: integration.config },
+        destination,
+      })
+    const count = async () => (await testDb.select().from(conversations)).length
+    const repo = (config: Record<string, unknown>, enabled = true) => ({
+      externalId: 'acme/api',
+      enabled,
+      config,
+    })
+
+    it('ingests a repository that brings its issues in', async () => {
+      const { integration } = await seedConnection()
+      await opened(integration, repo({ inboundMode: 'conversations' }))
+      expect(await count()).toBe(1)
+    })
+
+    it('ignores a repository that does not, or that only sends', async () => {
+      const { integration } = await seedConnection()
+      await opened(integration, repo({}))
+      await opened(integration, repo({ inboundMode: 'off' }))
+      await opened(integration, repo({ inboundMode: 'conversations', direction: 'outbound' }))
+      await opened(integration, repo({ inboundMode: 'conversations' }, false))
+      expect(await count()).toBe(0)
+    })
+
+    it('ignores every repository while the channel is off', async () => {
+      const { integration, account } = await seedConnection()
+      await testDb
+        .update(channelAccounts)
+        .set({ deletedAt: new Date() })
+        .where(eq(channelAccounts.id, account.id))
+      await opened(integration, repo({ inboundMode: 'conversations' }))
+      expect(await count()).toBe(0)
+    })
+
+    it('ingests a legacy delivery that was not routed to a repository row', async () => {
+      const { integration } = await seedConnection()
+      await opened(integration)
+      expect(await count()).toBe(1)
+    })
+  })
+
   it('ignores pull-request payloads that reuse the issues event', async () => {
     const { integration } = await seedConnection()
     const payload = issuePayload({}) as Record<string, unknown>

@@ -22,6 +22,7 @@ import { integrations, integrationDestinations, eq } from '@/lib/server/db'
 import { encryptSecrets } from '../encryption'
 import {
   destinationConfig,
+  destinationServes,
   ensureDestinations,
   findDestination,
   findInboundDestination,
@@ -205,6 +206,17 @@ describe.skipIf(!fixture.available)('integration destinations', () => {
       channelId: 'acme/renamed',
       statusSyncEnabled: true,
     })
+  })
+
+  it('lets a conversation talk to its repository only while it is still synced and on', async () => {
+    const legacy = await seedGitHub({ channelId: 'acme/app' })
+    // No rows yet: the connection's one repository, as before.
+    expect(await destinationServes(legacy, 'acme/app')).toBe(true)
+    await addRepo(legacy.id, { externalId: 'acme/app' })
+    const off = await addRepo(legacy.id, { externalId: 'acme/off', enabled: false })
+    expect(await destinationServes(legacy, 'ACME/App')).toBe(true)
+    expect(await destinationServes(legacy, off.externalId)).toBe(false)
+    expect(await destinationServes(legacy, 'acme/removed')).toBe(false)
   })
 
   it('goes with the connection when it is deleted', async () => {

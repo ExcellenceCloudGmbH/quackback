@@ -34,6 +34,7 @@ const repo: IntegrationDestinationSummary = {
   externalId: 'acme/app',
   enabled: true,
   direction: 'both',
+  inboundMode: 'off',
   isDefault: false,
   webhookRegistered: true,
   webhookEvents: ['issues'],
@@ -103,6 +104,17 @@ describe('GitHubRepositoryCard', () => {
     expect(mocks.setEnabled.mock.calls[0][0]).toEqual({
       destinationId: 'integration_destination_1',
       enabled: false,
+    })
+  })
+
+  it('brings the repository into the inbox', () => {
+    renderCard(repo)
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Bring issues from acme/app into the inbox' })
+    )
+    expect(mocks.setConfig.mock.calls[0][0]).toEqual({
+      destinationId: 'integration_destination_1',
+      config: { inboundMode: 'conversations' },
     })
   })
 

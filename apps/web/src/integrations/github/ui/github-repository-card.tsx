@@ -5,7 +5,8 @@
  * webhook is registered, when it last delivered and the error its last
  * registration hit, with a repair that registers the webhook again. Below
  * that, its own switches: on or off (off keeps the webhook, so switching back
- * is immediate), which way it syncs, and removing it.
+ * is immediate), whether its issues come into the inbox, which way it syncs,
+ * and removing it.
  */
 import { useState } from 'react'
 import { FormattedMessage, useIntl } from 'react-intl'
@@ -189,6 +190,31 @@ export function GitHubRepositoryCard({ destination }: GitHubRepositoryCardProps)
           />
           <span aria-hidden>
             <FormattedMessage id="admin.githubRepository.enabled" defaultMessage="Sync on" />
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-xs">
+          <Switch
+            checked={destination.inboundMode === 'conversations'}
+            disabled={setConfig.isPending}
+            onCheckedChange={(on) =>
+              setConfig.mutate(
+                {
+                  destinationId: destination.id,
+                  config: { inboundMode: on ? 'conversations' : 'off' },
+                },
+                { onError: saveFailed }
+              )
+            }
+            aria-label={intl.formatMessage(
+              {
+                id: 'admin.githubChannel.repositoryInbox',
+                defaultMessage: 'Bring issues from {repository} into the inbox',
+              },
+              { repository: destination.externalId }
+            )}
+          />
+          <span aria-hidden>
+            <FormattedMessage id="admin.githubRepository.inbox" defaultMessage="Inbox" />
           </span>
         </div>
         <Select

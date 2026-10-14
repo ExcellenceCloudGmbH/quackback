@@ -294,11 +294,27 @@ export interface IntegrationDefinition {
         Partial<import('@/lib/server/db').IntegrationDestinationConfig>
       >
       /**
-       * Whether anything listens to the destinations' webhooks, so a newly
-       * added destination should get one. Defaults to the connection's
-       * status-sync switch.
+       * Whether anything listens to one destination's webhook, so a newly
+       * added destination should get one. Receives that destination's config
+       * (`destinationConfig`: the connection's config with the destination's
+       * settings over it). Defaults to the connection's status-sync switch.
        */
       webhookWanted?: (config: Record<string, unknown>) => Promise<boolean>
+      /**
+       * The settings a destination starts with when it is added or created
+       * for a legacy connection. Defaults to none.
+       */
+      initialConfig?: (
+        integrationId: import('@quackback/ids').IntegrationId
+      ) => Promise<Partial<import('@/lib/server/db').IntegrationDestinationConfig>>
+      /**
+       * Called after a destination's settings change, so the provider can act
+       * on them (GitHub: resubscribe that repository's webhook). Best effort:
+       * a failure is the provider's to record.
+       */
+      onConfigChanged?: (
+        destination: import('./destinations').IntegrationDestination
+      ) => Promise<void>
     }
   }
   appHooks?: {

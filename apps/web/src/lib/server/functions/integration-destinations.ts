@@ -62,6 +62,8 @@ export interface IntegrationDestinationSummary {
   enabled: boolean
   /** Which way it syncs (`both` unless its settings say otherwise). */
   direction: DestinationDirection
+  /** GitHub: whether its issues and comments come into the inbox. */
+  inboundMode: 'off' | 'conversations'
   /** The connection's default destination (`config.channelId`). */
   isDefault: boolean
   webhookRegistered: boolean
@@ -128,6 +130,7 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
       externalId: destination.externalId,
       enabled: destination.enabled,
       direction: destinationDirection(destination),
+      inboundMode: destination.config.inboundMode === 'conversations' ? 'conversations' : 'off',
       isDefault:
         typeof defaultId === 'string' &&
         defaultId.toLowerCase() === destination.externalId.toLowerCase(),

@@ -161,6 +161,25 @@ export async function outboundAllowed(
 }
 
 /**
+ * Whether a conversation that came from `channelId` may still talk to it: a
+ * connection without destination rows serves its one repository as before;
+ * otherwise the repository must still be synced and switched on. Replies on
+ * the inbox go to the repository the conversation came from, whatever its
+ * direction.
+ */
+export async function destinationServes(
+  integration: Pick<IntegrationRow, 'id' | 'integrationType'>,
+  channelId: string
+): Promise<boolean> {
+  const multiple = (await definitionOf(integration.integrationType))?.destination?.multiple
+  if (!multiple) return true
+  const rows = await listDestinations(integration.id, multiple.kind)
+  if (rows.length === 0) return true
+  const name = channelId.toLowerCase()
+  return rows.some((row) => row.enabled && row.externalId.toLowerCase() === name)
+}
+
+/**
  * Where new work created on request goes: the destination asked for, else
  * the default one (`config.channelId`), else the only one that takes new
  * work. Refuses a destination that is switched off or inbound-only, and asks
@@ -492,15 +511,17 @@ export async function ensureDestinations(
       ? config.externalWebhookId
       : null
 
-  await db
-    .insert(integrationDestinations)
-    .values({
-      integrationId: integration.id,
-      kind: multiple.kind,
-      externalId: channelId,
-      externalWebhookId: legacyHookId,
-    })
-    .onConflictDoNothing()
+  if (!(await findDestination(integration.id, multiple.kind, { externalId: channelId })))
+    await db
+      .insert(integrationDestinations)
+      .values({
+        integrationId: integration.id,
+        kind: multiple.kind,
+        externalId: channelId,
+        externalWebhookId: legacyHookId,
+        config: (await multiple.initialConfig?.(integration.id)) ?? {},
+      })
+      .onConflictDoNothing()
 
   const legacySecret = typeof config.webhookSecret === 'string' ? config.webhookSecret : null
   if (!legacySecret && !legacyHookId) return

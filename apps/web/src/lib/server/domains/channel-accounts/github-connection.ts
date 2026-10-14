@@ -1,7 +1,10 @@
 /**
  * GitHub inbox-channel connection account. Enabled = a live
  * (not soft-deleted) `channel_accounts` row with role=connection and
- * channel=github. Secrets stay on the integrations row.
+ * channel=github. Secrets stay on the integrations row. Which repositories
+ * bring their issues in is per repository (`inboundMode` on its
+ * `integration_destinations` row); the connection is the one switch over all
+ * of them.
  */
 import {
   db,
@@ -11,9 +14,15 @@ import {
   sql,
   channelAccounts,
   integrations,
+  integrationDestinations,
   type ChannelAccount,
 } from '@/lib/server/db'
 import type { IntegrationId, TeamId } from '@quackback/ids'
+import {
+  destinationReceives,
+  listDestinations,
+  type IntegrationDestination,
+} from '@/lib/server/integrations/destinations'
 import { defaultTeamId } from './channel-account.service'
 import { logger } from '@/lib/server/logger'
 
@@ -130,8 +139,70 @@ export async function disableGitHubConnectionAccount(): Promise<void> {
     .where(eq(channelAccounts.id, existing.id))
 }
 
-export function githubWebhookEvents(inboxEnabled: boolean): string[] {
-  return inboxEnabled ? ['issues', 'issue_comment'] : ['issues']
+/**
+ * Whether a repository brings its issues and comments into the inbox. Only
+ * acted on while the inbox channel connection is live. Further modes (such as
+ * opening tickets) join this union as they land.
+ */
+export const GITHUB_INBOUND_MODES = ['off', 'conversations'] as const
+export type GitHubInboundMode = (typeof GITHUB_INBOUND_MODES)[number]
+
+export function githubInboundMode(
+  config: { inboundMode?: unknown } | null | undefined
+): GitHubInboundMode {
+  return config?.inboundMode === 'conversations' ? 'conversations' : 'off'
+}
+
+/**
+ * Whether a delivery from this repository opens or updates inbox
+ * conversations: it brings its issues in, and is switched on and not
+ * send-only. The channel connection being live is checked separately.
+ */
+export function githubRepositoryIngests(
+  repository: Pick<IntegrationDestination, 'config' | 'enabled'>
+): boolean {
+  return githubInboundMode(repository.config) === 'conversations' && destinationReceives(repository)
+}
+
+/**
+ * The events one repository's hook subscribes to: `issues` always (status
+ * sync, issue lifecycle), `issue_comment` only while the inbox channel is
+ * live and this repository brings its issues in. The one place a feature
+ * that needs another event per repository adds it.
+ */
+export function githubWebhookEvents(
+  repository: { inboundMode?: unknown },
+  opts: { inboxLive: boolean }
+): string[] {
+  return opts.inboxLive && githubInboundMode(repository) === 'conversations'
+    ? ['issues', 'issue_comment']
+    : ['issues']
+}
+
+/**
+ * Turning the inbox channel on with no repository bringing issues in opts
+ * the default repository in (the oldest one when there is no default), so a
+ * single-repository install keeps working with the one switch it always had.
+ */
+export async function optInDefaultGitHubRepository(integration: {
+  id: IntegrationId
+  config: unknown
+}): Promise<void> {
+  const repositories = await listDestinations(integration.id, 'repo')
+  if (repositories.some((r) => githubInboundMode(r.config) === 'conversations')) return
+  const channelId = (integration.config as Record<string, unknown> | null)?.channelId
+  const chosen =
+    repositories.find(
+      (r) => typeof channelId === 'string' && r.externalId.toLowerCase() === channelId.toLowerCase()
+    ) ?? repositories[0]
+  if (!chosen) return
+  await db
+    .update(integrationDestinations)
+    .set({
+      config: sql`${integrationDestinations.config} || '{"inboundMode": "conversations"}'::jsonb`,
+      updatedAt: new Date(),
+    })
+    .where(eq(integrationDestinations.id, chosen.id))
 }
 
 export async function getActiveGitHubIntegration() {
@@ -141,13 +212,14 @@ export async function getActiveGitHubIntegration() {
 }
 
 /**
- * Ensure every enabled repository's hook listens for the events implied by
- * current inbox state: patch a registered hook, register one where missing.
- * Each repository's failure is recorded on that repository; any failure also
+ * Bring every enabled repository's hook (or only `destinationId`'s) in line
+ * with the events it needs (see `githubWebhookEvents`): patch a registered
+ * hook, register one where something listens and none exists. Each
+ * repository's failure is recorded on that repository; any failure also
  * writes `integrations.lastError` and rethrows so the caller can surface
- * Attention without rolling back the account toggle.
+ * Attention without rolling back the switch that asked for it.
  */
-export async function syncGitHubWebhookEvents(): Promise<void> {
+export async function syncGitHubWebhookEvents(destinationId?: string): Promise<void> {
   const integration = await getActiveGitHubIntegration()
   if (!integration?.secrets) return
 
@@ -163,7 +235,6 @@ export async function syncGitHubWebhookEvents(): Promise<void> {
   } = await import('@/lib/server/integrations/webhook-registration')
   const {
     ensureDestinations,
-    listDestinations,
     readDestinationSecret,
     writeDestinationWebhook,
     registerDestinationWebhook,
@@ -173,13 +244,17 @@ export async function syncGitHubWebhookEvents(): Promise<void> {
   const { patchGitHubWebhook } = await import('@/integrations/github/server/webhook-registration')
 
   await ensureDestinations(integration)
-  const repositories = (await listDestinations(integration.id, 'repo')).filter((r) => r.enabled)
+  const repositories = (await listDestinations(integration.id, 'repo')).filter(
+    (r) => r.enabled && (!destinationId || r.id === destinationId)
+  )
   if (repositories.length === 0) return
 
-  const events = githubWebhookEvents(!!(await getLiveGitHubConnectionAccount()))
+  const inboxLive = !!(await getLiveGitHubConnectionAccount())
+  const statusSync = !!(integration.config as Record<string, unknown>).statusSyncEnabled
   const callbackUrl = buildWebhookCallbackUrl('github')
   const failures: string[] = []
   for (const repository of repositories) {
+    const events = githubWebhookEvents(repository.config, { inboxLive })
     try {
       if (repository.externalWebhookId) {
         const secret = readDestinationSecret(repository) ?? generateWebhookSecret()
@@ -196,7 +271,7 @@ export async function syncGitHubWebhookEvents(): Promise<void> {
           externalWebhookId: repository.externalWebhookId,
           events,
         })
-      } else {
+      } else if (statusSync || events.includes('issue_comment')) {
         // Registration finds and patches a hook GitHub already has at this URL.
         await registerDestinationWebhook({ integration, destination: repository, accessToken })
       }

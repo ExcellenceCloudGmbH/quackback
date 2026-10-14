@@ -9,12 +9,18 @@ import {
   findGitHubWebhookByUrl,
 } from '@/integrations/github/server/webhook-registration'
 import {
+  GITHUB_INBOUND_MODES,
   getLiveGitHubConnectionAccount,
+  githubInboundMode,
   githubWebhookEvents,
   syncGitHubWebhookEvents,
 } from '@/lib/server/domains/channel-accounts/github-connection'
 import { db, integrations, eq } from '@/lib/server/db'
-import { DESTINATION_DIRECTIONS, ensureDestinations } from '@/lib/server/integrations/destinations'
+import {
+  DESTINATION_DIRECTIONS,
+  ensureDestinations,
+  listDestinations,
+} from '@/lib/server/integrations/destinations'
 import { githubHook } from '@/integrations/github/server/hook'
 import { githubInboundHandler } from '@/integrations/github/server/inbound'
 import { githubIssues } from '@/integrations/github/server/issues'
@@ -34,12 +40,32 @@ export const githubIntegration: IntegrationDefinition = {
       kind: 'repo',
       label: 'Repository',
       configSchema: z
-        .object({ direction: z.enum(DESTINATION_DIRECTIONS) })
+        .object({
+          direction: z.enum(DESTINATION_DIRECTIONS),
+          inboundMode: z.enum(GITHUB_INBOUND_MODES),
+        })
         .partial()
         .strict(),
-      // Status sync and the inbox channel both listen to the repository hooks.
+      // Status sync listens to every repository's hook; the inbox only to
+      // the hooks of repositories that bring their issues in.
       webhookWanted: async (config) =>
-        !!config.statusSyncEnabled || !!(await getLiveGitHubConnectionAccount()),
+        !!config.statusSyncEnabled ||
+        githubWebhookEvents(config, {
+          inboxLive: !!(await getLiveGitHubConnectionAccount()),
+        }).includes('issue_comment'),
+      // While the inbox is on, the first repository to arrive brings its
+      // issues in, as the single repository always did; later ones start off.
+      initialConfig: async (integrationId) => {
+        if (!(await getLiveGitHubConnectionAccount())) return { inboundMode: 'off' }
+        const repositories = await listDestinations(integrationId, 'repo')
+        return {
+          inboundMode: repositories.some((r) => githubInboundMode(r.config) === 'conversations')
+            ? 'off'
+            : 'conversations',
+        }
+      },
+      // A changed inbox choice changes which events that repository's hook needs.
+      onConfigChanged: (destination) => syncGitHubWebhookEvents(destination.id).catch(() => {}),
     },
   },
   catalog: githubCatalog,
@@ -65,8 +91,9 @@ export const githubIntegration: IntegrationDefinition = {
     register: async ({ accessToken, config, callbackUrl, secret }) => {
       const ownerRepo = config.channelId as string
       if (!ownerRepo) throw new Error('No repository configured')
-      const inboxEnabled = !!(await getLiveGitHubConnectionAccount())
-      const events = githubWebhookEvents(inboxEnabled)
+      const events = githubWebhookEvents(config, {
+        inboxLive: !!(await getLiveGitHubConnectionAccount()),
+      })
       try {
         const result = await registerGitHubWebhook(
           accessToken,
