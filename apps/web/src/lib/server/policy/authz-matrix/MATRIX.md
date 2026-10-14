@@ -101,7 +101,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 
 ## 2. Surfaces and their enforced authorization
 
-### Server functions (`requireAuth`) — 774 surfaces
+### Server functions (`requireAuth`) — 777 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -120,6 +120,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `integrations/github/server/functions.ts`::getGitHubChannelStatusFn | settings.manage |
 | `integrations/github/server/functions.ts`::setGitHubInboxEnabledFn | channel_account.manage |
 | `integrations/github/server/functions.ts`::fetchGitHubReposFn | integration.manage |
+| `integrations/github/server/functions.ts`::setGitHubRepositoryFn | integration.manage |
 | `integrations/github/server/functions.ts`::retryGitHubAgentMessageFn | conversation.reply |
 | `integrations/gitlab/server/functions.ts`::getGitLabConnectUrl | integration.manage |
 | `integrations/gitlab/server/functions.ts`::fetchGitLabProjectsFn | integration.manage |
@@ -479,6 +480,8 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/inbox.ts`::fetchInboxCountsFn | DYNAMIC (conversation.view | conversation.view_all | ticket.view | ticket.view_all) |
 | `lib/server/functions/inbox.ts`::getConversationTicketLinkFn | conversation.view |
 | `lib/server/functions/integration-destinations.ts`::fetchIntegrationDestinationsFn | integration.manage |
+| `lib/server/functions/integration-destinations.ts`::listIntegrationDestinationsFn | integration.view |
+| `lib/server/functions/integration-destinations.ts`::reconnectIntegrationDestinationFn | integration.manage |
 | `lib/server/functions/integration-sync.ts`::listIntegrationSyncHistoryFn | integration.view |
 | `lib/server/functions/integration-sync.ts`::inspectIntegrationSyncFn | integration.view |
 | `lib/server/functions/integration-sync.ts`::recoverIntegrationSyncFn | integration.manage |
@@ -1125,7 +1128,7 @@ Key scopes are enforced: an API key holds exactly its stored scopes (owner permi
 
 ## 4. Entry points without a requireAuth/key gate
 
-228 of 1131 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
+228 of 1134 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
 Each is expected to be intentionally public, a pre-auth flow, a signature-verified webhook, or a handler that delegates auth (e.g. the MCP route).
 **Adding a row here is an access-control change** — confirm the new entry point is meant to be reachable without a gate.
 
