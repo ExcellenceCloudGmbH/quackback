@@ -92,6 +92,7 @@ import {
   getCustomerTicketForConversation,
   getTicketSharing,
   listShareableColleagues,
+  listWatchedCustomerTickets,
   removeTicketShare,
   shareTicketWithColleague,
 } from '../customer-ticket-sharing.service'
@@ -514,5 +515,39 @@ describe.skipIf(!fixture.available)('sharing a customer ticket (real DB, rolled 
     expect(await participantRow(conversationId, lead)).toBeNull()
     expect(await watchReason(ticketId, account)).toBe('participant')
     expect(await watchReason(ticketId, lead)).toBeNull()
+  })
+
+  it('lists the tickets someone watches for their Following page, shared ones included', async () => {
+    const requester = await seedCustomer('Rita')
+    const agent = await seedAgent()
+    const own = await seedPairedTicket(requester)
+    const unwatched = await seedPairedTicket(requester)
+    const otherRequester = await seedCustomer('Otto')
+    const shared = await seedPairedTicket(otherRequester)
+    await testDb.insert(ticketSubscriptions).values({
+      ticketId: own.ticketId,
+      principalId: requester,
+      reason: 'requester',
+    })
+    await testDb.insert(conversationParticipants).values({
+      conversationId: shared.conversationId,
+      principalId: requester,
+      addedByPrincipalId: agent,
+      threadAccess: true,
+    })
+    await testDb.insert(ticketSubscriptions).values({
+      ticketId: shared.ticketId,
+      principalId: requester,
+      reason: 'participant',
+    })
+
+    const watched = await listWatchedCustomerTickets(requester)
+    expect(watched.map((t) => [t.ticketId, t.relation]).sort()).toEqual(
+      [
+        [own.ticketId, 'requester'],
+        [shared.ticketId, 'participant'],
+      ].sort()
+    )
+    expect(watched.map((t) => t.ticketId)).not.toContain(unwatched.ticketId)
   })
 })

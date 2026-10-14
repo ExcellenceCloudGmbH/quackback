@@ -21,6 +21,7 @@ import {
   conversationParticipants,
   principal,
   ticketConversations,
+  ticketSubscriptions,
   tickets,
   user,
   type Ticket,
@@ -42,9 +43,11 @@ import type { RequesterTicketDTO } from './ticket.types'
 import {
   getRequesterTicketForConversation,
   getRequesterTicketSummaries,
+  listMyTicketSummaries,
   loadAccessibleTicketOr404,
   summarizePairs,
   type ConversationTicketSummary,
+  type MyTicketSummary,
   type TicketRelation,
 } from './requester.service'
 import {
@@ -376,4 +379,23 @@ export async function removeTicketShare(
   const { removed } = await removeConversationParticipant(conversationId, principalId, actor, opts)
   if (removed) await afterUnshare(ticket, principalId, actor)
   return { removed }
+}
+
+/**
+ * The customer tickets `principalId` watches, from the tickets that are theirs
+ * or shared with them (the same scope and stage projection as their ticket
+ * list), newest activity first: the portal Following page's ticket list.
+ */
+export async function listWatchedCustomerTickets(
+  principalId: PrincipalId
+): Promise<MyTicketSummary[]> {
+  const [mine, watched] = await Promise.all([
+    listMyTicketSummaries(principalId),
+    db
+      .select({ ticketId: ticketSubscriptions.ticketId })
+      .from(ticketSubscriptions)
+      .where(eq(ticketSubscriptions.principalId, principalId)),
+  ])
+  const watchedIds = new Set<string>(watched.map((w) => w.ticketId))
+  return mine.filter((t) => watchedIds.has(t.ticketId))
 }

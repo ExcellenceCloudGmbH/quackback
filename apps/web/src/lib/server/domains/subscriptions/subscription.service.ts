@@ -43,7 +43,6 @@ import {
   levelFromFlags,
   type SubscriptionReason,
   type Subscriber,
-  type Subscription,
   type NotificationPreferencesData,
   type SubscriptionLevel,
 } from './subscription.types'
@@ -52,7 +51,6 @@ import {
 export type {
   SubscriptionReason,
   Subscriber,
-  Subscription,
   NotificationPreferencesData,
   SubscriptionLevel,
 } from './subscription.types'
@@ -263,35 +261,6 @@ export async function getSubscribersForEvent(
       ? (subscriber: Subscriber) => subscriber.notifyComments
       : (subscriber: Subscriber) => subscriber.notifyStatusChanges
   return [...unique.values()].filter(wantsEvent)
-}
-
-/**
- * Get all subscriptions for a member
- */
-export async function getMemberSubscriptions(principalId: PrincipalId): Promise<Subscription[]> {
-  const rows = await db
-    .select({
-      id: postSubscriptions.id,
-      postId: postSubscriptions.postId,
-      postTitle: posts.title,
-      reason: postSubscriptions.reason,
-      notifyComments: postSubscriptions.notifyComments,
-      notifyStatusChanges: postSubscriptions.notifyStatusChanges,
-      createdAt: postSubscriptions.createdAt,
-    })
-    .from(postSubscriptions)
-    .innerJoin(posts, and(eq(postSubscriptions.postId, posts.id), isNull(posts.deletedAt)))
-    .where(eq(postSubscriptions.principalId, principalId))
-
-  return rows.map((row) => ({
-    id: row.id,
-    postId: row.postId,
-    postTitle: row.postTitle,
-    reason: row.reason as SubscriptionReason,
-    notifyComments: row.notifyComments,
-    notifyStatusChanges: row.notifyStatusChanges,
-    createdAt: row.createdAt,
-  }))
 }
 
 /**

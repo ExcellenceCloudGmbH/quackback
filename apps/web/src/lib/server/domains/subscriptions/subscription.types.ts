@@ -5,7 +5,7 @@
  * no database dependencies.
  */
 
-import type { PrincipalId, PostId, PostSubscriptionId } from '@quackback/ids'
+import type { PrincipalId } from '@quackback/ids'
 import type { NotificationMatrix } from './notification-matrix'
 
 /**
@@ -32,16 +32,6 @@ export interface Subscriber {
   reason: SubscriptionReason
   notifyComments: boolean
   notifyStatusChanges: boolean
-}
-
-export interface Subscription {
-  id: PostSubscriptionId
-  postId: PostId
-  postTitle: string
-  reason: SubscriptionReason
-  notifyComments: boolean
-  notifyStatusChanges: boolean
-  createdAt: Date
 }
 
 /**

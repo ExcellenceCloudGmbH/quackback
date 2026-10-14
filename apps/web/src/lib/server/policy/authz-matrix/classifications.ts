@@ -520,6 +520,9 @@ export const BARE_GATE_CLASSIFICATIONS: Record<string, Classification> = {
   ),
   'lib/server/functions/public-posts.ts::toggleVoteFn': END_USER('end-user votes on a post'),
   'lib/server/functions/public-posts.ts::createPublicPostFn': END_USER('end-user submits a post'),
+  'lib/server/functions/following.ts::getMyFollowingFn': END_USER(
+    'the posts and tickets the caller follows (portal-gated; scoped to their own subscriptions and what they can see)'
+  ),
   'lib/server/functions/subscriptions.ts::fetchSubscriptionStatus':
     END_USER('own subscription status'),
   'lib/server/functions/subscriptions.ts::subscribeToPostFn': END_USER('subscribe self to a post'),
