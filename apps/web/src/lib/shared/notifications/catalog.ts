@@ -130,6 +130,13 @@ export const NOTIFICATION_CATALOG: readonly NotificationTypeMeta[] = [
     surfaces: ['admin'],
   },
   {
+    type: 'ticket_subscriber_added',
+    label: 'Added as a ticket watcher',
+    description: 'A teammate adds you as a watcher on a ticket',
+    group: 'support',
+    surfaces: ['admin'],
+  },
+  {
     type: 'ticket_created',
     label: 'Ticket received',
     description: 'Confirmation when we receive your ticket',

@@ -617,6 +617,35 @@ export async function dispatchTicketReplied(
   })
 }
 
+/** A watch changed by hand: see TicketSubscriberChangedPayload. */
+export async function dispatchTicketSubscriberAdded(
+  actor: EventActor,
+  ticket: EventTicketRef,
+  title: string,
+  subscriberPrincipalId: string,
+  reason: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.subscriber_added',
+    data: { ticket, title, subscriberPrincipalId, reason },
+  })
+}
+
+export async function dispatchTicketSubscriberRemoved(
+  actor: EventActor,
+  ticket: EventTicketRef,
+  title: string,
+  subscriberPrincipalId: string,
+  reason: string | null
+): Promise<void> {
+  await dispatchEvent({
+    ...eventEnvelope(actor),
+    type: 'ticket.subscriber_removed',
+    data: { ticket, title, subscriberPrincipalId, reason },
+  })
+}
+
 export async function dispatchTicketExternalStatusChanged(
   actor: EventActor,
   ticket: EventTicketRef,

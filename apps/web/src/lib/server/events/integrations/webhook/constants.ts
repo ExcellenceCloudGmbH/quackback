@@ -260,6 +260,16 @@ export const WEBHOOK_EVENT_CONFIG = [
     description: 'When an open ticket passes its due date',
   },
   {
+    id: 'ticket.subscriber_added',
+    label: 'Ticket Watcher Added',
+    description: 'When someone starts watching a ticket, or a teammate adds them as a watcher',
+  },
+  {
+    id: 'ticket.subscriber_removed',
+    label: 'Ticket Watcher Removed',
+    description: 'When someone stops watching a ticket, or a teammate removes them as a watcher',
+  },
+  {
     id: 'approval.requested',
     label: 'Approval Requested',
     description: 'When an AI assistant or API key asks a person to approve a change',

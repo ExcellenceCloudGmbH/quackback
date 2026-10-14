@@ -35,6 +35,7 @@ import {
   type ContactEmail,
 } from '@/lib/server/email/recipient'
 import { formatTicketNumber } from '@/lib/shared/tickets'
+import { isTeamMember } from '@/lib/shared/roles'
 import { isSupportTicketsEnabled } from '@/lib/server/domains/settings/settings.support'
 import { canViewPost, type Actor } from '@/lib/server/policy'
 import {
@@ -1057,6 +1058,42 @@ export async function getTicketNoteAddedTargets(event: EventData): Promise<HookT
       title,
       authorName: authorName ?? 'A teammate',
       preview: truncate(content, 140),
+    },
+  }
+}
+
+/**
+ * Notification target for `ticket.subscriber_added`: the person a teammate
+ * added as a watcher, so they know why the ticket's bells start reaching them.
+ * Nobody hears about their own watch, so a self watch (actor = subscriber)
+ * bells no one. The add is teammate-only and checked against the teammate's
+ * view of the ticket when it is made; the role filter here keeps the bell on
+ * the team even for a row some later path writes for a customer.
+ */
+export async function getTicketSubscriberAddedTargets(
+  event: EventData
+): Promise<HookTarget | null> {
+  if (event.type !== 'ticket.subscriber_added') return null
+  const { ticket, title, subscriberPrincipalId } = event.data
+  if (subscriberPrincipalId === event.actor.principalId) return null
+
+  const [subscriber] = await db
+    .select({ type: principal.type, role: principal.role })
+    .from(principal)
+    .where(eq(principal.id, subscriberPrincipalId as PrincipalId))
+    .limit(1)
+  if (subscriber?.type !== 'user' || !isTeamMember(subscriber.role)) return null
+
+  return {
+    type: 'notification',
+    target: { principalIds: [subscriberPrincipalId as PrincipalId] },
+    config: {
+      ticketId: ticket.id,
+      title,
+      // A workflow's add runs as a nameless service actor.
+      authorName:
+        event.actor.displayName ??
+        (event.actor.type === 'service' ? 'An automation' : 'A teammate'),
     },
   }
 }

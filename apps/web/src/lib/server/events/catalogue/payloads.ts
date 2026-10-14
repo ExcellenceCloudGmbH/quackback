@@ -293,6 +293,18 @@ export const P = {
   }),
   'ticket.due_soon': z.looseObject({ ticket: ticketRef, title: z.string(), dueAt: z.string() }),
   'ticket.overdue': z.looseObject({ ticket: ticketRef, title: z.string(), dueAt: z.string() }),
+  'ticket.subscriber_added': z.looseObject({
+    ticket: ticketRef,
+    title: z.string(),
+    subscriberPrincipalId: id,
+    reason: nullableStr,
+  }),
+  'ticket.subscriber_removed': z.looseObject({
+    ticket: ticketRef,
+    title: z.string(),
+    subscriberPrincipalId: id,
+    reason: nullableStr,
+  }),
   // assistant + sla
   'assistant.handed_off': z.looseObject({ conversationId: id, reason: z.string() }),
   'assistant.resolved': z.looseObject({ conversationId: id, outcome: z.string() }),

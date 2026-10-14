@@ -81,6 +81,12 @@ export const EVENT_TYPES = [
   'ticket.external_status_changed',
   // A teammate, workflow or integration set, moved or cleared the due date.
   'ticket.due_changed',
+  // Someone started or stopped watching a ticket by hand (their own watch
+  // toggle, or a teammate adding or removing them). Automatic watches
+  // (requester, assignee, replier) are side effects of other events and
+  // announce nothing.
+  'ticket.subscriber_added',
+  'ticket.subscriber_removed',
   'assistant.handed_off',
   'assistant.resolved',
   // Timer-driven triggers (see TIMER_DRIVEN_EVENT_TYPES above for the rationale).
@@ -547,6 +553,21 @@ export interface TicketDueAlertPayload {
   dueAt: string
 }
 
+/**
+ * Payload for ticket.subscriber_added / ticket.subscriber_removed: a watch
+ * changed by hand. The actor is whoever changed it, the subscriber whose watch
+ * it is; they are the same person for a self watch or unwatch. Ids only, no
+ * name or email: consumers hydrate the principal by id.
+ */
+export interface TicketSubscriberChangedPayload {
+  ticket: EventTicketRef
+  /** Ticket title — the ref carries no title, notification copy needs it. */
+  title: string
+  subscriberPrincipalId: string
+  /** Why the subscriber watches (added) or watched (removed) the ticket. */
+  reason: string | null
+}
+
 /** A message attachment carried on a ticket reply/note event. */
 export interface EventTicketMessageAttachment {
   name: string
@@ -791,6 +812,12 @@ export interface TicketDueSoonEvent extends EventBase<'ticket.due_soon'> {
 export interface TicketOverdueEvent extends EventBase<'ticket.overdue'> {
   data: TicketDueAlertPayload
 }
+export interface TicketSubscriberAddedEvent extends EventBase<'ticket.subscriber_added'> {
+  data: TicketSubscriberChangedPayload
+}
+export interface TicketSubscriberRemovedEvent extends EventBase<'ticket.subscriber_removed'> {
+  data: TicketSubscriberChangedPayload
+}
 
 export interface AssistantHandedOffEvent extends EventBase<'assistant.handed_off'> {
   data: AssistantHandedOffPayload
@@ -900,6 +927,8 @@ export type EventData =
   | TicketDueChangedEvent
   | TicketDueSoonEvent
   | TicketOverdueEvent
+  | TicketSubscriberAddedEvent
+  | TicketSubscriberRemovedEvent
   | AssistantHandedOffEvent
   | AssistantResolvedEvent
   | ConversationCustomerUnresponsiveEvent

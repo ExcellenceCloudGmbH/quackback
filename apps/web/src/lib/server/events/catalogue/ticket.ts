@@ -65,3 +65,18 @@ export const ticketOverdue = decl(
   { webhook: true, workflow: true, notification: 'ticket_overdue' },
   S
 )
+// A watch changed by hand. The bell on an add tells the person a teammate
+// added them (never on their own watch); the webhook lets an integration keep
+// its own follower list in step.
+export const ticketSubscriberAdded = decl(
+  'ticket.subscriber_added',
+  'ticket',
+  { webhook: true, notification: 'ticket_subscriber_added' },
+  S
+)
+export const ticketSubscriberRemoved = decl(
+  'ticket.subscriber_removed',
+  'ticket',
+  { webhook: true },
+  S
+)

@@ -88,6 +88,8 @@ describe('event catalogue coverage', () => {
     'csat_comment_added',
     'voted',
     'external_status_changed',
+    'subscriber_added',
+    'subscriber_removed',
     'customer_unresponsive',
     'teammate_unresponsive',
     'approaching_breach',

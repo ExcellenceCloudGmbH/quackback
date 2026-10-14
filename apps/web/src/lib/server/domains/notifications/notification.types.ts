@@ -24,6 +24,7 @@ export type NotificationType =
   | 'ticket_replied'
   | 'ticket_note_added'
   | 'ticket_external_status_changed'
+  | 'ticket_subscriber_added'
   | 'ticket_created'
   | 'ticket_due_soon'
   | 'ticket_overdue'

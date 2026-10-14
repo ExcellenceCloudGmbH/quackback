@@ -18,6 +18,7 @@ const h = vi.hoisted(() => ({
   getTicketRepliedTargets: vi.fn(),
   getTicketNoteAddedTargets: vi.fn(),
   getTicketExternalStatusChangedTargets: vi.fn(),
+  getTicketSubscriberAddedTargets: vi.fn(),
   getMessageCreatedTargets: vi.fn(),
   getApprovalRequestedTargets: vi.fn(),
   getTicketCreatedEmailTargets: vi.fn(),
@@ -46,6 +47,7 @@ vi.mock('../targets', () => ({
   getTicketRepliedTargets: h.getTicketRepliedTargets,
   getTicketNoteAddedTargets: h.getTicketNoteAddedTargets,
   getTicketExternalStatusChangedTargets: h.getTicketExternalStatusChangedTargets,
+  getTicketSubscriberAddedTargets: h.getTicketSubscriberAddedTargets,
   getMessageCreatedTargets: h.getMessageCreatedTargets,
   getApprovalRequestedTargets: h.getApprovalRequestedTargets,
   getTicketCreatedEmailTargets: h.getTicketCreatedEmailTargets,
@@ -164,6 +166,14 @@ describe('notification resolver routing (WO-8c)', () => {
 
     expect(notificationResolver.interestedIn('ticket.replied')).toBe(true)
     expect(notificationResolver.interestedIn('ticket.note_added')).toBe(true)
+  })
+
+  it('routes ticket.subscriber_added to the added-as-watcher bell', async () => {
+    h.getTicketSubscriberAddedTargets.mockResolvedValue(T('ticket_subscriber_bell')[0])
+    const out = await notificationResolver.resolve(evt('ticket.subscriber_added'))
+    expect(out.map((t) => t.type)).toEqual(['ticket_subscriber_bell'])
+    expect(h.getTicketSubscriberAddedTargets).toHaveBeenCalledTimes(1)
+    expect(notificationResolver.interestedIn('ticket.subscriber_added')).toBe(true)
   })
 
   it('routes message.created to the new-message team bell', async () => {

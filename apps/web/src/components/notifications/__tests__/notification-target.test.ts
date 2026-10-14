@@ -189,6 +189,18 @@ describe('getNotificationTarget', () => {
     }
   )
 
+  it('routes ticket_subscriber_added to the admin inbox (a teammate added them as a watcher)', () => {
+    const notification = buildNotification({
+      type: 'ticket_subscriber_added',
+      ticketId: 'ticket_9',
+      audience: 'admin',
+    })
+    expect(getNotificationTarget(notification)).toEqual({
+      to: '/admin/inbox',
+      search: { i: 'ticket_9' },
+    })
+  })
+
   it('routes ticket_assigned (team member) to the admin inbox, NOT the requester-only portal thread', () => {
     const notification = buildNotification({
       type: 'ticket_assigned',

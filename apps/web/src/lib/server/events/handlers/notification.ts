@@ -423,6 +423,17 @@ function buildNotifications(
     }))
   }
 
+  if (event.type === 'ticket.subscriber_added') {
+    const { ticketId, title, authorName } = config
+    return principalIds.map((principalId) => ({
+      principalId,
+      type: 'ticket_subscriber_added' as NotificationType,
+      title: `${authorName} added you as a watcher on ${title}`,
+      // Only a teammate is ever added by someone else (getTicketSubscriberAddedTargets).
+      metadata: { ticketId, actorName: authorName, audience: 'admin' },
+    }))
+  }
+
   if (event.type === 'message.created') {
     const { conversationId, authorName, preview } = config
     return principalIds.map((principalId) => ({

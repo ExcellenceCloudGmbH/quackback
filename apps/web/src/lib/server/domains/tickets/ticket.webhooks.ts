@@ -31,6 +31,8 @@ import {
   dispatchTicketNoteAdded,
   dispatchTicketExternalStatusChanged,
   dispatchTicketDueChanged,
+  dispatchTicketSubscriberAdded,
+  dispatchTicketSubscriberRemoved,
 } from '@/lib/server/events/dispatch'
 import { contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
 import { logger } from '@/lib/server/logger'
@@ -250,6 +252,45 @@ export async function emitTicketDueChanged(
       ticket.title,
       ticket.dueAt ? ticket.dueAt.toISOString() : null,
       previousDueAt ? previousDueAt.toISOString() : null
+    )
+  )
+}
+
+/**
+ * A watch changed by hand: `actor` is whoever changed it, `subscriberPrincipalId`
+ * whose watch it is (the same person for a self watch or unwatch). Automatic
+ * watches never come through here.
+ */
+export async function emitTicketSubscriberAdded(
+  actor: Actor,
+  ticket: Ticket,
+  subscriberPrincipalId: string,
+  reason: string | null
+): Promise<void> {
+  await safe('ticket.subscriber_added', () =>
+    dispatchTicketSubscriberAdded(
+      toEventActor(actor),
+      ticketRef(ticket),
+      ticket.title,
+      subscriberPrincipalId,
+      reason
+    )
+  )
+}
+
+export async function emitTicketSubscriberRemoved(
+  actor: Actor,
+  ticket: Ticket,
+  subscriberPrincipalId: string,
+  reason: string | null
+): Promise<void> {
+  await safe('ticket.subscriber_removed', () =>
+    dispatchTicketSubscriberRemoved(
+      toEventActor(actor),
+      ticketRef(ticket),
+      ticket.title,
+      subscriberPrincipalId,
+      reason
     )
   )
 }

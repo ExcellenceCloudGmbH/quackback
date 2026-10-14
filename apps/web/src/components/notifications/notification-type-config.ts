@@ -10,6 +10,7 @@ import {
   InboxArrowDownIcon,
   SparklesIcon,
   LinkIcon,
+  EyeIcon,
 } from '@heroicons/react/24/solid'
 import type { NotificationType } from '@/lib/shared/types'
 
@@ -105,6 +106,11 @@ export const notificationTypeConfigs: Record<NotificationType, NotificationTypeC
     icon: TicketIcon,
     iconClass: 'text-red-500',
     bgClass: 'bg-red-500/10',
+  },
+  ticket_subscriber_added: {
+    icon: EyeIcon,
+    iconClass: 'text-sky-500',
+    bgClass: 'bg-sky-500/10',
   },
   // Email-only types (never rendered as bells today; entries satisfy the
   // exhaustive map and future-proof an in-app channel).

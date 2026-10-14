@@ -982,3 +982,34 @@ describe('notificationHook — changelog.published', () => {
     expect(call[0].metadata).toMatchObject({ changelogId: 'changelog_1' })
   })
 })
+
+describe('notificationHook — ticket.subscriber_added (the teammate someone added)', () => {
+  it('names who added them and routes the bell to the admin inbox', async () => {
+    const event = {
+      id: 'evt-ticket-sub-1',
+      type: 'ticket.subscriber_added',
+      timestamp: new Date().toISOString(),
+      actor: { type: 'user', principalId: 'principal_lead' },
+      data: {
+        ticket: { id: 'ticket_1', number: 1, type: 'customer', priority: 'none' },
+        title: 'Cannot log in',
+        subscriberPrincipalId: 'principal_agent_1',
+        reason: 'manual',
+      },
+    } as EventData
+    const target: NotificationTarget = { principalIds: ['principal_agent_1' as never] }
+    await notificationHook.run(event, target, {
+      ticketId: 'ticket_1',
+      title: 'Cannot log in',
+      authorName: 'Lea',
+    })
+    expect(batchSpy).toHaveBeenCalledWith([
+      expect.objectContaining({
+        principalId: 'principal_agent_1',
+        type: 'ticket_subscriber_added',
+        title: 'Lea added you as a watcher on Cannot log in',
+        metadata: { ticketId: 'ticket_1', actorName: 'Lea', audience: 'admin' },
+      }),
+    ])
+  })
+})
