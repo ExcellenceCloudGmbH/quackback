@@ -101,7 +101,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 
 ## 2. Surfaces and their enforced authorization
 
-### Server functions (`requireAuth`) — 772 surfaces
+### Server functions (`requireAuth`) — 774 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -387,6 +387,8 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/conversation.ts`::setAgentAvailabilityFn | conversation.view |
 | `lib/server/functions/conversation.ts`::mintConversationStreamTokenFn | END_USER (any authenticated) |
 | `lib/server/functions/conversation.ts`::editConversationMessageFn | DYNAMIC (conversation.reply | conversation.note | ticket.reply | ticket.note) |
+| `lib/server/functions/conversation.ts`::addMessageAttachmentsFn | DYNAMIC (conversation.reply | conversation.note | ticket.reply | ticket.note) |
+| `lib/server/functions/conversation.ts`::removeMessageAttachmentFn | DYNAMIC (conversation.reply | conversation.note | ticket.reply | ticket.note) |
 | `lib/server/functions/conversation.ts`::deleteConversationMessageFn | END_USER (any authenticated) |
 | `lib/server/functions/conversation.ts`::listConversationsFn | conversation.view |
 | `lib/server/functions/conversation.ts`::fetchAssistantInboxCountsFn | conversation.view |
@@ -1123,7 +1125,7 @@ Key scopes are enforced: an API key holds exactly its stored scopes (owner permi
 
 ## 4. Entry points without a requireAuth/key gate
 
-228 of 1129 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
+228 of 1131 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
 Each is expected to be intentionally public, a pre-auth flow, a signature-verified webhook, or a handler that delegates auth (e.g. the MCP route).
 **Adding a row here is an access-control change** — confirm the new entry point is meant to be reachable without a gate.
 
