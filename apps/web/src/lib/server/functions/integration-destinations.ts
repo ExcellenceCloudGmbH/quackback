@@ -14,6 +14,9 @@ import { requireAuth } from './auth-helpers'
 import { db, integrations, integrationDestinations, eq } from '@/lib/server/db'
 import type { IntegrationDestinationId } from '@quackback/ids'
 import type { DestinationItem } from '@/lib/server/integrations/types'
+import type { DestinationDirection } from '@/lib/server/integrations/destinations'
+import { getRequestHeaders } from '@tanstack/react-start/server'
+import { recordAuditEvent, actorFromAuth } from '@/lib/server/audit/log'
 import { PERMISSIONS } from '@/lib/shared/permissions'
 import { NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
@@ -34,6 +37,21 @@ const listConnectedDestinationsSchema = z.object({ integrationType: z.string() }
 
 const reconnectDestinationSchema = z.object({ destinationId: z.string() })
 
+const addDestinationSchema = z.object({
+  integrationType: z.string().min(1).max(50),
+  kind: z.string().min(1).max(32),
+  externalId: z.string().trim().min(1).max(200),
+})
+
+const destinationIdSchema = z.object({ destinationId: z.string().max(100) })
+
+const setDestinationEnabledSchema = destinationIdSchema.extend({ enabled: z.boolean() })
+
+/** Validated again by the provider's own schema (`destination.multiple.configSchema`). */
+const setDestinationConfigSchema = destinationIdSchema.extend({
+  config: z.record(z.string(), z.unknown()),
+})
+
 export type { DestinationItem }
 
 /** One destination a connection serves, as the settings page shows it. Never carries its secret. */
@@ -42,6 +60,10 @@ export interface IntegrationDestinationSummary {
   kind: string
   externalId: string
   enabled: boolean
+  /** Which way it syncs (`both` unless its settings say otherwise). */
+  direction: DestinationDirection
+  /** The connection's default destination (`config.channelId`). */
+  isDefault: boolean
   webhookRegistered: boolean
   webhookEvents: string[]
   lastError: string | null
@@ -93,16 +115,22 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
 
     const integration = await db.query.integrations.findFirst({
       where: eq(integrations.integrationType, data.integrationType),
-      columns: { id: true },
+      columns: { id: true, config: true },
     })
     if (!integration) return []
 
-    const { listDestinations } = await import('@/lib/server/integrations/destinations')
+    const { listDestinations, destinationDirection } =
+      await import('@/lib/server/integrations/destinations')
+    const defaultId = (integration.config as Record<string, unknown>).channelId
     return (await listDestinations(integration.id)).map((destination) => ({
       id: destination.id,
       kind: destination.kind,
       externalId: destination.externalId,
       enabled: destination.enabled,
+      direction: destinationDirection(destination),
+      isDefault:
+        typeof defaultId === 'string' &&
+        defaultId.toLowerCase() === destination.externalId.toLowerCase(),
       webhookRegistered: !!destination.externalWebhookId,
       webhookEvents: destination.webhookEvents ?? [],
       lastError: destination.lastError,
@@ -154,5 +182,77 @@ export const reconnectIntegrationDestinationFn = createServerFn({ method: 'POST'
       throw new Error(`Failed to register webhook: ${raw}`, { cause: error })
     }
     await clearDestinationError(destination.id)
+    return { ok: true }
+  })
+
+/**
+ * Start syncing one more destination (a GitHub repository) on a connection
+ * that serves several. Audited.
+ */
+export const addIntegrationDestinationFn = createServerFn({ method: 'POST' })
+  .validator(addDestinationSchema)
+  .handler(async ({ data }): Promise<{ id: string; externalId: string }> => {
+    log.debug(
+      { integration_type: data.integrationType, kind: data.kind },
+      'add integration destination'
+    )
+    const ctx = await requireAuth({ permission: PERMISSIONS.INTEGRATION_MANAGE })
+    const { addDestination } = await import('@/lib/server/integrations/destination-admin')
+    const destination = await addDestination(data)
+    await recordAuditEvent({
+      event: 'integration.destination.added',
+      actor: actorFromAuth(ctx),
+      headers: getRequestHeaders(),
+      target: { type: 'integration_destination', id: destination.id },
+      after: {
+        integrationType: data.integrationType,
+        kind: destination.kind,
+        externalId: destination.externalId,
+      },
+    })
+    return { id: destination.id, externalId: destination.externalId }
+  })
+
+/**
+ * Stop syncing a destination: its webhook, links and mappings go with it.
+ * Audited.
+ */
+export const removeIntegrationDestinationFn = createServerFn({ method: 'POST' })
+  .validator(destinationIdSchema)
+  .handler(async ({ data }): Promise<{ unlinkedTickets: number; unlinkedPosts: number }> => {
+    log.debug({ destination_id: data.destinationId }, 'remove integration destination')
+    const ctx = await requireAuth({ permission: PERMISSIONS.INTEGRATION_MANAGE })
+    const { removeDestination } = await import('@/lib/server/integrations/destination-admin')
+    const { destination, unlinkedTickets, unlinkedPosts } = await removeDestination(
+      data.destinationId
+    )
+    await recordAuditEvent({
+      event: 'integration.destination.removed',
+      actor: actorFromAuth(ctx),
+      headers: getRequestHeaders(),
+      target: { type: 'integration_destination', id: destination.id },
+      before: { kind: destination.kind, externalId: destination.externalId },
+      metadata: { unlinkedTickets, unlinkedPosts },
+    })
+    return { unlinkedTickets, unlinkedPosts }
+  })
+
+/** Switch a destination on or off; its webhook stays registered either way. */
+export const setIntegrationDestinationEnabledFn = createServerFn({ method: 'POST' })
+  .validator(setDestinationEnabledSchema)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await requireAuth({ permission: PERMISSIONS.INTEGRATION_MANAGE })
+    const { setDestinationEnabled } = await import('@/lib/server/integrations/destination-admin')
+    await setDestinationEnabled(data.destinationId, data.enabled)
+    return { ok: true }
+  })
+
+/** Patch a destination's provider-specific settings (GitHub: `direction`). */
+export const setIntegrationDestinationConfigFn = createServerFn({ method: 'POST' })
+  .validator(setDestinationConfigSchema)
+  .handler(async ({ data }): Promise<{ ok: true }> => {
+    await requireAuth({ permission: PERMISSIONS.INTEGRATION_MANAGE })
+    const { updateDestinationConfig } = await import('@/lib/server/integrations/destination-admin')
+    await updateDestinationConfig(data.destinationId, data.config)
     return { ok: true }
   })

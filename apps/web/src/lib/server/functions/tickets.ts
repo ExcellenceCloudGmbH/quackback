@@ -473,6 +473,8 @@ export const linkTicketIssueFn = createServerFn({ method: 'POST' })
       ticketId: z.string(),
       issue: z.string().trim().min(1).max(500),
       integrationType: z.string().min(1).max(50).default('github'),
+      /** For a tracker serving several repositories: the one the issue must belong to. */
+      destinationId: z.string().max(100).optional(),
     })
   )
   .handler(async ({ data }) => {
@@ -480,20 +482,38 @@ export const linkTicketIssueFn = createServerFn({ method: 'POST' })
     const actor = await policyActorFromAuth(ctx)
     const { linkTicketToIssue } =
       await import('@/lib/server/domains/tickets/ticket-external-links.service')
-    return linkTicketToIssue(data.ticketId as TicketId, data.issue, actor, data.integrationType)
+    return linkTicketToIssue(
+      data.ticketId as TicketId,
+      data.issue,
+      actor,
+      data.integrationType,
+      data.destinationId
+    )
   })
 
 /** Create a NEW issue on a connected tracker from this ticket and link it.
  *  Gated on TICKET_ASSIGN — the same association-management gate as
  *  link/unlink. Capability-gated on the provider's issues.create. */
 export const createTicketIssueFn = createServerFn({ method: 'POST' })
-  .validator(z.object({ ticketId: z.string(), integrationType: z.string().min(1).max(50) }))
+  .validator(
+    z.object({
+      ticketId: z.string(),
+      integrationType: z.string().min(1).max(50),
+      /** For a tracker serving several repositories: where to create it (default: the default one). */
+      destinationId: z.string().max(100).optional(),
+    })
+  )
   .handler(async ({ data }) => {
     const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_ASSIGN })
     const actor = await policyActorFromAuth(ctx)
     const { createIssueForTicket } =
       await import('@/lib/server/domains/tickets/ticket-external-links.service')
-    return createIssueForTicket(data.ticketId as TicketId, data.integrationType, actor)
+    return createIssueForTicket(
+      data.ticketId as TicketId,
+      data.integrationType,
+      actor,
+      data.destinationId
+    )
   })
 
 /** Remove a ticket's tracker issue link. Gated on TICKET_ASSIGN. */

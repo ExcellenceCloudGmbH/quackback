@@ -26,6 +26,12 @@ import { integrations } from './integrations'
  * column with no CHECK, so this type is the vocabulary.
  */
 export interface IntegrationDestinationConfig {
+  /**
+   * Which way this destination syncs: `outbound` only receives what we send
+   * (created issues), `inbound` only reports back (status, comments), `both`
+   * (the default when unset) does both.
+   */
+  direction?: 'both' | 'outbound' | 'inbound'
   /** GitHub: whether this repository's issues and comments open inbox conversations. */
   inboundMode?: 'conversations' | 'off'
   [key: string]: unknown

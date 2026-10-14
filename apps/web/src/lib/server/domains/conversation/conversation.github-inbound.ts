@@ -118,7 +118,12 @@ export async function ingestGitHubChannelEvent(opts: {
 
   let conversationId = await lookupChannelThread(channelAccountId, threadKey)
   if (!conversationId) {
-    const trackerOwned = await isTrackerOwnedIssue(issueNumber, botLogin, issue.user?.login)
+    const trackerOwned = await isTrackerOwnedIssue(
+      ownerRepo,
+      issueNumber,
+      botLogin,
+      issue.user?.login
+    )
     if (trackerOwned) return
     conversationId = await createGitHubConversation({
       channelAccountId,

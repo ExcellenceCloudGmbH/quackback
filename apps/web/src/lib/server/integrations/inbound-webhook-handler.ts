@@ -108,10 +108,13 @@ export async function handleInboundWebhook(
   }
 
   if (routed) {
-    const { markDestinationInbound } = await import('./destinations')
+    const { markDestinationInbound, destinationReceives } = await import('./destinations')
     await markDestinationInbound(integration, routed.destination, routed.ref).catch((err) =>
       log.warn({ err, integration_type: integrationType }, 'destination inbound stamp failed')
     )
+    // An outbound-only repository's deliveries are acknowledged and dropped:
+    // no status sync, no inbox conversation.
+    if (!destinationReceives(routed.destination)) return new Response('OK', { status: 200 })
   }
 
   // GitHub inbox channel is a second consumer, isolated from tracker status

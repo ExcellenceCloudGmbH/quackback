@@ -1,32 +1,28 @@
 // @vitest-environment happy-dom
 /**
- * The selected repository's webhook card: its state badge, whether a webhook
- * is registered, the last delivery, the recorded error, and a repair that
- * reports its outcome in a toast.
+ * One repository's card: its state badges, whether a webhook is registered,
+ * the last delivery, the recorded error, a repair that reports its outcome,
+ * the on/off switch, and removal behind a confirmation.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, cleanup, fireEvent } from '@testing-library/react'
+import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
 import { IntlProvider } from 'react-intl'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { IntegrationDestinationSummary } from '@/lib/server/functions/integration-destinations'
 
 const mocks = vi.hoisted(() => ({
-  destinations: vi.fn(),
-  mutate: vi.fn(),
+  repair: vi.fn(),
+  remove: vi.fn(),
+  setEnabled: vi.fn(),
+  setConfig: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }))
 
-vi.mock('@/lib/client/queries/admin', () => ({
-  adminQueries: {
-    integrationDestinations: (type: string) => ({
-      queryKey: ['admin', 'integrations', type, 'destinations'],
-      queryFn: mocks.destinations,
-    }),
-  },
-}))
 vi.mock('@/lib/client/mutations', () => ({
-  useReconnectIntegrationDestination: () => ({ mutate: mocks.mutate, isPending: false }),
+  useReconnectIntegrationDestination: () => ({ mutate: mocks.repair, isPending: false }),
+  useRemoveIntegrationDestination: () => ({ mutateAsync: mocks.remove, isPending: false }),
+  useSetIntegrationDestinationEnabled: () => ({ mutate: mocks.setEnabled, isPending: false }),
+  useSetIntegrationDestinationConfig: () => ({ mutate: mocks.setConfig, isPending: false }),
 }))
 vi.mock('sonner', () => ({ toast: { success: mocks.toastSuccess, error: mocks.toastError } }))
 
@@ -37,6 +33,8 @@ const repo: IntegrationDestinationSummary = {
   kind: 'repo',
   externalId: 'acme/app',
   enabled: true,
+  direction: 'both',
+  isDefault: false,
   webhookRegistered: true,
   webhookEvents: ['issues'],
   lastError: null,
@@ -44,15 +42,11 @@ const repo: IntegrationDestinationSummary = {
   lastInboundAt: null,
 }
 
-function renderCard(destinations: IntegrationDestinationSummary[], repository = 'Acme/App') {
-  mocks.destinations.mockResolvedValue(destinations)
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+function renderCard(destination: IntegrationDestinationSummary) {
   render(
-    <QueryClientProvider client={client}>
-      <IntlProvider locale="en" messages={{}}>
-        <GitHubRepositoryCard repository={repository} />
-      </IntlProvider>
-    </QueryClientProvider>
+    <IntlProvider locale="en" messages={{}}>
+      <GitHubRepositoryCard destination={destination} />
+    </IntlProvider>
   )
 }
 
@@ -60,49 +54,76 @@ beforeEach(() => vi.clearAllMocks())
 afterEach(cleanup)
 
 describe('GitHubRepositoryCard', () => {
-  it('shows an active repository with its webhook and no deliveries yet', async () => {
-    renderCard([repo])
-    expect(await screen.findByText('acme/app')).toBeTruthy()
+  it('shows an active repository with its webhook and no deliveries yet', () => {
+    renderCard(repo)
+    expect(screen.getByText('acme/app')).toBeTruthy()
     expect(screen.getByText('Active')).toBeTruthy()
+    expect(screen.queryByText('Default')).toBeNull()
     expect(screen.getByText('Webhook registered')).toBeTruthy()
     expect(screen.getByText('No deliveries received yet')).toBeTruthy()
   })
 
-  it('shows the recorded error and a missing webhook', async () => {
-    renderCard([
-      {
-        ...repo,
-        webhookRegistered: false,
-        lastError: 'Failed to register webhook: Must have admin rights',
-      },
-    ])
-    expect(await screen.findByText('Error')).toBeTruthy()
+  it('marks the default repository', () => {
+    renderCard({ ...repo, isDefault: true })
+    expect(screen.getByText('Default')).toBeTruthy()
+  })
+
+  it('shows the recorded error and a missing webhook', () => {
+    renderCard({
+      ...repo,
+      webhookRegistered: false,
+      lastError: 'Failed to register webhook: Must have admin rights',
+    })
+    expect(screen.getByText('Error')).toBeTruthy()
     expect(screen.getByText('No webhook')).toBeTruthy()
     expect(screen.getByText('Failed to register webhook: Must have admin rights')).toBeTruthy()
   })
 
-  it('shows a switched-off repository as paused and when it last delivered', async () => {
-    renderCard([{ ...repo, enabled: false, lastInboundAt: new Date().toISOString() }])
-    expect(await screen.findByText('Paused')).toBeTruthy()
+  it('shows a switched-off repository as paused and when it last delivered', () => {
+    renderCard({ ...repo, enabled: false, lastInboundAt: new Date().toISOString() })
+    expect(screen.getByText('Paused')).toBeTruthy()
     expect(screen.getByText(/^Last delivery received/)).toBeTruthy()
   })
 
-  it('renders nothing for a repository it has no row for', async () => {
-    renderCard([repo], 'acme/other')
-    await vi.waitFor(() => expect(mocks.destinations).toHaveBeenCalled())
-    expect(screen.queryByText('Repair webhook')).toBeNull()
-  })
+  it('repairs the webhook and reports the outcome', () => {
+    renderCard(repo)
+    fireEvent.click(screen.getByRole('button', { name: 'Repair webhook' }))
 
-  it('repairs the webhook and reports the outcome', async () => {
-    renderCard([repo])
-    fireEvent.click(await screen.findByRole('button', { name: 'Repair webhook' }))
-
-    expect(mocks.mutate).toHaveBeenCalledTimes(1)
-    const [destinationId, opts] = mocks.mutate.mock.calls[0]
+    const [destinationId, opts] = mocks.repair.mock.calls[0]
     expect(destinationId).toBe('integration_destination_1')
     opts.onSuccess()
     expect(mocks.toastSuccess).toHaveBeenCalledWith('Webhook repaired')
     opts.onError()
     expect(mocks.toastError).toHaveBeenCalledWith('Could not repair the webhook')
+  })
+
+  it('switches the repository off', () => {
+    renderCard(repo)
+    fireEvent.click(screen.getByRole('switch', { name: 'Sync acme/app' }))
+    expect(mocks.setEnabled.mock.calls[0][0]).toEqual({
+      destinationId: 'integration_destination_1',
+      enabled: false,
+    })
+  })
+
+  it('removes the repository only after confirming', async () => {
+    mocks.remove.mockResolvedValue({ unlinkedTickets: 0, unlinkedPosts: 0 })
+    renderCard(repo)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    expect(mocks.remove).not.toHaveBeenCalled()
+    expect(await screen.findByText('Stop syncing acme/app?')).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove repository' }))
+    await waitFor(() => expect(mocks.remove).toHaveBeenCalledWith('integration_destination_1'))
+  })
+
+  it('reports a removal that failed', async () => {
+    mocks.remove.mockRejectedValue(new Error('nope'))
+    renderCard(repo)
+    fireEvent.click(screen.getByRole('button', { name: 'Remove' }))
+    fireEvent.click(await screen.findByRole('button', { name: 'Remove repository' }))
+    await waitFor(() =>
+      expect(mocks.toastError).toHaveBeenCalledWith('Could not remove the repository')
+    )
   })
 })

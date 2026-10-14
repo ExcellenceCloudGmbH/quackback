@@ -21,8 +21,10 @@ import {
   integrationDestinations,
   type Database,
   type Transaction,
+  type IntegrationDestinationConfig,
 } from '@/lib/server/db'
 import { logger } from '@/lib/server/logger'
+import { ValidationError } from '@/lib/shared/errors'
 import { encryptSecrets, decryptSecrets } from './encryption'
 import { generateWebhookSecret, buildWebhookCallbackUrl } from './webhook-registration'
 
@@ -35,6 +37,38 @@ type IntegrationRow = typeof integrations.$inferSelect
 export interface DestinationRef {
   externalId: string
   externalKey?: string
+}
+
+/** Which way a destination syncs; `both` when its config does not say. */
+export type DestinationDirection = NonNullable<IntegrationDestinationConfig['direction']>
+export const DESTINATION_DIRECTIONS = ['both', 'outbound', 'inbound'] as const
+
+export function destinationDirection(
+  destination: Pick<IntegrationDestination, 'config'>
+): DestinationDirection {
+  const direction = destination.config?.direction
+  return direction === 'outbound' || direction === 'inbound' ? direction : 'both'
+}
+
+/** Whether we may send to it: created issues, feedback issues. Switched off or inbound-only: no. */
+export function destinationSends(
+  destination: Pick<IntegrationDestination, 'config' | 'enabled'>
+): boolean {
+  return destination.enabled && destinationDirection(destination) !== 'inbound'
+}
+
+/** Whether its deliveries are acted on. Switched off or outbound-only: no. */
+export function destinationReceives(
+  destination: Pick<IntegrationDestination, 'config' | 'enabled'>
+): boolean {
+  return destination.enabled && destinationDirection(destination) !== 'outbound'
+}
+
+/** The target provider code and link scopes name a destination by. */
+export function destinationTarget(destination: Pick<IntegrationDestination, 'externalId'>): {
+  channelId: string
+} {
+  return { channelId: destination.externalId }
 }
 
 /** The encrypted `secrets` blob. */
@@ -65,6 +99,21 @@ export async function listDestinations(
     .orderBy(asc(integrationDestinations.createdAt), asc(integrationDestinations.id))
 }
 
+/**
+ * The names of every destination a connection serves, for matching a link's
+ * scope to its repository (see `linkTarget`). Empty for a provider without
+ * destination rows, whose links all belong to `config.channelId`.
+ */
+export async function destinationChannelIds(
+  integration: { id: string; integrationType: string },
+  executor: Database | Transaction = db
+): Promise<string[]> {
+  if (!(await definitionOf(integration.integrationType))?.destination?.multiple) return []
+  return (await listDestinations(integration.id as IntegrationId, undefined, executor)).map(
+    (d) => d.externalId
+  )
+}
+
 /** By row id, by name (case-insensitive, as GitHub treats repository names) or by immutable key. */
 export async function findDestination(
   integrationId: IntegrationId,
@@ -89,6 +138,72 @@ export async function findDestination(
     )
     .limit(1)
   return row ?? null
+}
+
+/**
+ * Whether outbound work (an issue for new feedback, an issue created from a
+ * ticket) may go to `channelId` on this connection now. A connection without
+ * destination rows sends to its `config.channelId` as it always has;
+ * otherwise the named destination must exist, be switched on and not be
+ * inbound-only.
+ */
+export async function outboundAllowed(
+  integration: Pick<IntegrationRow, 'id' | 'integrationType'>,
+  channelId: unknown
+): Promise<boolean> {
+  const multiple = (await definitionOf(integration.integrationType))?.destination?.multiple
+  if (!multiple) return true
+  const rows = await listDestinations(integration.id, multiple.kind)
+  if (rows.length === 0) return true
+  const name = typeof channelId === 'string' ? channelId.toLowerCase() : null
+  const destination = rows.find((row) => row.externalId.toLowerCase() === name)
+  return !!destination && destinationSends(destination)
+}
+
+/**
+ * Where new work created on request goes: the destination asked for, else
+ * the default one (`config.channelId`), else the only one that takes new
+ * work. Refuses a destination that is switched off or inbound-only, and asks
+ * for a choice when several could take it. A connection without destination
+ * rows creates in `config.channelId`.
+ */
+export async function outboundTarget(
+  integration: Pick<IntegrationRow, 'id' | 'integrationType' | 'config'>,
+  destinationId?: string
+): Promise<{ channelId: unknown }> {
+  const config = (integration.config ?? {}) as Record<string, unknown>
+  const multiple = (await definitionOf(integration.integrationType))?.destination?.multiple
+  const rows = multiple ? await listDestinations(integration.id, multiple.kind) : []
+  if (!multiple || rows.length === 0) return { channelId: config.channelId }
+  const noun = multiple.label.toLowerCase()
+
+  if (destinationId) {
+    const chosen = rows.find((row) => row.id === destinationId)
+    if (!chosen)
+      throw new ValidationError('DESTINATION_NOT_FOUND', `Choose a ${noun} this connection syncs`)
+    if (!destinationSends(chosen))
+      throw new ValidationError(
+        'DESTINATION_UNAVAILABLE',
+        `${chosen.externalId} does not take new issues. Turn it on or let it sync outbound.`
+      )
+    return destinationTarget(chosen)
+  }
+
+  const sending = rows.filter(destinationSends)
+  const fallback =
+    sending.find(
+      (row) =>
+        typeof config.channelId === 'string' &&
+        row.externalId.toLowerCase() === config.channelId.toLowerCase()
+    ) ?? (sending.length === 1 ? sending[0] : undefined)
+  if (!fallback)
+    throw new ValidationError(
+      'DESTINATION_REQUIRED',
+      sending.length === 0
+        ? `No ${noun} takes new issues. Turn one on or let it sync outbound.`
+        : `Choose a ${noun}`
+    )
+  return destinationTarget(fallback)
 }
 
 /**
@@ -290,13 +405,17 @@ export async function registerDestinationWebhooks(params: {
   return { registered, failures }
 }
 
-/** Remove the provider-side webhook. Best effort: a failure is logged, never thrown. */
+/**
+ * Remove the provider-side webhook. Best effort: a failure is logged and its
+ * message returned, never thrown. Null when there was nothing to remove or it
+ * went.
+ */
 async function removeRemoteWebhook(
   integration: Pick<IntegrationRow, 'integrationType' | 'config'>,
   destination: IntegrationDestination,
   accessToken: string
-): Promise<boolean> {
-  if (!destination.externalWebhookId || !accessToken) return false
+): Promise<string | null> {
+  if (!destination.externalWebhookId || !accessToken) return null
   try {
     const registration = await automaticRegistration(integration.integrationType)
     await registration.unregister({
@@ -304,28 +423,36 @@ async function removeRemoteWebhook(
       config: destinationConfig(integration, destination),
       externalWebhookId: destination.externalWebhookId,
     })
-    return true
+    return null
   } catch (err) {
     log.warn(
       { err, integration_type: integration.integrationType, destination_id: destination.id },
       'destination webhook removal failed'
     )
-    return false
+    return err instanceof Error ? err.message : String(err)
   }
 }
 
-/** Remove one destination's webhook and forget it locally, even if the provider call failed. */
+/**
+ * Remove one destination's webhook and forget it locally, even if the
+ * provider call failed. Returns that failure's message, or null.
+ */
 export async function unregisterDestinationWebhook(params: {
   integration: Pick<IntegrationRow, 'integrationType' | 'config'>
   destination: IntegrationDestination
   accessToken: string
-}): Promise<void> {
-  await removeRemoteWebhook(params.integration, params.destination, params.accessToken)
+}): Promise<string | null> {
+  const failure = await removeRemoteWebhook(
+    params.integration,
+    params.destination,
+    params.accessToken
+  )
   await writeDestinationWebhook(params.destination.id, {
     secret: null,
     externalWebhookId: null,
     events: null,
   })
+  return failure
 }
 
 /**

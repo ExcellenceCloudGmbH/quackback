@@ -1,3 +1,4 @@
+import { z } from 'zod'
 import { channelDestination } from '@/lib/server/integrations/destination'
 import type { IntegrationDefinition } from '@/lib/server/integrations/types'
 import { fetchGitHubStatuses } from '@/integrations/github/server/statuses'
@@ -13,7 +14,7 @@ import {
   syncGitHubWebhookEvents,
 } from '@/lib/server/domains/channel-accounts/github-connection'
 import { db, integrations, eq } from '@/lib/server/db'
-import { ensureDestinations } from '@/lib/server/integrations/destinations'
+import { DESTINATION_DIRECTIONS, ensureDestinations } from '@/lib/server/integrations/destinations'
 import { githubHook } from '@/integrations/github/server/hook'
 import { githubInboundHandler } from '@/integrations/github/server/inbound'
 import { githubIssues } from '@/integrations/github/server/issues'
@@ -29,7 +30,17 @@ export const githubIntegration: IntegrationDefinition = {
   id: 'github',
   destination: {
     ...channelDestination(['organizationName']),
-    multiple: { kind: 'repo', label: 'Repository' },
+    multiple: {
+      kind: 'repo',
+      label: 'Repository',
+      configSchema: z
+        .object({ direction: z.enum(DESTINATION_DIRECTIONS) })
+        .partial()
+        .strict(),
+      // Status sync and the inbox channel both listen to the repository hooks.
+      webhookWanted: async (config) =>
+        !!config.statusSyncEnabled || !!(await getLiveGitHubConnectionAccount()),
+    },
   },
   catalog: githubCatalog,
   oauth: {
@@ -42,7 +53,7 @@ export const githubIntegration: IntegrationDefinition = {
       label: 'Repository',
       list: async ({ accessToken }) => {
         const repos = await listGitHubRepos(accessToken)
-        return repos.map((r) => ({ id: r.fullName, name: r.fullName }))
+        return repos.map((r) => ({ id: r.fullName, name: r.fullName, key: String(r.id) }))
       },
     },
   },

@@ -97,6 +97,14 @@ export const updateIntegrationFn = createServerFn({ method: 'POST' })
             updatedAt: new Date(),
           },
         })
+      // A provider serving several destinations repeats its default mappings
+      // for each of them, so the same switch covers every repository.
+      const { getIntegration } = await import('@/lib/server/integrations')
+      if (getIntegration(integration.integrationType)?.destination?.multiple) {
+        const { mirrorDestinationEventMappings } =
+          await import('@/lib/server/integrations/destination-admin')
+        await mirrorDestinationEventMappings(integrationId)
+      }
     }
 
     const { cacheDel, CACHE_KEYS } = await import('@/lib/server/cache')
