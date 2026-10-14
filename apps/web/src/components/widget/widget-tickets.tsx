@@ -15,6 +15,7 @@ import {
 import { TimeAgo } from '@/components/ui/time-ago'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { StageChip } from '@/components/shared/ticket-stage'
+import { TicketDueLabel } from '@/components/shared/ticket-due-label'
 import { cn } from '@/lib/shared/utils'
 import { WidgetTicketListSkeleton } from './widget-skeletons'
 
@@ -25,12 +26,12 @@ export function widgetMyTicketsKey(sessionVersion: number) {
 
 /**
  * The Tickets tab — the signed-in requester's own tickets, newest-activity
- * first, each row carrying its current public stage chip and reference. A row
- * opens its ticket's conversation thread (the converged pair) via
- * `onOpenTicket`; a legacy pair-less row stays inert. Visitors cannot file
- * tickets here — agents and email create them. Identified visitors only; an
- * anonymous visitor has no tickets, so the tab itself is gated on sign-in
- * upstream.
+ * first, each row carrying its current public stage chip, reference and due
+ * date (when set). A row opens its ticket's conversation thread (the
+ * converged pair) via `onOpenTicket`; a legacy pair-less row stays inert.
+ * Visitors cannot file tickets here — agents and email create them.
+ * Identified visitors only; an anonymous visitor has no tickets, so the tab
+ * itself is gated on sign-in upstream.
  */
 export function WidgetTickets({
   onOpenTicket,
@@ -120,6 +121,7 @@ export function WidgetTickets({
                         <span className="font-mono text-[11px] text-muted-foreground/60">
                           {t.reference}
                         </span>
+                        <TicketDueLabel dueAt={t.dueAt} closed={t.stage.closed} />
                         {changed && (
                           <span className="sr-only">
                             <FormattedMessage
