@@ -101,7 +101,7 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 
 ## 2. Surfaces and their enforced authorization
 
-### Server functions (`requireAuth`) — 781 surfaces
+### Server functions (`requireAuth`) — 786 surfaces
 
 | Surface | Enforces |
 | --- | --- |
@@ -122,6 +122,8 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `integrations/github/server/functions.ts`::setGitHubRepositoryInboxFn | channel_account.manage |
 | `integrations/github/server/functions.ts`::fetchGitHubReposFn | integration.manage |
 | `integrations/github/server/functions.ts`::retryGitHubAgentMessageFn | conversation.reply |
+| `integrations/github/server/functions.ts`::suggestGitHubPeopleFn | integration.manage |
+| `integrations/github/server/functions.ts`::findGitHubUserFn | integration.manage |
 | `integrations/gitlab/server/functions.ts`::getGitLabConnectUrl | integration.manage |
 | `integrations/gitlab/server/functions.ts`::fetchGitLabProjectsFn | integration.manage |
 | `integrations/hubspot/server/functions.ts`::getHubSpotConnectUrl | integration.manage |
@@ -490,6 +492,9 @@ Profiles: **Owner** = admin class + an admin-owned full API key (scoped keys hol
 | `lib/server/functions/integration-sync.ts`::inspectIntegrationSyncFn | integration.view |
 | `lib/server/functions/integration-sync.ts`::recoverIntegrationSyncFn | integration.manage |
 | `lib/server/functions/integration-sync.ts`::verifyIntegrationSyncReferenceFn | integration.manage |
+| `lib/server/functions/integration-user-mappings.ts`::listIntegrationUserMappingsFn | integration.view |
+| `lib/server/functions/integration-user-mappings.ts`::upsertIntegrationUserMappingFn | integration.manage |
+| `lib/server/functions/integration-user-mappings.ts`::deleteIntegrationUserMappingFn | integration.manage |
 | `lib/server/functions/integrations.ts`::updateIntegrationFn | integration.manage |
 | `lib/server/functions/integrations.ts`::deleteIntegrationFn | integration.manage |
 | `lib/server/functions/integrations.ts`::addNotificationChannelFn | integration.manage |
@@ -1132,7 +1137,7 @@ Key scopes are enforced: an API key holds exactly its stored scopes (owner permi
 
 ## 4. Entry points without a requireAuth/key gate
 
-228 of 1138 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
+228 of 1143 entry points hold no `requireAuth` / `withApiKeyAuth` / `requireTeamAuth` gate.
 Each is expected to be intentionally public, a pre-auth flow, a signature-verified webhook, or a handler that delegates auth (e.g. the MCP route).
 **Adding a row here is an access-control change** — confirm the new entry point is meant to be reachable without a gate.
 
