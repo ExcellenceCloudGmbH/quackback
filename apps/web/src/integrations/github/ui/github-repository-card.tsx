@@ -9,7 +9,10 @@
  * or as tickets with their team and type), whether an issue's assignee
  * follows onto its tickets (not for a send-only repository), whether a
  * linked ticket's public replies are posted to its issues as comments (with a
- * warning that they become visible there; not for a receive-only one),
+ * warning that they become visible there; not for a receive-only one), what
+ * a comment on a linked issue becomes on the ticket (nothing, a note, or a
+ * reply, with a warning that the requester then sees it; not for a send-only
+ * one),
  * whether each new ticket it matches gets an issue there (not for a
  * receive-only one), which way it syncs, and removing it. A repository set to
  * bring issues in while the GitHub inbox channel is off says so, with a link
@@ -286,6 +289,55 @@ export function GitHubRepositoryCard({ destination, inboxOff }: GitHubRepository
             />
           </span>
         </div>
+        <div className="flex items-center gap-2 text-xs">
+          <span aria-hidden>
+            <FormattedMessage id="admin.githubRepository.commentsLabel" defaultMessage="Comments" />
+          </span>
+          <Select
+            value={destination.commentVisibility}
+            disabled={setConfig.isPending || destination.direction === 'outbound'}
+            onValueChange={(commentVisibility) =>
+              setConfig.mutate(
+                { destinationId: destination.id, config: { commentVisibility } },
+                { onError: saveFailed }
+              )
+            }
+          >
+            <SelectTrigger
+              className="h-8 w-40 text-xs"
+              aria-label={intl.formatMessage(
+                {
+                  id: 'admin.githubRepository.comments',
+                  defaultMessage:
+                    'What comments on linked issues in {repository} become on tickets',
+                },
+                { repository: destination.externalId }
+              )}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">
+                <FormattedMessage
+                  id="admin.githubRepository.comments.off"
+                  defaultMessage="Not brought in"
+                />
+              </SelectItem>
+              <SelectItem value="note">
+                <FormattedMessage
+                  id="admin.githubRepository.comments.note"
+                  defaultMessage="Internal notes"
+                />
+              </SelectItem>
+              <SelectItem value="reply">
+                <FormattedMessage
+                  id="admin.githubRepository.comments.reply"
+                  defaultMessage="Public replies"
+                />
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
         <GitHubTicketIssues
           destinationId={destination.id}
           repository={destination.externalId}
@@ -334,6 +386,14 @@ export function GitHubRepositoryCard({ destination, inboxOff }: GitHubRepository
           <FormattedMessage
             id="admin.githubRepository.postRepliesWarning"
             defaultMessage="Public replies on linked tickets, including the customer's, are posted to the issue and visible to anyone who can see it."
+          />
+        </p>
+      )}
+      {destination.commentVisibility === 'reply' && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          <FormattedMessage
+            id="admin.githubRepository.commentsReplyWarning"
+            defaultMessage="Comments on linked issues, from anyone who can comment there, are added to the ticket as public replies and sent to the requester."
           />
         </p>
       )}

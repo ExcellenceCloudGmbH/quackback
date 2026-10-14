@@ -516,6 +516,19 @@ export const createTicketIssueFn = createServerFn({ method: 'POST' })
     )
   })
 
+/** Resync a ticket with its linked issues: replies with no comment yet go
+ *  out, the issues' comments not on the ticket yet come in (forward only;
+ *  see ticket-sync.ts). Gated on TICKET_ASSIGN, like the links themselves;
+ *  the ticket must be visible to the caller. */
+export const syncTicketIntegrationsFn = createServerFn({ method: 'POST' })
+  .validator(z.object({ ticketId: z.string().max(100) }))
+  .handler(async ({ data }) => {
+    const ctx = await requireAuth({ permission: PERMISSIONS.TICKET_ASSIGN })
+    const actor = await policyActorFromAuth(ctx)
+    const { syncTicketIntegrations } = await import('@/lib/server/integrations/ticket-sync')
+    return syncTicketIntegrations(data.ticketId as TicketId, actor)
+  })
+
 /** Remove a ticket's tracker issue link. Gated on TICKET_ASSIGN. */
 export const unlinkTicketIssueFn = createServerFn({ method: 'POST' })
   .validator(z.object({ ticketId: z.string(), linkId: z.string() }))

@@ -147,6 +147,38 @@ export async function editConversationMessage(
 }
 
 /**
+ * Rewrite a message an integration brought in from a remote comment, as that
+ * integration's service principal, because the comment was edited where it
+ * was written. `canEditMessage` refuses every service principal (nobody
+ * rewrites someone else's words), so this narrower path accepts only the
+ * principal's own live agent message, then saves and publishes exactly as an
+ * edit does. The `ticket.reply_updated` it emits names that principal, which
+ * outbound sync never sends back to the same integration.
+ */
+export async function editMirroredMessage(
+  messageId: ConversationMessageId,
+  rawContent: string,
+  contentJson: TiptapContent | null,
+  actor: Actor
+): Promise<AgentConversationMessageDTO> {
+  const [message] = await db
+    .select()
+    .from(conversationMessages)
+    .where(eq(conversationMessages.id, messageId))
+    .limit(1)
+  if (
+    !message ||
+    message.deletedAt ||
+    message.senderType !== 'agent' ||
+    actor.principalType !== 'service' ||
+    !actor.principalId ||
+    message.principalId !== actor.principalId
+  )
+    throw new NotFoundError('MESSAGE_NOT_FOUND', 'Message not found')
+  return applyEdit(message, rawContent, contentJson, actor, actor.principalId)
+}
+
+/**
  * Load a live message the actor may change in place: its parent is visible to
  * them and the edit rule (the author, for the kind of message it is) allows
  * it. Blocked-sender notices and assistant messages are never editable.

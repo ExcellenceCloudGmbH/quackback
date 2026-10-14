@@ -1,10 +1,10 @@
 /**
- * A ticket reply mirrored as a comment on a linked issue: one row per reply
- * and linked issue (`ticket_external_links`), naming the comment that stands
- * for the reply there. An outbound row is a comment the connection posted and
+ * A ticket message mirrored with a comment on a linked issue: one row per
+ * message and linked issue (`ticket_external_links`), naming the comment that
+ * stands for it there. An outbound row is a comment the connection posted and
  * so owns: an edit, a file change or a deletion of the reply follows onto
- * that comment, and onto nothing else. `inbound` rows record comments brought
- * in from the issue as replies.
+ * that comment, and onto nothing else. An inbound row is a comment brought in
+ * from the issue as a note or reply, which its edits and deletion follow.
  *
  * A table rather than a comment id in the message's metadata: the inbox edit
  * path reads `metadata.githubCommentId` as a channel thread's comment, which a

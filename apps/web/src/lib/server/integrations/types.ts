@@ -1,5 +1,5 @@
 import type { IntegrationHook } from './sync/outcomes'
-import type { InboundWebhookHandler } from './inbound-types'
+import type { InboundWebhookHandler, RemoteIssueComment } from './inbound-types'
 import type { UserSyncHandler } from './user-sync-types'
 
 /**
@@ -228,8 +228,9 @@ export interface IssueCommentRef {
  * Mirror a linked ticket's public replies onto the issue as comments. Every
  * comment written here is the connection's own: it is created from a reply,
  * and only ever edited or deleted to follow that reply. Remote-authored
- * comments are never touched. Each call throws an `issueError` carrying the
- * response `status` on a rejected request.
+ * comments are never touched, only read (`list`) when a ticket is resynced.
+ * Each call throws an `issueError` carrying the response `status` on a
+ * rejected request.
  */
 export interface IssueCommentCapability {
   /** The comment body for a reply, with a hidden marker naming the reply and the connection. */
@@ -248,6 +249,22 @@ export interface IssueCommentCapability {
   }): Promise<IssueCommentRef | null>
   /** Resolves when the comment is gone, including when it was already removed. */
   delete(args: { auth: Record<string, unknown>; commentId: string }): Promise<void>
+  /**
+   * Read an issue's comments, oldest first, for a ticket's resync: those
+   * updated at or after `since`, at most `limit` of them.
+   */
+  list(args: {
+    auth: Record<string, unknown>
+    issueId: string
+    since: string
+    limit: number
+  }): Promise<RemoteIssueComment[]>
+  /**
+   * For a provider with an Inbox channel: the channel thread an item's
+   * conversation has (GitHub: `owner/repo#n`). Comments on such an item reach
+   * the inbox through the channel, never a linked ticket.
+   */
+  threadKey?(target: { channelId: string }, issueId: string): string
 }
 
 /**
@@ -308,7 +325,8 @@ export interface IssueTrackerCapability {
   ): TicketIssueContent
   /**
    * Post a linked ticket's public replies to the issue, in destinations that
-   * switch `postRepliesAsComments` on (see `sync/comments.ts`).
+   * switch `postRepliesAsComments` on (see `sync/comments.ts`), and read the
+   * issue's comments back when a ticket is resynced (`ticket-sync.ts`).
    */
   comments?: IssueCommentCapability
 }

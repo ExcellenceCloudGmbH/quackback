@@ -142,6 +142,28 @@ that, and the reply stays. Remote-authored
 comments are never edited, and replies the integration's own principal wrote are
 never sent back.
 
+The other way, a destination's `commentVisibility` (`off` by default, `note` or
+`reply`) brings comments on a linked issue into its tickets (see
+`sync/inbound-comments.ts`). `inbound.parseCommentChange` reads the comment from
+the signed receipt, and the receipt's worker queues one `comment-import`
+(`-update`, `-delete`) operation per linked ticket, which writes, edits or removes
+an internal note or a public reply as the integration's service principal. The
+connection's own comments and any body carrying a `<!-- quackback:` marker are
+skipped (a marker naming one of our replies only restores its record), tickets
+paired with the provider's inbox conversation are left to the channel, and
+`message_external_links` (`inbound`) keeps a redelivery from bringing a comment in
+twice. A ticket's "Sync" action (`ticket-sync.ts`) queues the same operations for
+replies and comments live sync missed since the link was made: there is no bulk
+backfill, since the ledger only moves forward. One of our own comments deleted on
+the platform marks its record deleted (the reply stays, and stops following it).
+
+An issue that names a ticket as its own (`inbound.parseTicketReference`: the
+ticket-issue marker for this connection, or a link to the ticket in Quackback) but
+is linked to no ticket in its destination is never linked on the delivery's
+say-so. It becomes one `relink` item in Sync history (see
+`sync/ticket-recovery.ts`), offering the verified **Link existing** recovery and
+**Cancel**, once per ticket, issue and destination however busy the issue is.
+
 Integration-only resync visits every active link without re-emitting `post.created`
 to unrelated sinks. Canonical rich text is converted with `contentJsonToMarkdown`;
 `buildIntegrationPostContent` keeps absolute media URLs and complete attachments

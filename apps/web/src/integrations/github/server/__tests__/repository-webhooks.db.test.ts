@@ -428,6 +428,26 @@ describe.skipIf(!fixture.available)('GitHub repository webhooks', () => {
     expect(after.config).toMatchObject({ assigneeSync: true })
   })
 
+  it('bringing comments into tickets subscribes the hook to issue_comment, and off unsubscribes it', async () => {
+    const integration = await seedGitHub({ channelId: 'acme/a' })
+    const repo = await addRepo(integration, { externalId: 'acme/a' })
+    github({ 'POST /repos/acme/a/hooks': () => Response.json({ id: 9 }, { status: 201 }) })
+    const { updateDestinationConfig } = await import('@/lib/server/integrations/destination-admin')
+    await updateDestinationConfig(repo.id, { commentVisibility: 'note' })
+    expect(calls).toEqual(['POST /repos/acme/a/hooks'])
+    const [on] = await repos(integration)
+    expect(on).toMatchObject({ externalWebhookId: '9', webhookEvents: ['issues', 'issue_comment'] })
+
+    calls = []
+    github({ 'PATCH /repos/acme/a/hooks/9': () => new Response('') })
+    await updateDestinationConfig(repo.id, { commentVisibility: 'off' })
+    expect(calls).toEqual(['PATCH /repos/acme/a/hooks/9'])
+    expect((await repos(integration))[0].webhookEvents).toEqual(['issues'])
+    await expect(updateDestinationConfig(repo.id, { commentVisibility: 'public' })).rejects.toThrow(
+      'These settings are not valid here'
+    )
+  })
+
   it('removes every repository webhook before revoking the token on disconnect', async () => {
     const integration = await seedGitHub({ channelId: 'acme/a', statusSyncEnabled: true })
     await addRepo(integration, { externalId: 'acme/a', externalWebhookId: '1' })

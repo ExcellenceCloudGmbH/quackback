@@ -293,8 +293,10 @@ export async function persistSyncLink(
   if (isTicketCommentKind(claim.operation.kind)) return persistTicketComment(tx, claim, result)
   if (typeof result.externalId !== 'string') return
   const op = claim.operation
-  // Notification receipts remain in sync history; only tracked items get lifecycle links.
-  if (op.kind !== 'create' || !getIntegration(op.provider)?.linkedItems) return
+  // Notification receipts remain in sync history; only tracked items get
+  // lifecycle links: a create, or a proposed link a teammate confirmed.
+  if ((op.kind !== 'create' && op.kind !== 'relink') || !getIntegration(op.provider)?.linkedItems)
+    return
   const remoteUrl = typeof result.externalUrl === 'string' ? result.externalUrl : null
   const displayId = typeof result.externalDisplayId === 'string' ? result.externalDisplayId : null
   if (op.sourceType === 'post') {
@@ -314,7 +316,7 @@ export async function persistSyncLink(
         origin: 'event',
       })
       .onConflictDoNothing()
-  } else if (op.sourceType === 'ticket' && op.kind === 'create') {
+  } else if (op.sourceType === 'ticket') {
     const ticket = await tx.query.tickets.findFirst({
       where: eq(tickets.id, op.sourceId as TicketId),
     })

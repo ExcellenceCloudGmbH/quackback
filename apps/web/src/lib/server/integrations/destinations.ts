@@ -64,6 +64,19 @@ export function destinationReceives(
   return destination.enabled && destinationDirection(destination) !== 'outbound'
 }
 
+/** What a comment on a linked issue becomes on the ticket; `off` when its config does not say. */
+export type DestinationCommentVisibility = NonNullable<
+  IntegrationDestinationConfig['commentVisibility']
+>
+export const DESTINATION_COMMENT_VISIBILITIES = ['off', 'note', 'reply'] as const
+
+export function destinationCommentVisibility(destination: {
+  config?: { commentVisibility?: unknown } | null
+}): DestinationCommentVisibility {
+  const visibility = destination.config?.commentVisibility
+  return visibility === 'note' || visibility === 'reply' ? visibility : 'off'
+}
+
 /** The target provider code and link scopes name a destination by. */
 export function destinationTarget(destination: Pick<IntegrationDestination, 'externalId'>): {
   channelId: string

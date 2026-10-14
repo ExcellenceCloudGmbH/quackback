@@ -14,7 +14,10 @@ import { requireAuth } from './auth-helpers'
 import { db, integrations, integrationDestinations, eq } from '@/lib/server/db'
 import type { IntegrationDestinationId } from '@quackback/ids'
 import type { DestinationItem } from '@/lib/server/integrations/types'
-import type { DestinationDirection } from '@/lib/server/integrations/destinations'
+import type {
+  DestinationCommentVisibility,
+  DestinationDirection,
+} from '@/lib/server/integrations/destinations'
 import type { DestinationTicketIssues } from '@/lib/server/integrations/destination-admin'
 import type {
   GitHubInboundMode,
@@ -82,6 +85,8 @@ export interface IntegrationDestinationSummary {
   assigneeSync: boolean
   /** Whether a linked ticket's public replies are posted to its issues there as comments. */
   postRepliesAsComments: boolean
+  /** What a comment on an issue there becomes on the tickets linked to it. */
+  commentVisibility: DestinationCommentVisibility
   /** Whether the tickets it matches (by team and type; none chosen: every ticket) get an issue there. */
   ticketIssues: DestinationTicketIssues
   /** The connection's default destination (`config.channelId`). */
@@ -141,7 +146,7 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
     })
     if (!integration) return []
 
-    const { listDestinations, destinationDirection } =
+    const { listDestinations, destinationDirection, destinationCommentVisibility } =
       await import('@/lib/server/integrations/destinations')
     const { githubInboundMode, githubTicketScope } =
       await import('@/lib/server/domains/channel-accounts/github-connection')
@@ -159,6 +164,7 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
       ticketScope: githubTicketScope(destination.config),
       assigneeSync: destination.config.assigneeSync === true,
       postRepliesAsComments: destination.config.postRepliesAsComments === true,
+      commentVisibility: destinationCommentVisibility(destination),
       ticketIssues: ticketIssues.get(destination.id) ?? {
         enabled: false,
         teamIds: [],

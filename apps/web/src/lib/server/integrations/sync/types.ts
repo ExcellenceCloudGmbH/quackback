@@ -9,6 +9,8 @@ export type SyncExecutor =
   | 'ticket-comment'
   | 'inbound-status'
   | 'inbound-assignee'
+  | 'inbound-comment'
+  | 'relink'
   | 'inbound-webhook'
   | 'identify'
   | 'segment'

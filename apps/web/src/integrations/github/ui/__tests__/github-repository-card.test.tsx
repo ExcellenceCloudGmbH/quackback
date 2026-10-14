@@ -4,7 +4,8 @@
  * the last delivery, the recorded error, a repair that reports its outcome,
  * the on/off switch, what its issues open in the inbox (with the team and
  * ticket type of its tickets), the assignee switch, the replies-as-comments
- * switch with its visibility warning, the ticket opt-in with
+ * switch with its visibility warning, what comments on linked issues become
+ * on tickets with its warning for public replies, the ticket opt-in with
  * its team and type filters, and removal behind a confirmation.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
@@ -65,6 +66,7 @@ const repo: IntegrationDestinationSummary = {
   ticketScope: { teamId: null, ticketTypeId: null },
   assigneeSync: false,
   postRepliesAsComments: false,
+  commentVisibility: 'off',
   ticketIssues: { enabled: false, teamIds: [], ticketTypeIds: [] },
   isDefault: false,
   webhookRegistered: true,
@@ -183,6 +185,28 @@ describe('GitHubRepositoryCard', () => {
     cleanup()
     renderCard({ ...repo, direction: 'inbound' })
     expect(screen.getByRole('switch', { name })).toBeDisabled()
+  })
+
+  it('brings comments in as notes or public replies, warns about replies, never for a send-only repository', async () => {
+    renderCard(repo)
+    const name = 'What comments on linked issues in acme/app become on tickets'
+    const warning = /are added to the ticket as public replies and sent to the requester/
+    const visibility = screen.getByRole('combobox', { name })
+    expect(visibility).toHaveTextContent('Not brought in')
+    expect(screen.queryByText(warning)).toBeNull()
+    await userEvent.click(visibility)
+    await userEvent.click(screen.getByRole('option', { name: 'Internal notes' }))
+    expect(mocks.setConfig.mock.calls[0][0]).toEqual({
+      destinationId: 'integration_destination_1',
+      config: { commentVisibility: 'note' },
+    })
+    cleanup()
+    renderCard({ ...repo, commentVisibility: 'reply' })
+    expect(screen.getByRole('combobox', { name })).toHaveTextContent('Public replies')
+    expect(screen.getByText(warning)).toBeTruthy()
+    cleanup()
+    renderCard({ ...repo, direction: 'outbound' })
+    expect(screen.getByRole('combobox', { name })).toBeDisabled()
   })
 
   it('brings the repository into the inbox as conversations or tickets', async () => {

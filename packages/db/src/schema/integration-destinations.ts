@@ -64,6 +64,12 @@ export interface IntegrationDestinationConfig {
    * posted, so switching the option on never publishes what was said before.
    */
   postRepliesAsCommentsSince?: string
+  /**
+   * What a comment on an issue linked to a ticket becomes on that ticket:
+   * nothing (`off`, the default), an internal note the team sees (`note`), or
+   * a public reply the requester sees and is notified of (`reply`).
+   */
+  commentVisibility?: 'off' | 'note' | 'reply'
   [key: string]: unknown
 }
 

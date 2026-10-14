@@ -55,7 +55,7 @@ export function syncActions(
 ): SyncAction[] {
   if (!manage) return []
   const link: SyncAction[] =
-    op.kind === 'create' &&
+    (op.kind === 'create' || (op.kind === 'relink' && op.sourceType === 'ticket')) &&
     ['post', 'ticket'].includes(op.sourceType ?? '') &&
     getIntegration(op.provider ?? '')?.issues?.inspect
       ? ['link_existing']
@@ -65,6 +65,8 @@ export function syncActions(
       ...(op.cancelRequested ? ['reconcile' as const] : ['reconcile' as const, 'cancel' as const]),
       ...link,
     ]
+  // A proposed link (`relink`): link the item after inspecting it, or leave it unlinked.
+  if (op.state === 'conflict' && op.kind === 'relink') return [...link, 'cancel']
   if (op.state === 'conflict') return ['keep_remote', 'cancel', ...link]
   if (op.state === 'failed' || op.state === 'auth_required') return ['retry', 'cancel']
   if (['queued', 'retry_wait', 'running'].includes(op.state) && !op.cancelRequested)

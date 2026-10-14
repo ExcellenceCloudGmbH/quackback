@@ -19,6 +19,7 @@ import {
 } from '@/lib/server/db'
 import type { IntegrationId, TeamId } from '@quackback/ids'
 import {
+  destinationCommentVisibility,
   destinationReceives,
   listDestinations,
   type IntegrationDestination,
@@ -191,28 +192,30 @@ export function githubRepositoryIngests(
 
 /**
  * The events one repository's hook subscribes to: `issues` always (status
- * sync, issue lifecycle, assignees), `issue_comment` only while the inbox channel is
- * live and this repository brings its issues in (as conversations or
- * tickets). The one place a feature that needs another event per repository
- * adds it.
+ * sync, issue lifecycle, assignees), `issue_comment` while the inbox channel
+ * is live and this repository brings its issues in (as conversations or
+ * tickets), or while its comments come into linked tickets
+ * (`commentVisibility` other than `off`). The one place a feature that needs
+ * another event per repository adds it.
  */
 export function githubWebhookEvents(
-  repository: { inboundMode?: unknown },
+  repository: { inboundMode?: unknown; commentVisibility?: unknown },
   opts: { inboxLive: boolean }
 ): string[] {
-  return opts.inboxLive && githubBringsIssuesIn(repository)
-    ? ['issues', 'issue_comment']
-    : ['issues']
+  const comments =
+    (opts.inboxLive && githubBringsIssuesIn(repository)) ||
+    destinationCommentVisibility({ config: repository }) !== 'off'
+  return comments ? ['issues', 'issue_comment'] : ['issues']
 }
 
 /**
  * Whether anything listens to one repository's hook: status sync (every
  * repository), the inbox (a repository that brings its issues in, while the
- * channel is live), or assignee sync (a repository that has it on). All of
- * them read the `issues` events the hook always carries.
+ * channel is live), assignee sync (a repository that has it on), or comments
+ * coming into linked tickets.
  */
 export function githubHookWanted(
-  repository: { inboundMode?: unknown; assigneeSync?: unknown },
+  repository: { inboundMode?: unknown; assigneeSync?: unknown; commentVisibility?: unknown },
   opts: { statusSync: boolean; inboxLive: boolean }
 ): boolean {
   return (

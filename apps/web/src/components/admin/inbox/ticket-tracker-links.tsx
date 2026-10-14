@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { PlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
+import { ArrowPathIcon, PlusIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { toast } from 'sonner'
 import { useIntl } from 'react-intl'
 import type { TicketId, TicketExternalLinkId } from '@quackback/ids'
@@ -10,6 +10,7 @@ import { ticketQueries, ticketKeys } from '@/lib/client/queries/inbox'
 import {
   createTicketIssueFn,
   linkTicketIssueFn,
+  syncTicketIntegrationsFn,
   unlinkTicketIssueFn,
 } from '@/lib/server/functions/tickets'
 import { INTEGRATION_ICON_MAP } from '@/components/icons/integration-icons'
@@ -39,10 +40,12 @@ interface TrackerLink {
  * The tracker section of the ticket detail panel: per connected tracker, link
  * the ticket to an existing issue (integrations with an `issues.parseRef`
  * capability) and/or create a new issue from the ticket (integrations with an
- * `issues.create` capability), list the linked issues, unlink. One section per
- * tracker; hidden entirely when nothing is connected and nothing is linked.
- * Issue state changes flow back via the inbound webhook's ticket status
- * mapping, not this panel.
+ * `issues.create` capability), list the linked issues, unlink, and, for a
+ * tracker that mirrors replies and comments (`issues.comments`), sync the
+ * ticket with its linked issues: replies with no comment yet go out, comments
+ * not on the ticket yet come in. One section per tracker; hidden entirely
+ * when nothing is connected and nothing is linked. Issue state changes flow
+ * back via the inbound webhook's ticket status mapping, not this panel.
  */
 export function TicketTrackerLinks({
   ticketId,
@@ -68,17 +71,26 @@ export function TicketTrackerLinks({
     name: string
     canLink: boolean
     canCreate: boolean
+    canSync: boolean
     destinations: TrackerDestination[]
   }> = data.trackers.map((t) => ({
     type: t.integrationType,
     name: t.name,
     canLink: t.canLink,
     canCreate: t.canCreate,
+    canSync: t.canSync,
     destinations: t.destinations,
   }))
   for (const type of linksByType.keys()) {
     if (!sections.some((s) => s.type === type)) {
-      sections.push({ type, name: type, canLink: false, canCreate: false, destinations: [] })
+      sections.push({
+        type,
+        name: type,
+        canLink: false,
+        canCreate: false,
+        canSync: false,
+        destinations: [],
+      })
     }
   }
   if (sections.length === 0) return null
@@ -93,6 +105,7 @@ export function TicketTrackerLinks({
           name={s.name}
           canLink={s.canLink}
           canCreate={s.canCreate}
+          canSync={s.canSync}
           destinations={s.destinations}
           links={linksByType.get(s.type) ?? []}
           onChanged={onChanged}
@@ -108,6 +121,7 @@ function TrackerSection({
   name,
   canLink,
   canCreate,
+  canSync,
   destinations,
   links,
   onChanged,
@@ -117,6 +131,8 @@ function TrackerSection({
   name: string
   canLink: boolean
   canCreate: boolean
+  /** Replies and comments sync with linked issues: a resync is offered while any are linked. */
+  canSync: boolean
   /** Several repositories: creating asks which one. */
   destinations: TrackerDestination[]
   links: TrackerLink[]
@@ -167,6 +183,40 @@ function TrackerSection({
       )
     },
     onError,
+  })
+
+  const sync = useMutation({
+    mutationFn: () => syncTicketIntegrationsFn({ data: { ticketId } }),
+    onSuccess: (result) => {
+      settle()
+      toast.message(
+        intl.formatMessage(
+          { id: 'admin.ticketTracker.synced', defaultMessage: 'Sync with {tracker} queued' },
+          { tracker: name }
+        ),
+        {
+          description: intl.formatMessage(
+            {
+              id: 'admin.ticketTracker.syncCounts',
+              defaultMessage: 'Comments to bring in: {inbound}. Replies to post: {outbound}.',
+            },
+            { inbound: result.inbound, outbound: result.outbound }
+          ),
+        }
+      )
+    },
+    onError: (e: unknown) =>
+      toast.error(
+        e instanceof Error
+          ? e.message
+          : intl.formatMessage(
+              {
+                id: 'admin.ticketTracker.syncFailed',
+                defaultMessage: 'Could not sync with {tracker}',
+              },
+              { tracker: name }
+            )
+      ),
   })
 
   const Icon = INTEGRATION_ICON_MAP[type]
@@ -234,7 +284,28 @@ function TrackerSection({
         <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           {Icon && <Icon className="h-4 w-4" />} {name}
         </span>
-        {!adding && addAffordance}
+        <div className="flex items-center gap-3">
+          {canSync && links.length > 0 && (
+            <button
+              type="button"
+              onClick={() => sync.mutate()}
+              disabled={sync.isPending}
+              className="inline-flex items-center gap-1 text-[13px] font-medium text-muted-foreground hover:text-foreground"
+            >
+              <ArrowPathIcon className={`size-4 ${sync.isPending ? 'animate-spin' : ''}`} />
+              {sync.isPending
+                ? intl.formatMessage({
+                    id: 'admin.ticketTracker.syncing',
+                    defaultMessage: 'Syncing…',
+                  })
+                : intl.formatMessage(
+                    { id: 'admin.ticketTracker.sync', defaultMessage: 'Sync with {tracker}' },
+                    { tracker: name }
+                  )}
+            </button>
+          )}
+          {!adding && addAffordance}
+        </div>
       </div>
 
       {adding && (

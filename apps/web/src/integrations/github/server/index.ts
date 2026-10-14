@@ -18,7 +18,9 @@ import {
 } from '@/lib/server/domains/channel-accounts/github-connection'
 import { db, integrations, eq } from '@/lib/server/db'
 import {
+  DESTINATION_COMMENT_VISIBILITIES,
   DESTINATION_DIRECTIONS,
+  destinationCommentVisibility,
   ensureDestinations,
   listDestinations,
 } from '@/lib/server/integrations/destinations'
@@ -57,6 +59,7 @@ export const githubIntegration: IntegrationDefinition = {
           ),
           assigneeSync: z.boolean(),
           postRepliesAsComments: z.boolean(),
+          commentVisibility: z.enum(DESTINATION_COMMENT_VISIBILITIES),
         })
         .partial()
         .strict(),
@@ -67,8 +70,9 @@ export const githubIntegration: IntegrationDefinition = {
           await import('@/lib/server/domains/conversation/conversation.github-tickets')
         await validateGitHubRepositorySettings(patch)
       },
-      // Status sync listens to every repository's hook; the inbox and
-      // assignee sync only to the hooks of repositories that use them.
+      // Status sync listens to every repository's hook; the inbox, assignee
+      // sync and comments into tickets only to the hooks of repositories
+      // that use them.
       webhookWanted: async (config) =>
         githubHookWanted(config, {
           statusSync: !!config.statusSyncEnabled,
@@ -85,8 +89,9 @@ export const githubIntegration: IntegrationDefinition = {
             : 'conversations',
         }
       },
-      // A changed inbox choice changes which events that repository's hook
-      // needs, and switching assignee sync on may need a hook at all.
+      // A changed inbox or comment choice changes which events that
+      // repository's hook needs, and switching assignee sync on may need a
+      // hook at all.
       onConfigChanged: (destination) => syncGitHubWebhookEvents(destination.id).catch(() => {}),
     },
   },
@@ -169,7 +174,7 @@ export const githubIntegration: IntegrationDefinition = {
     if (
       config.statusSyncEnabled ||
       (await getLiveGitHubConnectionAccount()) ||
-      repositories.some((r) => r.config.assigneeSync)
+      repositories.some((r) => r.config.assigneeSync || destinationCommentVisibility(r) !== 'off')
     ) {
       // A failure is recorded on the repository and the connection; connecting still succeeds.
       await syncGitHubWebhookEvents().catch(() => {})

@@ -242,7 +242,42 @@ export async function queueTicketCommentSync(
   const messageId = payload.messageId
   const linkId = (data.target as { linkId?: unknown } | null)?.linkId
   if (!kind || !ticketId || !messageId || typeof linkId !== 'string') return null
-  const integrationId = String(data.config.integrationId)
+  return queueTicketComment(executor, {
+    integrationId: String(data.config.integrationId),
+    kind,
+    ticketId,
+    messageId,
+    linkId,
+    actor: data.event.actor,
+    revision: data.event.id,
+    occurredAt: data.event.timestamp,
+  })
+}
+
+/**
+ * Queue one comment write for a reply on one linked issue: what a reply
+ * event asks (`queueTicketCommentSync`), or what a ticket's resync asks for
+ * a reply that has no comment yet (`kind` `comment`, the same operation the
+ * reply's own event queues, so it is never posted twice).
+ */
+export async function queueTicketComment(
+  executor: JobSqlExecutor,
+  input: {
+    integrationId: string
+    kind: TicketCommentKind
+    ticketId: string
+    messageId: string
+    linkId: string
+    /** Who changed the reply; absent for a resync. */
+    actor?: HookJobData['event']['actor']
+    /** What makes an edit its own operation (the event's id). */
+    revision?: string
+    /** When the reply changed, for the ledger's forward-only rule. */
+    occurredAt: string
+    requestedBy?: string
+  }
+): Promise<{ id: string; state: string } | null> {
+  const { integrationId, kind, ticketId, messageId, linkId } = input
   const [row] = getExecuteRows<{
     connected_at: string | null
     config: Record<string, unknown>
@@ -256,9 +291,9 @@ export async function queueTicketCommentSync(
   )
   if (!row || row.status !== 'active') return null
   // The loop rule: what the integration's own principal did came from that platform.
-  const actor = data.event.actor
+  const actor = input.actor
   if (
-    actor.type === 'service' &&
+    actor?.type === 'service' &&
     row.principal_id &&
     actor.principalId === fromUuid('principal', row.principal_id)
   )
@@ -299,7 +334,7 @@ export async function queueTicketCommentSync(
           sourceType: kind === 'comment-delete' ? 'ticket' : 'message',
           sourceId: kind === 'comment-delete' ? ticketId : messageId,
           remoteId: `${route.link.externalId}:${messageId}`,
-          ...(kind === 'comment-update' ? { revision: data.event.id } : {}),
+          ...(kind === 'comment-update' ? { revision: input.revision } : {}),
         })
   return queueSyncOperation(
     {
@@ -312,11 +347,12 @@ export async function queueTicketCommentSync(
       // A deleted reply cannot be the source: the ledger would cancel it.
       sourceType: kind === 'comment-delete' ? 'ticket' : 'message',
       sourceId: kind === 'comment-delete' ? ticketId : messageId,
-      sourceRevision: Number.isFinite(Date.parse(data.event.timestamp))
-        ? new Date(data.event.timestamp).toISOString()
+      sourceRevision: Number.isFinite(Date.parse(input.occurredAt))
+        ? new Date(input.occurredAt).toISOString()
         : undefined,
       destination,
       remoteId,
+      requestedBy: input.requestedBy,
       result: {
         externalUrl: null,
         externalDisplayId: route.link.externalDisplayId ?? route.link.externalId,

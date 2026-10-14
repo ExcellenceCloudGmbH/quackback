@@ -17,6 +17,17 @@ describe('githubWebhookEvents', () => {
       'issue_comment',
     ])
   })
+
+  it('adds issue_comment while comments come into linked tickets, inbox or not', () => {
+    for (const commentVisibility of ['note', 'reply'])
+      expect(githubWebhookEvents({ commentVisibility }, { inboxLive: false })).toEqual([
+        'issues',
+        'issue_comment',
+      ])
+    expect(githubWebhookEvents({ commentVisibility: 'off' }, { inboxLive: false })).toEqual([
+      'issues',
+    ])
+  })
 })
 
 describe('githubHookWanted', () => {
@@ -30,6 +41,8 @@ describe('githubHookWanted', () => {
     expect(githubHookWanted(assignees, off)).toBe(true)
     // Assignees ride the `issues` events every hook carries.
     expect(githubWebhookEvents(assignees, { inboxLive: false })).toEqual(['issues'])
+    expect(githubHookWanted({ commentVisibility: 'note' }, off)).toBe(true)
+    expect(githubHookWanted({ commentVisibility: 'off' }, off)).toBe(false)
   })
 })
 

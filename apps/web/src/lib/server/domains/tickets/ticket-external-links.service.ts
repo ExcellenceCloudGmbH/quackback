@@ -76,6 +76,8 @@ export interface LinkableTrackerDTO {
   canLink: boolean
   /** issues.create present — "Create new issue" is offered. */
   canCreate: boolean
+  /** issues.comments present — "Sync" resyncs replies and comments with linked issues. */
+  canSync: boolean
   /**
    * For a tracker serving several destinations (GitHub repositories): the
    * switched-on ones new issues can be created in, so the panel can ask
@@ -123,6 +125,7 @@ export async function listLinkableTrackers(): Promise<LinkableTrackerDTO[]> {
       name: providerName(row.integrationType),
       canLink: Boolean(issues?.parseRef),
       canCreate: Boolean(issues?.create),
+      canSync: Boolean(issues?.comments),
       destinations,
     })
   }

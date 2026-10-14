@@ -10,15 +10,27 @@
  * names the repository a delivery claims so the handler can pick that secret.
  * Assignees: `issues.assigned` / `issues.unassigned` name the account added
  * or removed; our own bot's changes are left out, since they echo a ticket.
+ * Comments: `issue_comment` created/edited/deleted on an issue (never a pull
+ * request), with the comment as `githubRemoteComment` reads it, our own
+ * included so a reply we posted can be recognised.
+ * Ticket references: any `issues` or `issue_comment` delivery whose issue
+ * body carries our ticket-issue marker or a link to a ticket in Quackback.
  */
 
 import { timingSafeEqual, createHmac } from 'crypto'
 import type {
   InboundAssigneeChange,
+  InboundCommentChange,
+  InboundTicketReference,
   InboundWebhookHandler,
   InboundWebhookResult,
 } from '@/lib/server/integrations/inbound-types'
 import { githubLoginsMatch, githubThreadKey } from '@/lib/server/domains/channels/github-thread'
+import {
+  githubRemoteComment,
+  type GitHubIssueCommentPayload,
+} from '@/integrations/github/server/ticket-comment'
+import { ticketReferenceIn } from '@/integrations/github/server/ticket-issue'
 
 export const githubInboundHandler: InboundWebhookHandler = {
   statusMode: 'automatic',
@@ -137,6 +149,69 @@ export const githubInboundHandler: InboundWebhookHandler = {
         login,
       },
       occurredAt: issue.updated_at,
+    }
+  },
+
+  parseCommentChange(body: string, config: Record<string, unknown>): InboundCommentChange | null {
+    let payload: {
+      action?: string
+      comment?: GitHubIssueCommentPayload
+      issue?: { number?: number; html_url?: string; pull_request?: unknown }
+      repository?: { full_name?: string; id?: number | string }
+    }
+    try {
+      payload = JSON.parse(body) as typeof payload
+    } catch {
+      return null
+    }
+    const action = payload.action
+    if (action !== 'created' && action !== 'edited' && action !== 'deleted') return null
+    const issue = payload.issue
+    const repository = payload.repository?.full_name
+    // An `issues` delivery carries no comment; a pull request's comments are not an issue's.
+    if (!payload.comment || !issue?.number || issue.pull_request || !repository?.includes('/'))
+      return null
+    const comment = githubRemoteComment(payload.comment, config)
+    if (!comment) return null
+    const id = payload.repository?.id
+    return {
+      destination: {
+        externalId: repository,
+        ...(typeof id === 'number' || typeof id === 'string' ? { externalKey: String(id) } : {}),
+      },
+      externalId: String(issue.number),
+      externalDisplayId: `${repository}#${issue.number}`,
+      externalUrl: issue.html_url ?? null,
+      threadKey: githubThreadKey(repository, issue.number),
+      action,
+      comment,
+    }
+  },
+  parseTicketReference(body: string): InboundTicketReference | null {
+    let payload: {
+      issue?: { number?: number; html_url?: string; body?: string | null; pull_request?: unknown }
+      repository?: { full_name?: string; id?: number | string }
+    }
+    try {
+      payload = JSON.parse(body) as typeof payload
+    } catch {
+      return null
+    }
+    const issue = payload.issue
+    const repository = payload.repository?.full_name
+    if (!issue?.number || issue.pull_request || !repository?.includes('/')) return null
+    const reference = ticketReferenceIn(issue.body)
+    if (!reference) return null
+    const id = payload.repository?.id
+    return {
+      destination: {
+        externalId: repository,
+        ...(typeof id === 'number' || typeof id === 'string' ? { externalKey: String(id) } : {}),
+      },
+      externalId: String(issue.number),
+      externalDisplayId: `${repository}#${issue.number}`,
+      externalUrl: issue.html_url ?? null,
+      ...reference,
     }
   },
 }

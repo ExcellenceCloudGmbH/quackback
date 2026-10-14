@@ -60,6 +60,70 @@ export interface InboundAssigneeChange {
 }
 
 /**
+ * A comment on an item, as the provider reports it: in a delivery, or read
+ * back when a ticket is resynced.
+ */
+export interface RemoteIssueComment {
+  /** The provider's comment id (GitHub: the numeric issue-comment id). */
+  externalId: string
+  externalUrl: string | null
+  /** The comment, as Markdown. */
+  body: string
+  /** Who wrote it: the provider's immutable id when it sends one, and its login. */
+  author: { externalUserId: string | null; login: string }
+  createdAt: string
+  /** Its version, for ordering edits (GitHub: `updated_at`). */
+  updatedAt: string
+  /** Written by the connection's own account (GitHub: `config.username`). */
+  byConnection: boolean
+  /** Carries one of Quackback's hidden markers: something Quackback wrote. */
+  marked: boolean
+  /**
+   * The ticket reply this comment stands for, when its marker names one
+   * (a reply the connection posted as a comment, `issues.comments`).
+   */
+  mirrorOf: { messageId: string; integrationId: string } | null
+}
+
+/**
+ * A comment created, edited or deleted on an item (GitHub `issue_comment`),
+ * parsed from a signed delivery.
+ */
+export interface InboundCommentChange {
+  /** The destination the delivery came from, as `destinationOf` names it. */
+  destination: { externalId: string; externalKey?: string }
+  /** The item's id in that destination (GitHub: the issue number). */
+  externalId: string
+  externalDisplayId: string
+  externalUrl: string | null
+  /**
+   * The channel thread an Inbox conversation about this item has, for a
+   * provider with an Inbox channel (GitHub: `owner/repo#n`): such an item's
+   * comments reach the inbox through the channel instead.
+   */
+  threadKey?: string
+  action: 'created' | 'edited' | 'deleted'
+  comment: RemoteIssueComment
+}
+
+/**
+ * The ticket an item names as its own, read from a signed delivery about the
+ * item: Quackback's hidden marker on an issue it opened, or a link to the
+ * ticket in Quackback in the item's body.
+ */
+export interface InboundTicketReference {
+  /** The destination the delivery came from, as `destinationOf` names it. */
+  destination: { externalId: string; externalKey?: string }
+  /** The item's id in that destination (GitHub: the issue number). */
+  externalId: string
+  externalDisplayId: string
+  externalUrl: string | null
+  ticketId: string
+  /** The connection the marker names; absent when only a link names the ticket. */
+  integrationId?: string
+}
+
+/**
  * Handler interface for inbound webhooks from external platforms.
  */
 export interface InboundWebhookHandler {
@@ -103,4 +167,23 @@ export interface InboundWebhookHandler {
    * (`sync/assignees.ts`).
    */
   parseAssigneeChange?(body: string, config: Record<string, unknown>): InboundAssigneeChange | null
+
+  /**
+   * Runs in the durable worker beside `parseStatusChange`, on the same signed
+   * receipt: the comment change a delivery reports, or null for any other
+   * delivery. The connection's own comments are reported too (flagged
+   * `byConnection`), so one that stands for a ticket reply can be recognised.
+   * Tickets linked to the item take it in destinations that set a
+   * `commentVisibility` (`sync/inbound-comments.ts`).
+   */
+  parseCommentChange?(body: string, config: Record<string, unknown>): InboundCommentChange | null
+
+  /**
+   * Runs in the durable worker beside `parseStatusChange`, on the same signed
+   * receipt: the ticket the item a delivery is about names as its own, or
+   * null. When no link to that item exists, Sync history proposes linking it
+   * for a teammate to confirm (`sync/ticket-recovery.ts`); nothing is linked
+   * on its say-so.
+   */
+  parseTicketReference?(body: string): InboundTicketReference | null
 }

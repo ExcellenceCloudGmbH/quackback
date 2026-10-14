@@ -24,6 +24,46 @@ export function ticketIssueMarker(ticketId: string, integrationId: string): stri
   return `<!-- quackback:ticket-issue ticketId=${ticketId} integrationId=${integrationId} -->`
 }
 
+const TICKET_ISSUE_MARKER =
+  /<!--\s*quackback:ticket-issue\s+ticketId=(\S+)\s+integrationId=(\S+)\s*-->/
+
+const TICKET_ID = /^ticket_[0-9a-z]{26}$/
+
+/**
+ * The ticket an issue body names as its own: the marker of an issue we
+ * opened (with the connection it names), or else a link into this
+ * workspace's admin (`rootUrl`) that carries a ticket id, as the issue
+ * footer's "View in Quackback" does.
+ */
+export function ticketReferenceIn(
+  body: string | null | undefined,
+  rootUrl: string = getBaseUrl()
+): { ticketId: string; integrationId?: string } | null {
+  const text = body ?? ''
+  const marker = TICKET_ISSUE_MARKER.exec(text)
+  if (marker && TICKET_ID.test(marker[1])) return { ticketId: marker[1], integrationId: marker[2] }
+  let origin: string
+  try {
+    origin = new URL(rootUrl).origin
+  } catch {
+    return null
+  }
+  for (const [candidate] of text.matchAll(/https?:\/\/[^\s)<>"'\]]+/g)) {
+    let url: URL
+    try {
+      url = new URL(candidate)
+    } catch {
+      continue
+    }
+    if (url.origin !== origin || !url.pathname.startsWith('/admin/')) continue
+    const ticketId = [url.searchParams.get('i'), ...url.pathname.split('/')].find(
+      (part): part is string => !!part && TICKET_ID.test(part)
+    )
+    if (ticketId) return { ticketId }
+  }
+  return null
+}
+
 function absoluteUrl(url: string, rootUrl: string): string {
   try {
     return new URL(url, `${rootUrl.replace(/\/$/, '')}/`).toString()
