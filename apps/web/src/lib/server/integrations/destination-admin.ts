@@ -11,18 +11,31 @@
  * mirrors that mapping with its own row (target key = the destination's id),
  * so turning "create an issue from new feedback" on or off applies to all of
  * them, and a destination never gets a mapping the connection did not ask for.
+ * The one exception is a destination's own ticket opt-in (see
+ * `ticket-issues.ts`): its mappings are set per destination, with that
+ * destination's filters, and mirroring leaves them alone.
  */
-import type { IntegrationDestinationId, IntegrationId } from '@quackback/ids'
+import {
+  isTypeId,
+  type IntegrationDestinationId,
+  type IntegrationId,
+  type TeamId,
+  type TicketTypeId,
+} from '@quackback/ids'
 import {
   db,
   eq,
   and,
   sql,
   inArray,
+  notInArray,
+  isNull,
   integrations,
   integrationDestinations,
   integrationEventMappings,
   postExternalLinks,
+  teams,
+  ticketTypes,
 } from '@/lib/server/db'
 import { ConflictError, NotFoundError, ValidationError } from '@/lib/shared/errors'
 import { isUniqueViolation } from '@/lib/server/utils'
@@ -31,6 +44,7 @@ import { getIntegration } from './index'
 import { withIntegrationReadAuth, getIntegrationAuth } from './token-refresh'
 import { recordIntegrationLastError } from './webhook-registration'
 import { syncScopeFor } from './sync/identity'
+import { TICKET_ISSUE_EVENTS, isTicketIssueEvent } from './ticket-issues'
 import {
   destinationConfig,
   destinationTarget,
@@ -100,7 +114,9 @@ export async function mirrorDestinationEventMappings(integrationId: IntegrationI
   if (!multiple) return
   const destinations = await listDestinations(integrationId, multiple.kind)
   const mirrored = destinations.filter((d) => !isDefault(integration, d.externalId))
-  const defaults = integration.eventMappings.filter((m) => m.targetKey === 'default' && m.enabled)
+  const defaults = integration.eventMappings.filter(
+    (m) => m.targetKey === 'default' && m.enabled && !isTicketIssueEvent(m.eventType)
+  )
 
   await db.transaction(async (tx) => {
     const allIds = destinations.map((d) => d.id as string)
@@ -112,7 +128,8 @@ export async function mirrorDestinationEventMappings(integrationId: IntegrationI
         .where(
           and(
             eq(integrationEventMappings.integrationId, integrationId),
-            inArray(integrationEventMappings.targetKey, stale)
+            inArray(integrationEventMappings.targetKey, stale),
+            notInArray(integrationEventMappings.eventType, [...TICKET_ISSUE_EVENTS])
           )
         )
     const rows = defaults.flatMap((mapping) =>
@@ -320,6 +337,137 @@ export async function setDestinationEnabled(
     .returning()
   await clearMappingCache()
   return updated
+}
+
+/** A destination's ticket opt-in, as its settings card shows it. */
+export interface DestinationTicketIssues {
+  /** Whether a ticket it matches gets an issue there. */
+  enabled: boolean
+  /** Only tickets of these teams; empty for every team. */
+  teamIds: string[]
+  /** Only tickets of these types; empty for every type. */
+  ticketTypeIds: string[]
+}
+
+/** Every destination's ticket opt-in on one connection, by destination id. Absent: off. */
+export async function listDestinationTicketIssues(
+  integrationId: IntegrationId
+): Promise<Map<string, DestinationTicketIssues>> {
+  const rows = await db
+    .select({
+      targetKey: integrationEventMappings.targetKey,
+      filters: integrationEventMappings.filters,
+    })
+    .from(integrationEventMappings)
+    .where(
+      and(
+        eq(integrationEventMappings.integrationId, integrationId),
+        eq(integrationEventMappings.eventType, 'ticket.created'),
+        eq(integrationEventMappings.enabled, true)
+      )
+    )
+  return new Map(
+    rows.map((row) => [
+      row.targetKey,
+      {
+        enabled: true,
+        teamIds: row.filters?.ticketTeamIds ?? [],
+        ticketTypeIds: row.filters?.ticketTypeIds ?? [],
+      },
+    ])
+  )
+}
+
+/** Teams that exist and ticket types that are not archived: what a filter may name. */
+async function assertTicketFilters(teamIds: string[], ticketTypeIds: string[]): Promise<void> {
+  if (!teamIds.every((id) => isTypeId(id, 'team')))
+    throw new ValidationError('INVALID_TICKET_FILTER', 'Choose teams that exist')
+  if (!ticketTypeIds.every((id) => isTypeId(id, 'ticket_type')))
+    throw new ValidationError('INVALID_TICKET_FILTER', 'Choose ticket types that exist')
+  const liveTeams = teamIds.length
+    ? await db
+        .select({ id: teams.id })
+        .from(teams)
+        .where(and(inArray(teams.id, teamIds as TeamId[]), isNull(teams.deletedAt)))
+    : []
+  if (liveTeams.length !== new Set(teamIds).size)
+    throw new ValidationError('INVALID_TICKET_FILTER', 'Choose teams that exist')
+  const liveTypes = ticketTypeIds.length
+    ? await db
+        .select({ id: ticketTypes.id })
+        .from(ticketTypes)
+        .where(
+          and(
+            inArray(ticketTypes.id, ticketTypeIds as TicketTypeId[]),
+            isNull(ticketTypes.deletedAt)
+          )
+        )
+    : []
+  if (liveTypes.length !== new Set(ticketTypeIds).size)
+    throw new ValidationError('INVALID_TICKET_FILTER', 'Choose ticket types that exist')
+}
+
+/**
+ * Switch a destination's ticket opt-in on, off, or change its filters. On, it
+ * gets its own `ticket.created` and `ticket.assigned` mappings, routed to it
+ * with the filters given; off, they go. Switching on stamps the opt-in, so only
+ * tickets opened from then on get an issue (see `ticketIssueAllowed`); a
+ * filter change while it is on keeps that moment. Only for a provider that
+ * creates tracked issues.
+ */
+export async function setDestinationTicketIssues(
+  destinationId: string,
+  settings: DestinationTicketIssues
+): Promise<DestinationTicketIssues> {
+  const { destination, integration } = await loadDestination(destinationId)
+  multipleOf(integration.integrationType)
+  const definition = getIntegration(integration.integrationType)
+  if (!definition?.linkedItems || !definition.issues?.create)
+    throw new ValidationError('NOT_SUPPORTED', 'This integration does not create issues')
+  const teamIds = [...new Set(settings.teamIds)]
+  const ticketTypeIds = [...new Set(settings.ticketTypeIds)]
+  const where = and(
+    eq(integrationEventMappings.integrationId, integration.id),
+    eq(integrationEventMappings.targetKey, destination.id),
+    inArray(integrationEventMappings.eventType, [...TICKET_ISSUE_EVENTS])
+  )
+  if (!settings.enabled) {
+    await db.delete(integrationEventMappings).where(where)
+  } else {
+    await assertTicketFilters(teamIds, ticketTypeIds)
+    const filters = {
+      ...(teamIds.length ? { ticketTeamIds: teamIds } : {}),
+      ...(ticketTypeIds.length ? { ticketTypeIds } : {}),
+    }
+    await db
+      .insert(integrationEventMappings)
+      .values(
+        TICKET_ISSUE_EVENTS.map((eventType) => ({
+          integrationId: integration.id,
+          eventType,
+          actionType: 'send_message',
+          targetKey: destination.id as string,
+          actionConfig: { channelId: destination.externalId },
+          filters,
+          enabled: true,
+        }))
+      )
+      .onConflictDoUpdate({
+        target: [
+          integrationEventMappings.integrationId,
+          integrationEventMappings.eventType,
+          integrationEventMappings.actionType,
+          integrationEventMappings.targetKey,
+        ],
+        set: {
+          actionConfig: sql`excluded.action_config`,
+          filters: sql`excluded.filters`,
+          updatedAt: new Date(),
+        },
+      })
+  }
+  await clearMappingCache()
+  return { enabled: settings.enabled, teamIds, ticketTypeIds }
 }
 
 /**

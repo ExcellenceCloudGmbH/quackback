@@ -7,6 +7,7 @@ import { integrationFetch } from '@/lib/server/integrations/sync/transport'
 import type { IssueTrackerCapability, ParsedIssueRef } from '@/lib/server/integrations/types'
 import { issueError } from '@/lib/server/integrations/message-utils'
 import { ValidationError } from '@/lib/shared/errors'
+import { buildGitHubTicketIssue } from '@/integrations/github/server/ticket-issue'
 
 const GITHUB_API = 'https://api.github.com'
 
@@ -99,7 +100,9 @@ export const githubIssues: IssueTrackerCapability = {
     }
   },
 
-  async create({ auth, title, bodyMarkdown }): Promise<ParsedIssueRef> {
+  formatTicketIssue: buildGitHubTicketIssue,
+
+  async create({ auth, title, bodyMarkdown, labels }): Promise<ParsedIssueRef> {
     const ownerRepo = auth.channelId as string
     const accessToken = auth.accessToken as string
 
@@ -112,7 +115,9 @@ export const githubIssues: IssueTrackerCapability = {
         'User-Agent': 'quackback',
         'X-GitHub-Api-Version': '2022-11-28',
       },
-      body: JSON.stringify({ title, body: bodyMarkdown }),
+      // GitHub adds a label the repository does not have yet, and drops the
+      // labels a token without push access may not set instead of refusing.
+      body: JSON.stringify({ title, body: bodyMarkdown, ...(labels?.length ? { labels } : {}) }),
     })
 
     if (!response.ok) {

@@ -58,6 +58,7 @@ export {
   useRemoveIntegrationDestination,
   useSetIntegrationDestinationEnabled,
   useSetIntegrationDestinationConfig,
+  useSetIntegrationDestinationTicketIssues,
   useUpsertIntegrationUserMapping,
   useDeleteIntegrationUserMapping,
 } from './integrations'

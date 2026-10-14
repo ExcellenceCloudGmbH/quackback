@@ -3,8 +3,8 @@
  * One repository's card: its state badges, whether a webhook is registered,
  * the last delivery, the recorded error, a repair that reports its outcome,
  * the on/off switch, what its issues open in the inbox (with the team and
- * ticket type of its tickets), the assignee switch, and removal behind a
- * confirmation.
+ * ticket type of its tickets), the assignee switch, the ticket opt-in with
+ * its team and type filters, and removal behind a confirmation.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react'
@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   remove: vi.fn(),
   setEnabled: vi.fn(),
   setConfig: vi.fn(),
+  setTicketIssues: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
 }))
@@ -27,6 +28,10 @@ vi.mock('@/lib/client/mutations', () => ({
   useRemoveIntegrationDestination: () => ({ mutateAsync: mocks.remove, isPending: false }),
   useSetIntegrationDestinationEnabled: () => ({ mutate: mocks.setEnabled, isPending: false }),
   useSetIntegrationDestinationConfig: () => ({ mutate: mocks.setConfig, isPending: false }),
+  useSetIntegrationDestinationTicketIssues: () => ({
+    mutate: mocks.setTicketIssues,
+    isPending: false,
+  }),
 }))
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
@@ -58,6 +63,7 @@ const repo: IntegrationDestinationSummary = {
   inboundMode: 'off',
   ticketScope: { teamId: null, ticketTypeId: null },
   assigneeSync: false,
+  ticketIssues: { enabled: false, teamIds: [], ticketTypeIds: [] },
   isDefault: false,
   webhookRegistered: true,
   webhookEvents: ['issues'],
@@ -212,6 +218,51 @@ describe('GitHubRepositoryCard', () => {
     expect(mocks.setConfig.mock.calls[1][0].config.ticketScope).toEqual({
       teamId: null,
       ticketTypeId: 'ticket_type_question',
+    })
+  })
+
+  it('switches on an issue for each new ticket, but not for a receive-only repository', () => {
+    renderCard(repo)
+    const name = 'Create an issue in acme/app for each new ticket it matches'
+    expect(screen.queryByRole('button', { name: /Teams whose tickets/ })).toBeNull()
+    fireEvent.click(screen.getByRole('switch', { name }))
+    const [input, opts] = mocks.setTicketIssues.mock.calls[0]
+    expect(input).toEqual({
+      destinationId: 'integration_destination_1',
+      enabled: true,
+      teamIds: [],
+      ticketTypeIds: [],
+    })
+    opts.onError()
+    expect(mocks.toastError).toHaveBeenCalledWith('Could not save the repository settings')
+    cleanup()
+    renderCard({ ...repo, direction: 'inbound' })
+    expect(screen.getByRole('switch', { name })).toBeDisabled()
+  })
+
+  it('narrows the tickets that get an issue by team and by ticket type', async () => {
+    renderCard({
+      ...repo,
+      ticketIssues: { enabled: true, teamIds: [], ticketTypeIds: ['ticket_type_task'] },
+    })
+    expect(screen.getByText(/Applies to tickets opened from now on/)).toBeTruthy()
+    const teamsButton = screen.getByRole('button', {
+      name: 'Teams whose tickets get an issue in acme/app',
+    })
+    expect(teamsButton).toHaveTextContent('All teams')
+    const typesButton = screen.getByRole('button', {
+      name: 'Ticket types that get an issue in acme/app',
+    })
+    // Any ticket type may be chosen, not only customer ones.
+    expect(typesButton).toHaveTextContent('Task')
+
+    await userEvent.click(teamsButton)
+    await userEvent.click(await screen.findByRole('menuitemcheckbox', { name: 'Billing' }))
+    expect(mocks.setTicketIssues.mock.calls[0][0]).toEqual({
+      destinationId: 'integration_destination_1',
+      enabled: true,
+      teamIds: ['team_billing'],
+      ticketTypeIds: ['ticket_type_task'],
     })
   })
 

@@ -4,8 +4,13 @@
  * Handles incoming webhooks from external platforms (Linear, GitHub, Jira, etc.)
  * by verifying signatures, parsing status changes, and updating post statuses.
  *
- * Loop prevention: outbound issue-tracking hooks only fire for `post.created` events,
- * so the `post.status_changed` event dispatched here won't re-trigger them.
+ * Loop prevention: what a delivery changes is changed as the integration's
+ * service principal, and the integration sink never sends an integration what
+ * its own principal did, so a status moved here (or a ticket an issue opened)
+ * is not sent back as a new issue or edit. Outbound tracker hooks create
+ * issues for `post.created` and, where a destination opts in, for
+ * `ticket.created` / `ticket.assigned`; neither fires for the status events
+ * dispatched here.
  */
 
 import { createHash } from 'crypto'

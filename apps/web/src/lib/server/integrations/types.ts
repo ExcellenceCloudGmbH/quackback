@@ -169,6 +169,35 @@ export interface ConfiguredDestination {
 }
 
 /**
+ * What an issue created from a ticket may say, read at dispatch from the
+ * ticket's current customer-visible thread: never an internal note, never the
+ * requester's identity.
+ */
+export interface TicketIssueSource {
+  ticketId: string
+  number: number
+  title: string
+  /** The first customer-visible message, as Markdown. Empty when there is none. */
+  narrative: string
+  /** Files on the thread's customer-visible messages, oldest first. */
+  attachments: { name: string; url: string; contentType: string }[]
+  /** The ticket status's name. */
+  status: string | null
+  priority: 'none' | 'low' | 'medium' | 'high' | 'urgent'
+  /** The channel its conversation came in on (`email`, `messenger`, ...), when it has one. */
+  channel: string | null
+  /** The ticket in the Quackback inbox. */
+  url: string
+}
+
+/** A provider's rendering of a ticket as a new issue. */
+export interface TicketIssueContent {
+  title: string
+  bodyMarkdown: string
+  labels?: string[]
+}
+
+/**
  * Issue-tracker capabilities beyond the event-bus create hook. Optional per
  * provider; surfaces that offer manual linking / creation gate on the
  * specific member being present, never on the provider id.
@@ -211,7 +240,19 @@ export interface IssueTrackerCapability {
     auth: Record<string, unknown>
     title: string
     bodyMarkdown: string
+    /** Labels to set on the new issue, for a provider that has them; others ignore it. */
+    labels?: string[]
   }): Promise<ParsedIssueRef>
+  /**
+   * How this provider writes an issue created from a ticket (manually or by
+   * a destination's ticket opt-in). Without it the ticket's narrative and a
+   * back-link are sent. `integrationId` lets the body carry a marker naming
+   * the connection that wrote it.
+   */
+  formatTicketIssue?(
+    ticket: TicketIssueSource,
+    context: { integrationId: string }
+  ): TicketIssueContent
 }
 
 /** One selectable external status/state, as shown in the status-mapping UI. */

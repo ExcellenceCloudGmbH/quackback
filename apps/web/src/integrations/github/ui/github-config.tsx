@@ -127,7 +127,7 @@ export function GitHubConfig({
             <p className="text-xs text-muted-foreground">
               <FormattedMessage
                 id="admin.githubRepository.listHelp"
-                defaultMessage="Issues from new feedback go to every repository set to send. A ticket's issue goes to the repository you pick, or the default one."
+                defaultMessage="Issues from new feedback go to every repository set to send. A ticket's issue goes to the repository you pick, or the default one, and a repository can open one for each new ticket it matches."
               />
             </p>
           </div>

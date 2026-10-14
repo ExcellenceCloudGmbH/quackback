@@ -7,8 +7,9 @@
  * that, its own switches: on or off (off keeps the webhook, so switching back
  * is immediate), whether its issues come into the inbox (as conversations,
  * or as tickets with their team and type), whether an issue's assignee
- * follows onto its tickets (not for a send-only repository), which way it
- * syncs, and removing it. A repository set to bring issues in while the GitHub inbox channel is
+ * follows onto its tickets (not for a send-only repository), whether each new
+ * ticket it matches gets an issue there (not for a receive-only one), which
+ * way it syncs, and removing it. A repository set to bring issues in while the GitHub inbox channel is
  * off says so, with a link to the channel.
  */
 import { useState } from 'react'
@@ -29,6 +30,7 @@ import {
 import { TimeAgo } from '@/components/ui/time-ago'
 import { ConfirmDialog } from '@/components/shared/confirm-dialog'
 import { GitHubInboundModeControl } from '@/integrations/github/ui/github-inbound-mode'
+import { GitHubTicketIssues } from '@/integrations/github/ui/github-ticket-issues'
 import {
   useReconnectIntegrationDestination,
   useRemoveIntegrationDestination,
@@ -256,6 +258,12 @@ export function GitHubRepositoryCard({ destination, inboxOff }: GitHubRepository
             />
           </span>
         </div>
+        <GitHubTicketIssues
+          destinationId={destination.id}
+          repository={destination.externalId}
+          settings={destination.ticketIssues}
+          disabled={destination.direction === 'inbound'}
+        />
         <Select
           value={destination.direction}
           disabled={setConfig.isPending}

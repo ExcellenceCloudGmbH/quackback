@@ -15,6 +15,7 @@ import { db, integrations, integrationDestinations, eq } from '@/lib/server/db'
 import type { IntegrationDestinationId } from '@quackback/ids'
 import type { DestinationItem } from '@/lib/server/integrations/types'
 import type { DestinationDirection } from '@/lib/server/integrations/destinations'
+import type { DestinationTicketIssues } from '@/lib/server/integrations/destination-admin'
 import type {
   GitHubInboundMode,
   GitHubTicketScope,
@@ -56,6 +57,13 @@ const setDestinationConfigSchema = destinationIdSchema.extend({
   config: z.record(z.string(), z.unknown()),
 })
 
+/** A destination's ticket opt-in; ids are capped to keep the stored filters small. */
+const setDestinationTicketIssuesSchema = destinationIdSchema.extend({
+  enabled: z.boolean(),
+  teamIds: z.array(z.string().max(100)).max(50),
+  ticketTypeIds: z.array(z.string().max(100)).max(50),
+})
+
 export type { DestinationItem }
 
 /** One destination a connection serves, as the settings page shows it. Never carries its secret. */
@@ -72,6 +80,8 @@ export interface IntegrationDestinationSummary {
   ticketScope: GitHubTicketScope
   /** GitHub: whether an issue's assignee follows onto its linked tickets. */
   assigneeSync: boolean
+  /** Whether the tickets it matches (by team and type; none chosen: every ticket) get an issue there. */
+  ticketIssues: DestinationTicketIssues
   /** The connection's default destination (`config.channelId`). */
   isDefault: boolean
   webhookRegistered: boolean
@@ -133,6 +143,9 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
       await import('@/lib/server/integrations/destinations')
     const { githubInboundMode, githubTicketScope } =
       await import('@/lib/server/domains/channel-accounts/github-connection')
+    const { listDestinationTicketIssues } =
+      await import('@/lib/server/integrations/destination-admin')
+    const ticketIssues = await listDestinationTicketIssues(integration.id)
     const defaultId = (integration.config as Record<string, unknown>).channelId
     return (await listDestinations(integration.id)).map((destination) => ({
       id: destination.id,
@@ -143,6 +156,11 @@ export const listIntegrationDestinationsFn = createServerFn({ method: 'GET' })
       inboundMode: githubInboundMode(destination.config),
       ticketScope: githubTicketScope(destination.config),
       assigneeSync: destination.config.assigneeSync === true,
+      ticketIssues: ticketIssues.get(destination.id) ?? {
+        enabled: false,
+        teamIds: [],
+        ticketTypeIds: [],
+      },
       isDefault:
         typeof defaultId === 'string' &&
         defaultId.toLowerCase() === destination.externalId.toLowerCase(),
@@ -270,4 +288,19 @@ export const setIntegrationDestinationConfigFn = createServerFn({ method: 'POST'
     const { updateDestinationConfig } = await import('@/lib/server/integrations/destination-admin')
     await updateDestinationConfig(data.destinationId, data.config)
     return { ok: true }
+  })
+
+/**
+ * Switch a destination's ticket opt-in on or off, or change which teams and
+ * ticket types it covers: a ticket opened from then on that matches gets an
+ * issue there.
+ */
+export const setIntegrationDestinationTicketIssuesFn = createServerFn({ method: 'POST' })
+  .validator(setDestinationTicketIssuesSchema)
+  .handler(async ({ data }): Promise<DestinationTicketIssues> => {
+    await requireAuth({ permission: PERMISSIONS.INTEGRATION_MANAGE })
+    const { setDestinationTicketIssues } =
+      await import('@/lib/server/integrations/destination-admin')
+    const { destinationId, ...settings } = data
+    return setDestinationTicketIssues(destinationId, settings)
   })

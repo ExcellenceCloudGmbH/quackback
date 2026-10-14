@@ -210,6 +210,10 @@ export interface EventMappingActionConfig {
 export interface EventMappingFilters {
   boardIds?: string[]
   statusIds?: string[]
+  /** Ticket events: only tickets assigned to one of these teams. Empty or absent: every team. */
+  ticketTeamIds?: string[]
+  /** Ticket events: only tickets of one of these ticket types. Empty or absent: every type. */
+  ticketTypeIds?: string[]
   [key: string]: string[] | string | boolean | number | undefined
 }
 

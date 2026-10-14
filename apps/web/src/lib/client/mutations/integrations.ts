@@ -22,6 +22,7 @@ import {
   reconnectIntegrationDestinationFn,
   removeIntegrationDestinationFn,
   setIntegrationDestinationConfigFn,
+  setIntegrationDestinationTicketIssuesFn,
   setIntegrationDestinationEnabledFn,
 } from '@/lib/server/functions/integration-destinations'
 import {
@@ -163,6 +164,23 @@ export function useSetIntegrationDestinationConfig() {
   return useMutation({
     mutationFn: (input: { destinationId: string; config: Record<string, unknown> }) =>
       setIntegrationDestinationConfigFn({ data: input }),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin', 'integrations'] })
+    },
+  })
+}
+
+/** Switch a destination's ticket opt-in, or change its team and type filters. The caller reports the outcome. */
+export function useSetIntegrationDestinationTicketIssues() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (input: {
+      destinationId: string
+      enabled: boolean
+      teamIds: string[]
+      ticketTypeIds: string[]
+    }) => setIntegrationDestinationTicketIssuesFn({ data: input }),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'integrations'] })
     },

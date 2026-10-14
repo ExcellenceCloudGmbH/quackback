@@ -507,12 +507,13 @@ describe.skipIf(!fixture.available)('ticket-external-links.service (real DB, rol
       expect(link.externalDisplayId).toBe('acme/widgets#77')
       expect(link.externalUrl).toBe('https://github.com/acme/widgets/issues/77')
 
-      // The API received the ticket title + first-message narrative + footer.
+      // The API received the ticket title + first-message narrative + GitHub's footer and marker.
       const [url, init] = fetchSpy.mock.calls[0]
       expect(String(url)).toBe('https://api.github.com/repos/acme/widgets/issues')
       const sent = JSON.parse((init as RequestInit).body as string)
       expect(sent.body).toContain('It breaks when exporting large CSVs.')
-      expect(sent.body).toContain('Created from Quackback ticket')
+      expect(sent.body).toContain('[View in Quackback](')
+      expect(sent.body).toContain(`<!-- quackback:ticket-issue ticketId=${ticketId} integrationId=`)
 
       const page = await listTicketMessages(ticketId, { includeInternal: true })
       const note = page.messages.find((m) => m.systemEvent?.kind === 'external_linked')
@@ -608,7 +609,7 @@ describe.skipIf(!fixture.available)('ticket-external-links.service (real DB, rol
         body: string
       }
       expect(sent.body).not.toContain('PRIVATE')
-      expect(sent.body).toContain('Created from Quackback ticket')
+      expect(sent.body).toContain('[View in Quackback](')
     } finally {
       fetchSpy.mockRestore()
     }

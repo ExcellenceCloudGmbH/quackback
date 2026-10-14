@@ -19,24 +19,10 @@ import { syncSourceForActor } from '@/lib/server/integrations/sync/eligibility'
  * `issues.parseRef` (e.g. Linear, whose inbound externalId is an internal
  * UUID a pasted URL cannot supply) simply offers no manual linking.
  */
-import {
-  db,
-  eq,
-  and,
-  or,
-  asc,
-  ne,
-  isNull,
-  integrations,
-  conversationMessages,
-  ticketExternalLinks,
-} from '@/lib/server/db'
+import { db, eq, and, asc, integrations, ticketExternalLinks } from '@/lib/server/db'
 import type { TicketId, TicketExternalLinkId, IntegrationId } from '@quackback/ids'
 import { getIntegration } from '@/lib/server/integrations'
 import type { ParsedIssueRef } from '@/lib/server/integrations/types'
-import { getBaseUrl } from '@/lib/server/config'
-import { contentJsonToMarkdown } from '@/lib/server/markdown-tiptap'
-import { truncate } from '@/lib/shared/utils/string'
 import { can } from '@/lib/server/policy/authorize'
 import type { Actor } from '@/lib/server/policy/types'
 import { PERMISSIONS } from '@/lib/shared/permissions'
@@ -45,7 +31,6 @@ import { ValidationError, ForbiddenError } from '@/lib/shared/errors'
 import { logger } from '@/lib/server/logger'
 import { loadTicketOr404 } from './ticket.service'
 import { emitTicketSystemMessage } from './ticket-message.service'
-import { resolvePairConversationId } from './pair-thread.service'
 import { noteUnlinked } from './ticket-external-links.unlink'
 
 const log = logger.child({ component: 'ticket-external-links' })
@@ -363,20 +348,16 @@ export async function createIssueForTicket(
       `Connect the ${providerName(integrationType)} integration first`
     )
   const { queueSyncOperation } = await import('@/lib/server/integrations/sync/ledger')
-  const { installationIdentity, syncDestination, syncOperationKey } =
+  const { installationIdentity, syncDestination } =
     await import('@/lib/server/integrations/sync/identity')
+  const { ticketCreateKey } = await import('@/lib/server/integrations/sync/tickets')
   const config = (integration.config ?? {}) as Record<string, unknown>
   const installation = installationIdentity(integration)
   const target = await outboundTarget(integration, destinationId)
   const destination = syncDestination(target, config, getIntegration(integration.integrationType))
   const operation = await queueSyncOperation({
-    operationKey: syncOperationKey({
-      installation,
-      destination,
-      sourceType: 'ticket',
-      sourceId: ticketId,
-      kind: 'create',
-    }),
+    // Shared with a destination's automatic create, so the ticket gets one issue there either way.
+    operationKey: ticketCreateKey({ installation, destination, ticketId }),
     integrationId: integration.id,
     installation,
     provider: integrationType,
@@ -394,45 +375,6 @@ export async function createIssueForTicket(
       'This ticket predates integration sync. You can link an existing issue instead.'
     )
   return { operationId: operation.id, state: operation.state }
-}
-
-/** Read current customer-visible content at dispatch time, excluding removed messages and internal notes. */
-export async function buildTicketIssueData(ticketId: TicketId) {
-  const ticket = await loadTicketOr404(ticketId)
-  const pairConversationId = await resolvePairConversationId(ticketId)
-  const [firstMessage] = await db
-    .select({
-      content: conversationMessages.content,
-      contentJson: conversationMessages.contentJson,
-    })
-    .from(conversationMessages)
-    .where(
-      and(
-        pairConversationId
-          ? or(
-              eq(conversationMessages.ticketId, ticketId),
-              eq(conversationMessages.conversationId, pairConversationId)
-            )
-          : eq(conversationMessages.ticketId, ticketId),
-        ne(conversationMessages.senderType, 'system'),
-        eq(conversationMessages.isInternal, false),
-        isNull(conversationMessages.deletedAt)
-      )
-    )
-    .orderBy(asc(conversationMessages.createdAt), asc(conversationMessages.id))
-    .limit(1)
-  const narrative = firstMessage
-    ? truncate(contentJsonToMarkdown(firstMessage.contentJson, firstMessage.content), 2000)
-    : ''
-  const bodyMarkdown = [
-    narrative,
-    `---`,
-    `Created from Quackback ticket #${ticket.number}: ${getBaseUrl()}/admin/inbox?i=${ticketId}`,
-  ]
-    .filter(Boolean)
-    .join('\n\n')
-
-  return { title: ticket.title, bodyMarkdown }
 }
 
 /**

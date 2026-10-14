@@ -17,6 +17,7 @@ import type { IntegrationId, PostId, TicketId, PostCommentId, ChangelogId } from
 import type { HookJobData } from '@/lib/server/events/hook-job'
 import { getIntegration } from '../index'
 import { outboundAllowed } from '../destinations'
+import { isTicketIssueEvent } from '../ticket-issues'
 import { getExecuteRows } from '@/lib/server/utils/execute-rows'
 import type { JobSqlExecutor } from '@/lib/server/jobs/job-queue'
 import { getBaseUrl } from '@/lib/server/config'
@@ -64,6 +65,13 @@ export async function queueHookSync(
     const { queueStatusSync } = await import('./status')
     return queueStatusSync(data, executor)
   }
+  // A tracker that keeps linked issues opens one for a ticket its destination's
+  // opt-in matches: the same create a teammate can ask for, not a notification.
+  const definition = getIntegration(data.hookType)
+  if (isTicketIssueEvent(data.event.type) && definition?.linkedItems && definition.issues?.create) {
+    const { queueTicketIssueSync } = await import('./tickets')
+    return queueTicketIssueSync(data, executor)
+  }
   const integrationId = String(data.config.integrationId)
   const [row] = getExecuteRows<{
     connected_at: string | null
@@ -78,7 +86,7 @@ export async function queueHookSync(
     id: integrationId,
     connectedAt: row?.connected_at ?? null,
   })
-  const destination = syncDestination(data.target, row?.config ?? {}, getIntegration(data.hookType))
+  const destination = syncDestination(data.target, row?.config ?? {}, definition)
   const source = hookSource(data)
   const kind = data.event.type === 'post.created' ? 'create' : 'notify'
   const operationKey = syncOperationKey({
