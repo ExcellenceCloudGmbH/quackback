@@ -284,6 +284,8 @@ function actionChips(action: GraphAction, labels: EntityLabels): ChipData[] {
                 : 'Clear the due date',
         },
       ]
+    case 'add_ticket_watcher':
+      return [{ label: named(action.principalId, labels.members, 'Choose a teammate…') }]
     case 'send_webhook':
       return [{ label: action.url ? truncate(action.url, 40) : 'Set a URL…' }]
     case 'close':

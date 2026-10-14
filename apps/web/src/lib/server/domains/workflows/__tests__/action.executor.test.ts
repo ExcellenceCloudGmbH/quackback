@@ -128,6 +128,8 @@ vi.mock('@/lib/server/domains/inbox/inbox.query', () => ({ getLinkedCustomerTick
 // set_ticket_due_date writes through the tickets domain's one due-date path.
 const { setTicketDueAt } = vi.hoisted(() => ({ setTicketDueAt: vi.fn() }))
 vi.mock('@/lib/server/domains/tickets/ticket-due.service', () => ({ setTicketDueAt }))
+const { addTicketWatcher } = vi.hoisted(() => ({ addTicketWatcher: vi.fn() }))
+vi.mock('@/lib/server/domains/tickets/ticket-watchers.service', () => ({ addTicketWatcher }))
 
 // CSAT-over-email itself now lives in conversation.notify.ts's
 // notifyCsatRequestEmail (action.executor.ts's send_block csat case only
@@ -1036,6 +1038,47 @@ describe('applyAction', () => {
       await expect(
         applyAction({ type: 'set_ticket_due_date', dueAtIso: '2040-01-01T00:00:00Z' }, ctx)
       ).rejects.toThrow(ValidationError)
+    })
+  })
+
+  describe('add_ticket_watcher', () => {
+    it('adds the teammate to the linked ticket under a widened service actor', async () => {
+      getLinkedCustomerTicket.mockResolvedValue({ id: 'ticket_1' })
+      addTicketWatcher.mockResolvedValue({ added: true })
+      const engineActor = {
+        principalId: null,
+        role: 'admin',
+        principalType: 'service',
+        permissions: new Set(['conversation.view']),
+      } as unknown as Actor
+
+      const result = await applyAction(
+        { type: 'add_ticket_watcher', principalId: 'principal_mate' as never },
+        { conversationId, actor: engineActor }
+      )
+      expect(result).toMatchObject({ label: 'watcher added' })
+      const [ticketIdArg, principalArg, actorArg] = addTicketWatcher.mock.calls[0]!
+      expect(ticketIdArg).toBe('ticket_1')
+      expect(principalArg).toBe('principal_mate')
+      expect(actorArg.permissions.has('ticket.assign')).toBe(true)
+    })
+
+    it('reports an existing watch rather than adding it twice', async () => {
+      getLinkedCustomerTicket.mockResolvedValue({ id: 'ticket_1' })
+      addTicketWatcher.mockResolvedValue({ added: false })
+      const result = await applyAction(
+        { type: 'add_ticket_watcher', principalId: 'principal_mate' as never },
+        ctx
+      )
+      expect(result).toMatchObject({ label: 'already watching' })
+    })
+
+    it('throws when the conversation has no linked ticket', async () => {
+      getLinkedCustomerTicket.mockResolvedValue(null)
+      await expect(
+        applyAction({ type: 'add_ticket_watcher', principalId: 'principal_mate' as never }, ctx)
+      ).rejects.toThrow(NotFoundError)
+      expect(addTicketWatcher).not.toHaveBeenCalled()
     })
   })
 

@@ -105,6 +105,7 @@ export const ACTION_TONE: Record<ActionType, Tone> = {
   set_ticket_status: 'green',
   set_ticket_due_date: 'green',
   convert_to_ticket: 'blue',
+  add_ticket_watcher: 'green',
   send_webhook: 'green',
 }
 
@@ -168,6 +169,8 @@ function actionChips(action: GraphAction, labels: EntityLabels): ChipData[] {
                 : 'Clear the due date',
         },
       ]
+    case 'add_ticket_watcher':
+      return [{ label: named(action.principalId, labels.members, 'Choose a teammate…') }]
     case 'send_webhook':
       return [{ label: action.url ? truncate(action.url, 40) : 'Set a URL…' }]
     case 'close':

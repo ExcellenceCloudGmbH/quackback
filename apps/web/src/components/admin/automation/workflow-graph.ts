@@ -729,6 +729,8 @@ export const ACTION_LABELS: Record<ActionType, string> = {
   set_ticket_status: 'Set ticket status',
   set_ticket_due_date: 'Set ticket due date',
   convert_to_ticket: 'Convert to ticket',
+  // A teammate who can see the linked ticket starts watching it.
+  add_ticket_watcher: 'Add ticket watcher',
   // Outbound POST of the event payload to a URL — see action.executor.ts's
   // `send_webhook` doc for the delivery + SSRF-guard policy.
   send_webhook: 'Send webhook',
@@ -1055,6 +1057,8 @@ export function defaultAction(type: ActionType): GraphAction {
       return { type, seconds: 86400 }
     case 'convert_to_ticket':
       return { type }
+    case 'add_ticket_watcher':
+      return { type, principalId: '' }
     case 'send_webhook':
       return { type, url: '' }
   }
@@ -1448,6 +1452,8 @@ function validateAction(v: unknown, where: string): string | null {
       return v.dueAtIso === null || isUtcTimestamp(v.dueAtIso)
         ? null
         : `${where}: the due date needs a UTC timestamp (e.g. 2026-08-01T09:00:00Z) or null`
+    case 'add_ticket_watcher':
+      return nonEmptyString(v.principalId) ? null : `${where}: choose a teammate to add`
     case 'convert_to_ticket':
       return null
     case 'send_webhook':
@@ -2528,6 +2534,8 @@ export function actionSummary(action: GraphAction, labels: EntityLabels = {}): s
       return action.ticketTypeId
         ? `Convert to a ${named(action.ticketTypeId, labels.ticketTypes, 'ticket')}`
         : 'Convert to a ticket'
+    case 'add_ticket_watcher':
+      return `Add ${named(action.principalId, labels.members, 'a teammate…')} as a ticket watcher`
     case 'send_webhook':
       return action.url ? `Send webhook to ${truncate(action.url, 40)}` : 'Send a webhook…'
   }
@@ -2947,6 +2955,8 @@ export function actionIssue(action: GraphAction): string | null {
       // A date or an explicit clear is always complete; a relative offset
       // under a minute is one the server rejects on save.
       return 'seconds' in action && action.seconds < 60 ? 'Choose how far ahead it is due' : null
+    case 'add_ticket_watcher':
+      return isSetRef(action.principalId) ? null : 'Choose a teammate to add'
     case 'send_webhook':
       return isLikelyUrl(action.url) ? null : `Enter ${WEBHOOK_URL_HINT}`
     case 'set_priority':

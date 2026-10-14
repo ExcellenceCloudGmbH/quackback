@@ -80,6 +80,12 @@
  * ticket.due_changed, whose event-trigger.ts mapping does NOT set
  * `allowServiceActor`, so this action can never re-trigger a
  * ticket.due_changed workflow.
+ *
+ * `add_ticket_watcher` resolves the same linked ticket (throw-if-none) and adds
+ * the chosen teammate through the inbox's own add path (ticket-watchers.service's
+ * addTicketWatcher), so a teammate who cannot see the ticket is refused there
+ * and the run logs action_failed. The watcher's bell and the timeline entry
+ * attribute the add to the workflow.
  */
 import type {
   ConversationId,
@@ -136,6 +142,7 @@ import {
 } from '@/lib/server/domains/tickets/ticket-type.service'
 import { linkTicketToConversation } from '@/lib/server/domains/tickets/ticket-conversation-link.service'
 import { getLinkedCustomerTicket } from '@/lib/server/domains/inbox/inbox.query'
+import { addTicketWatcher } from '@/lib/server/domains/tickets/ticket-watchers.service'
 
 const log = logger.child({ component: 'workflow-action-executor' })
 
@@ -283,6 +290,9 @@ export type WorkflowAction =
   // Optional ticketTypeId (Phase 4): absent = the customer-category default
   // type; existing graphs convert exactly as before.
   | { type: 'convert_to_ticket'; ticketTypeId?: string }
+  // A teammate who can see the linked customer ticket starts watching it
+  // (ticket-watchers.service's addTicketWatcher, the inbox's own add path).
+  | { type: 'add_ticket_watcher'; principalId: PrincipalId }
 
 export interface ActionResult {
   /** A short label of what happened, or null for a deferred no-op. */
@@ -697,6 +707,21 @@ export async function applyAction(
             : null
       await setTicketDueAt(linked.id, dueAt, ticketActionActor(actor))
       return label(dueAt ? 'ticket due date set' : 'ticket due date cleared')
+    }
+    case 'add_ticket_watcher': {
+      const linked = await getLinkedCustomerTicket(conversationId)
+      if (!linked) {
+        throw new NotFoundError('NOT_FOUND', 'This conversation has no linked ticket')
+      }
+      // A teammate the ticket is hidden from (or anyone not on the team) is
+      // refused by addTicketWatcher: the engine logs that as action_failed and
+      // moves on, like a stale tag.
+      const { added } = await addTicketWatcher(
+        linked.id,
+        action.principalId,
+        ticketActionActor(actor)
+      )
+      return label(added ? 'watcher added' : 'already watching')
     }
     case 'convert_to_ticket': {
       const existing = await getLinkedCustomerTicket(conversationId)

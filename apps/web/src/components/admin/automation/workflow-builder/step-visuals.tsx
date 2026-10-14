@@ -15,6 +15,7 @@ import {
   CheckCircleIcon,
   ClipboardDocumentListIcon,
   DocumentTextIcon,
+  EyeIcon,
   FaceSmileIcon,
   FlagIcon,
   MoonIcon,
@@ -57,6 +58,7 @@ export const ACTION_ICONS: Record<ActionType, typeof BoltIcon> = {
   set_ticket_status: TicketIcon,
   set_ticket_due_date: CalendarDaysIcon,
   convert_to_ticket: TicketIcon,
+  add_ticket_watcher: EyeIcon,
   send_webhook: PaperAirplaneIcon,
 }
 

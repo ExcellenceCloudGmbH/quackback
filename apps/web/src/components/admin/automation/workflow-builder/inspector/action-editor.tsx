@@ -442,6 +442,21 @@ export function ActionEditor({
         <TicketDueDateFields action={action} onChange={onChange} />
       )}
 
+      {action.type === 'add_ticket_watcher' && (
+        <Field label="Teammate">
+          <EntitySelect
+            value={action.principalId}
+            placeholder="Choose teammate"
+            items={members}
+            onChange={(principalId) => onChange({ ...action, principalId })}
+          />
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Adds them as a watcher of the conversation&apos;s linked customer ticket. No linked
+            ticket, or a teammate who can&apos;t see it, fails this step.
+          </p>
+        </Field>
+      )}
+
       {action.type === 'convert_to_ticket' && (
         <Field label="Ticket type">
           <EntitySelect

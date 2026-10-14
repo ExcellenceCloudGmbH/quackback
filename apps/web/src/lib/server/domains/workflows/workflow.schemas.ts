@@ -189,6 +189,9 @@ export const actionSchema = z.union([
   // default type. A no-op when the conversation already has a linked customer
   // ticket, else creates one and links it.
   z.object({ type: z.literal('convert_to_ticket'), ticketTypeId: z.string().optional() }),
+  // A teammate starts watching the conversation's linked customer ticket
+  // (resolve-the-linked-ticket + throw-if-none, like set_ticket_status).
+  z.object({ type: z.literal('add_ticket_watcher'), principalId: z.string().min(1) }),
 ])
 
 // Conversational block kinds (Phase C, slice C-1). `blockBodySchema` is a

@@ -1422,6 +1422,28 @@ describe('snooze action: relative duration', () => {
     if (!result.ok) expect(result.error).toMatch(/choose a ticket status/)
   })
 
+  it('add_ticket_watcher: defaults to no teammate, names the teammate, and flags an unset one', () => {
+    expect(defaultAction('add_ticket_watcher')).toEqual({
+      type: 'add_ticket_watcher',
+      principalId: '',
+    })
+    expect(
+      actionSummary(
+        { type: 'add_ticket_watcher', principalId: 'principal_1' },
+        { members: new Map([['principal_1', 'Max']]) }
+      )
+    ).toBe('Add Max as a ticket watcher')
+    expect(actionIssue({ type: 'add_ticket_watcher', principalId: '' })).toBe(
+      'Choose a teammate to add'
+    )
+    const result = validateGraph({
+      nodes: [{ id: 'a', type: 'action', action: { type: 'add_ticket_watcher', principalId: '' } }],
+      edges: [],
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error).toMatch(/choose a teammate to add/)
+  })
+
   it('convert_to_ticket: has no settings, summarizes as a plain phrase, and never has an issue', () => {
     expect(defaultAction('convert_to_ticket')).toEqual({ type: 'convert_to_ticket' })
     expect(actionSummary({ type: 'convert_to_ticket' })).toBe('Convert to a ticket')
