@@ -374,7 +374,7 @@ export function createSDK(): SDK {
         launcher?.setOpen(true)
         panelOpen = true
         const ctx = opts as {
-          view?: 'home' | 'new-post' | 'changelog' | 'help'
+          view?: 'home' | 'new-post' | 'changelog' | 'help' | 'chat' | 'messages' | 'tickets'
           postId?: string
           articleId?: string
           entryId?: string
