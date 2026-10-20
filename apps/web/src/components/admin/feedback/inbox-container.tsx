@@ -169,6 +169,7 @@ export function InboxContainer({
         onToggleBoard={toggleBoard}
         onToggleSegment={toggleSegment}
         duplicateCountByPostId={duplicateCountByPostId}
+        searchMode={postsData?.pages[0]?.searchMode}
         headerFilters={
           <SavedViewsMenu
             filters={filters}
