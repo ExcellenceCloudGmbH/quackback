@@ -85,6 +85,8 @@ export async function clearWebhookConfig(integrationId: IntegrationId): Promise<
     webhookSecret: _,
     externalWebhookId: __,
     statusSyncEnabled: ___,
+    externalWebhookExpiresAt: ____,
+    externalWebhookRetryAt: _____,
     ...rest
   } = existingConfig
   await db
