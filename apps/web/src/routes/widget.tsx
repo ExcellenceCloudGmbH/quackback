@@ -8,11 +8,19 @@ import { WidgetAuthProvider } from '@/components/widget/widget-auth-provider'
 import { extractSessionTokenFromCookie } from '@/lib/server/functions/portal-session-token'
 import { redactSettingsForClient } from '@/lib/shared/redact-portal-config'
 import { resolveWidgetContextFn } from '@/lib/server/functions/widget-context'
+import { widgetDocumentCsp } from '@/lib/server/widget/csp'
 
-const setIframeHeaders = createServerFn({ method: 'GET' }).handler(async () => {
-  setResponseHeader('Content-Security-Policy', 'frame-ancestors *')
-  setResponseHeader('X-Frame-Options', 'ALLOWALL')
-})
+const setIframeHeaders = createServerFn({ method: 'GET' })
+  .validator(
+    z.object({
+      source: z.enum(['global', 'profile', 'disabled']),
+      embedOrigin: z.string().optional(),
+    })
+  )
+  .handler(async ({ data }) => {
+    setResponseHeader('Content-Security-Policy', widgetDocumentCsp(data))
+    setResponseHeader('X-Frame-Options', 'ALLOWALL')
+  })
 
 /**
  * Resolve the widget locale on the server so SSR and hydration agree.
@@ -39,7 +47,7 @@ export const Route = createFileRoute('/widget')({
   // CDN script-rewriter (Cloudflare Rocket Loader, Mirage, etc.) to break —
   // it makes the widget CDN-rewrite-proof for self-hosters on any CDN.
   // 'data-only' (not false): the loader must still run on the server so
-  // setIframeHeaders() can set frame-ancestors/X-Frame-Options on the
+  // setIframeHeaders() can set the CSP (incl. frame-ancestors) on the
   // document response, and the locale is resolved from Accept-Language.
   ssr: 'data-only',
   validateSearch: (
@@ -66,8 +74,6 @@ export const Route = createFileRoute('/widget')({
     if (!org) {
       throw redirect({ to: '/onboarding' })
     }
-
-    await setIframeHeaders()
 
     const brandingData = settings.brandingData ?? null
     const brandingConfig = settings.brandingConfig ?? {}
@@ -121,6 +127,9 @@ export const Route = createFileRoute('/widget')({
         environment: environment ?? env,
         hostOrigin,
       },
+    })
+    await setIframeHeaders({
+      data: { source: widgetContext.source, embedOrigin: widgetContext.embedOrigin },
     })
 
     return {
