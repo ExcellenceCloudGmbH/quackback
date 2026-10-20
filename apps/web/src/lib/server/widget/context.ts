@@ -49,6 +49,8 @@ export interface ResolvedWidgetContext {
   supportConfig: WidgetProfileSupportConfig
   contextToken: string
   denialReason?: 'missing_profile' | 'profile_disabled' | 'origin_denied'
+  /** Host-page origin that passed the profile's allowedOrigins check (profile source only). */
+  embedOrigin?: string
 }
 
 export class WidgetContextError extends Error {
@@ -392,5 +394,6 @@ export async function resolveWidgetContext(
     contentFilters,
     supportConfig,
     contextToken: token,
+    embedOrigin: origin,
   }
 }

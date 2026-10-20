@@ -464,6 +464,7 @@ describe('resolveWidgetContext', () => {
       { applicationKey: 'app-1', environment: 'prod' }
     )
     expect(viaReferer.source).toBe('profile')
+    expect(viaReferer.embedOrigin).toBe('https://allowed.example.com')
 
     // Neither origin nor referer, but hostOrigin search fallback matches.
     const viaFallback = await resolveWidgetContext(makeRequest(), {
@@ -472,5 +473,6 @@ describe('resolveWidgetContext', () => {
       hostOrigin: 'https://allowed.example.com',
     })
     expect(viaFallback.source).toBe('profile')
+    expect(viaFallback.embedOrigin).toBe('https://allowed.example.com')
   })
 })
