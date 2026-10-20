@@ -1282,4 +1282,6 @@ export interface InboxPostListResult {
   items: PostListItem[]
   nextCursor: string | null
   hasMore: boolean
+  /** Set when no post matched every word of the search and it was widened. */
+  searchMode?: 'most' | 'similar'
 }
