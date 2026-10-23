@@ -26,5 +26,6 @@ export const resolveWidgetContextFn = createServerFn({ method: 'GET' })
       supportConfig: context.supportConfig,
       contextToken: context.contextToken,
       denialReason: context.denialReason,
+      embedOrigin: context.embedOrigin,
     }
   })
