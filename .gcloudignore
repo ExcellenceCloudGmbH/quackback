@@ -20,3 +20,7 @@ e2e
 .idea
 .vscode
 .DS_Store
+.env
+.env.*
+!.env.example
+!.env.prod.example
