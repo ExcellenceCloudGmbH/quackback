@@ -921,20 +921,20 @@ export async function listConversationsForCustomer(
  * A never-read conversation (null watermark) counts all its agent messages,
  * mirroring `unreadCountFor`; internal notes and deleted rows never count.
  * Shared ticket threads the customer was given count from their own
- * participant watermark.
+ * participant watermark, summed in the same statement.
  */
 export async function countVisitorUnreadMessages(visitorPrincipalId: PrincipalId): Promise<number> {
-  const [owned, shared] = await Promise.all([
-    countOwnedUnreadMessages(visitorPrincipalId),
-    countSharedUnreadMessages(visitorPrincipalId),
-  ])
-  return owned + shared
+  const result = await db.execute(sql`
+    select (${ownedUnreadMessages(visitorPrincipalId)}) + (${sharedUnreadMessages(visitorPrincipalId)}) as unread
+  `)
+  const [row] = result as unknown as Array<{ unread: number }>
+  return row?.unread ?? 0
 }
 
 /** The shared ticket threads' part of the badge: agent messages newer than
  *  each participant row's own watermark. */
-async function countSharedUnreadMessages(principalId: PrincipalId): Promise<number> {
-  const [row] = await db
+function sharedUnreadMessages(principalId: PrincipalId) {
+  return db
     .select({ c: sql<number>`count(*)::int` })
     .from(conversationMessages)
     .innerJoin(conversations, eq(conversationMessages.conversationId, conversations.id))
@@ -957,11 +957,10 @@ async function countSharedUnreadMessages(principalId: PrincipalId): Promise<numb
         )
       )
     )
-  return row?.c ?? 0
 }
 
-async function countOwnedUnreadMessages(visitorPrincipalId: PrincipalId): Promise<number> {
-  const [row] = await db
+function ownedUnreadMessages(visitorPrincipalId: PrincipalId) {
+  return db
     .select({ c: sql<number>`count(*)::int` })
     .from(conversationMessages)
     .innerJoin(conversations, eq(conversationMessages.conversationId, conversations.id))
@@ -977,7 +976,6 @@ async function countOwnedUnreadMessages(visitorPrincipalId: PrincipalId): Promis
         )
       )
     )
-  return row?.c ?? 0
 }
 
 export interface MessagePage {
