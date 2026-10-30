@@ -146,6 +146,14 @@ export async function listPostSubscribers(
 ): Promise<PostSubscriberInfo[]> {
   assertCan(actor, PERMISSIONS.POST_VIEW_PRIVATE, "see this post's subscribers")
   await assertPostViewable(postId, actor)
+  return readPostSubscribers(postId)
+}
+
+/**
+ * `listPostSubscribers` without its checks, for a caller that already holds
+ * post.view_private and has the post open (the admin post detail's panel).
+ */
+export async function readPostSubscribers(postId: PostId): Promise<PostSubscriberInfo[]> {
   const rows = await db
     .select({
       principalId: postSubscriptions.principalId,
