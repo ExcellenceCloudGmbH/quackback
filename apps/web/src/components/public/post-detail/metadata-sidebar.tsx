@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useIntl, FormattedMessage } from 'react-intl'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -32,8 +32,7 @@ import { AuthVoteButton } from '@/components/public/auth-vote-button'
 import { AuthorHoverCard } from '@/components/public/author-hover-card'
 import { AdminAuthorHoverCard } from '@/components/admin/admin-author-hover-card'
 import { AuthSubscriptionBell } from '@/components/public/auth-subscription-bell'
-import { SubscriptionBell } from '@/components/public/subscription-bell'
-import { PostSubscribers } from '@/components/admin/feedback/post-subscribers'
+import { SubscriptionBell, type SubscriptionStatus } from '@/components/public/subscription-bell'
 import {
   VotersAvatarStack,
   type VotersQuerySource,
@@ -323,16 +322,18 @@ interface MetadataSidebarProps {
   /** Hide subscribe section (for admin context) */
   hideSubscribe?: boolean
   /**
-   * With `hideSubscribe`, still show the signed-in teammate their own follow
-   * bell. The bell reads its own status, so the portal-only sidebar query
-   * stays off.
+   * With `hideSubscribe`, the signed-in teammate's own follow bell and, when
+   * they may see them, the post's subscribers. The admin modals read the
+   * status (it comes with the post) and render the list, so their code stays
+   * out of the portal's post page and the portal-only sidebar query stays off.
    */
-  teamSubscribe?: boolean
-  /**
-   * Show who is subscribed to the post (admin, post.view_private), with
-   * add/remove for a teammate who can manage them.
-   */
-  subscribers?: { canManage: boolean; canSearchPeople: boolean }
+  teamSubscribe?: {
+    /** The teammate's own status; the bell shows once it is known. */
+    status?: SubscriptionStatus
+    /** After the bell changed it. */
+    onChange?: () => void
+    subscribers?: ReactNode
+  }
   /** Hide vote button (for admin context where voting is handled differently) */
   hideVote?: boolean
   /** Visual variant: 'column' (default border-l) or 'card' (floating card) */
@@ -387,8 +388,7 @@ export function MetadataSidebar({
   onOwnerChange,
   isUpdating = false,
   hideSubscribe = false,
-  teamSubscribe = false,
-  subscribers,
+  teamSubscribe,
   hideVote = false,
   variant = 'column',
   votersAdditionalPostIds,
@@ -984,7 +984,15 @@ export function MetadataSidebar({
                 />
               </span>
               {hideSubscribe ? (
-                <SubscriptionBell postId={postId} />
+                teamSubscribe?.status && (
+                  <SubscriptionBell
+                    key={postId}
+                    postId={postId}
+                    initialStatus={teamSubscribe.status}
+                    initialStatusFresh
+                    onStatusChange={teamSubscribe.onChange}
+                  />
+                )
               ) : (
                 <AuthSubscriptionBell
                   postId={postId}
@@ -999,14 +1007,8 @@ export function MetadataSidebar({
                 defaultMessage="Get notified when there are updates to this post"
               />
             </p>
-            {subscribers && (
-              <div className="mt-3">
-                <PostSubscribers
-                  postId={postId}
-                  canManage={subscribers.canManage}
-                  canSearchPeople={subscribers.canSearchPeople}
-                />
-              </div>
+            {hideSubscribe && teamSubscribe?.subscribers && (
+              <div className="mt-3">{teamSubscribe.subscribers}</div>
             )}
           </div>
         )}
