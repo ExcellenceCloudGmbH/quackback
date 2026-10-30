@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useState } from 'react'
 import { useIntl, type IntlShape } from 'react-intl'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -261,7 +261,12 @@ interface Props {
  * rule-row builder (cap 15 rules), a sort, and a shared toggle. Running the view
  * (rules → list filter) happens in the route; this dialog only defines it.
  */
-export function ConversationViewDialog({ open, onOpenChange, editing, onSaved }: Props) {
+export const ConversationViewDialog = memo(function ConversationViewDialog({
+  open,
+  onOpenChange,
+  editing,
+  onSaved,
+}: Props) {
   const intl = useIntl()
   const queryClient = useQueryClient()
   const { data: tags } = useConversationTagsWithCounts()
@@ -516,7 +521,7 @@ export function ConversationViewDialog({ open, onOpenChange, editing, onSaved }:
       </DialogContent>
     </Dialog>
   )
-}
+})
 
 /** The value control for one fixed-field rule row — switches on the rule's
  *  field. Attribute rows render `AttributeRuleControls` instead. */
