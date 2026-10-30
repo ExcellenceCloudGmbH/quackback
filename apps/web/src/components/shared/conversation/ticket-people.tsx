@@ -9,7 +9,7 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FormattedMessage, useIntl } from 'react-intl'
-import { ChevronRightIcon, UserGroupIcon } from '@heroicons/react/24/outline'
+import { ChevronRightIcon } from '@heroicons/react/24/outline'
 import type { PrincipalId, TicketId } from '@quackback/ids'
 import { Avatar } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -122,7 +122,6 @@ export function TicketPeople({
             expanded && 'rotate-90 rtl:rotate-90'
           )}
         />
-        <UserGroupIcon className="size-3.5" />
         <FormattedMessage id="portal.tickets.share.toggle" defaultMessage="People" />
         <span className="text-muted-foreground/60">· {sharing.people.length}</span>
       </button>
