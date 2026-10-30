@@ -8,7 +8,7 @@
 import { useRef, useState } from 'react'
 import { useIntl } from 'react-intl'
 import { toast } from 'sonner'
-import { ClockIcon, EyeIcon } from '@heroicons/react/24/outline'
+import { ClockIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
 import type { TicketDTO } from '@/lib/server/domains/tickets'
 import { useSetTicketDueAt } from '@/lib/client/mutations/inbox'
 import { useNow } from '@/lib/client/hooks/use-now'
@@ -137,7 +137,7 @@ export function TicketDueControl({
     <span className="inline-flex min-w-0 items-center gap-1.5">
       {customerSees && (
         <span title={customerHint} className="inline-flex shrink-0 text-muted-foreground/70">
-          <EyeIcon className="size-3.5" aria-hidden />
+          <InformationCircleIcon className="size-3.5" aria-hidden />
           <span className="sr-only">{customerHint}</span>
         </span>
       )}
