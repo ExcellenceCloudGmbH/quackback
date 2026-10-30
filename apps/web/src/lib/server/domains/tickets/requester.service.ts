@@ -22,6 +22,9 @@ import {
   desc,
   inArray,
   isNull,
+  isNotNull,
+  or,
+  sql,
   type Ticket,
 } from '@/lib/server/db'
 import type { ConversationId, TicketId, TicketTypeId, PrincipalId } from '@quackback/ids'
@@ -291,66 +294,47 @@ export interface MyTicketSummary {
 export async function listMyTicketSummaries(
   requesterPrincipalId: PrincipalId
 ): Promise<MyTicketSummary[]> {
-  const columns = {
-    ticketId: tickets.id,
-    number: tickets.number,
-    title: tickets.title,
-    statusId: tickets.statusId,
-    conversationId: ticketConversations.conversationId,
-    updatedAt: tickets.updatedAt,
-    dueAt: tickets.dueAt,
-  }
-  const [ownRows, sharedRows] = await Promise.all([
-    db
-      .select(columns)
-      .from(tickets)
-      .leftJoin(
-        ticketConversations,
-        and(
-          eq(ticketConversations.ticketId, tickets.id),
-          eq(ticketConversations.ticketType, 'customer')
-        )
+  // One read: the caller's own tickets and those shared with them (a
+  // participant row with thread access on the pair's conversation).
+  const rows = await db
+    .select({
+      ticketId: tickets.id,
+      number: tickets.number,
+      title: tickets.title,
+      statusId: tickets.statusId,
+      conversationId: ticketConversations.conversationId,
+      updatedAt: tickets.updatedAt,
+      dueAt: tickets.dueAt,
+      relation: sql<TicketRelation>`case when ${tickets.requesterPrincipalId} = ${sql.param(requesterPrincipalId, tickets.requesterPrincipalId)} then 'requester' else 'participant' end`,
+    })
+    .from(tickets)
+    .leftJoin(
+      ticketConversations,
+      and(
+        eq(ticketConversations.ticketId, tickets.id),
+        eq(ticketConversations.ticketType, 'customer')
       )
-      .where(
-        and(
-          eq(tickets.type, 'customer'),
+    )
+    .leftJoin(
+      conversationParticipants,
+      and(
+        eq(conversationParticipants.conversationId, ticketConversations.conversationId),
+        eq(conversationParticipants.principalId, requesterPrincipalId),
+        eq(conversationParticipants.threadAccess, true)
+      )
+    )
+    .where(
+      and(
+        eq(tickets.type, 'customer'),
+        isNull(tickets.deletedAt),
+        or(
           eq(tickets.requesterPrincipalId, requesterPrincipalId),
-          isNull(tickets.deletedAt)
+          isNotNull(conversationParticipants.principalId)
         )
       )
-      .orderBy(desc(tickets.updatedAt))
-      .limit(50),
-    // Tickets shared with the caller: the thread on the pair's conversation.
-    db
-      .select(columns)
-      .from(tickets)
-      .innerJoin(
-        ticketConversations,
-        and(
-          eq(ticketConversations.ticketId, tickets.id),
-          eq(ticketConversations.ticketType, 'customer')
-        )
-      )
-      .innerJoin(
-        conversationParticipants,
-        and(
-          eq(conversationParticipants.conversationId, ticketConversations.conversationId),
-          eq(conversationParticipants.principalId, requesterPrincipalId),
-          eq(conversationParticipants.threadAccess, true)
-        )
-      )
-      .where(and(eq(tickets.type, 'customer'), isNull(tickets.deletedAt)))
-      .orderBy(desc(tickets.updatedAt))
-      .limit(50),
-  ])
-  const rows = [
-    ...ownRows.map((r) => ({ ...r, relation: 'requester' as const })),
-    ...sharedRows
-      .filter((r) => !ownRows.some((own) => own.ticketId === r.ticketId))
-      .map((r) => ({ ...r, relation: 'participant' as const })),
-  ]
-    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
-    .slice(0, 50)
+    )
+    .orderBy(desc(tickets.updatedAt))
+    .limit(50)
   if (rows.length === 0) return []
   const statusIds = [...new Set(rows.map((r) => r.statusId))]
   const [statusRows, stageLabels] = await Promise.all([
