@@ -312,7 +312,7 @@ export const fetchPostWithDetails = createServerFn({ method: 'GET' })
       }),
       hasUserVoted(postId, auth.principal.id),
       data.panels?.length && !data.commentsCursor
-        ? loadAdminPostPanels(postId, data.panels, auth.permissions)
+        ? loadAdminPostPanels(postId, data.panels, auth.permissions, auth.principal.id)
         : undefined,
       // Posts merged into this one (the admin Unmerge list).
       getMergedPosts(postId).then((posts) =>
