@@ -11,7 +11,7 @@
  * the ticket with them (ticket-sharing.service): they also see and reply on the
  * thread in the portal and the widget, and follow the ticket. The copy says so.
  */
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { XMarkIcon } from '@heroicons/react/24/solid'
@@ -33,7 +33,7 @@ import {
   listConversationParticipantsFn,
 } from '@/lib/server/functions/conversation'
 
-export function AddParticipantDialog({
+export const AddParticipantDialog = memo(function AddParticipantDialog({
   open,
   onOpenChange,
   conversationId,
@@ -152,4 +152,4 @@ export function AddParticipantDialog({
       </DialogContent>
     </Dialog>
   )
-}
+})
